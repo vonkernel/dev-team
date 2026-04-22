@@ -102,8 +102,8 @@ agent_card:
   url: http://primary:8000/a2a/primary           # 외부에서 이 에이전트를 호출하는 URL (Docker 네트워크 기준)
   protocol_binding: JSONRPC
   capabilities:
-    streaming: false                             # M2 미지원. 향후 SSE 구현 시 true 로
-    pushNotifications: false
+    streaming: true                              # SSE SendStreamingMessage 지원 (server.py)
+    pushNotifications: false                     # 웹훅 기반 비동기 통보 — 미채택 (proposal §9)
   default_input_modes: [text/plain]
   default_output_modes: [text/plain]
   provider:

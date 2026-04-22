@@ -6,7 +6,8 @@ langgraph-api 의존을 버리고 자체 구현한 A2A JSON-RPC 2.0 + AgentCard 
 엔드포인트:
   GET  /healthz                            - liveness
   GET  /.well-known/agent-card.json        - A2A AgentCard (spec §4.4)
-  POST /a2a/{assistant_id}                 - A2A JSON-RPC 2.0 (SendMessage 최소)
+  POST /a2a/{assistant_id}                 - A2A JSON-RPC 2.0
+                                             methods: SendMessage, SendStreamingMessage
 
 환경변수:
   DATABASE_URI  (선택) - Postgres DSN. 있으면 AsyncPostgresSaver 로 영속 체크포인팅.
@@ -15,6 +16,7 @@ langgraph-api 의존을 버리고 자체 구현한 A2A JSON-RPC 2.0 + AgentCard 
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import uuid
@@ -24,7 +26,7 @@ from typing import Any
 from dev_team_shared.a2a import Message, Part, build_agent_card
 from dev_team_shared.a2a.types import Role
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
@@ -107,6 +109,8 @@ async def a2a_rpc(assistant_id: str, request: Request) -> JSONResponse:
 
     if method == "SendMessage":
         return await _handle_send_message(request, rpc_id, params)
+    if method == "SendStreamingMessage":
+        return await _handle_send_streaming_message(request, rpc_id, params)
 
     return _rpc_error(rpc_id, -32601, f"method not found: {method!r}")
 
@@ -197,6 +201,133 @@ async def _handle_send_message(
             },
         },
     )
+
+
+async def _handle_send_streaming_message(
+    request: Request,
+    rpc_id: Any,
+    params: dict[str, Any],
+) -> JSONResponse | StreamingResponse:
+    """A2A `SendStreamingMessage` — SSE 로 Task / 이벤트 스트림 반환.
+
+    이벤트 순서 (spec §3 Task lifecycle + SSE 전달):
+      1) 초기 `Task` (kind="task", state=TASK_STATE_SUBMITTED)
+      2) 0..N 개의 `TaskArtifactUpdateEvent` (kind="artifact-update", append=true)
+         — LangGraph `astream(stream_mode="messages")` 가 내보내는 LLM 토큰 chunk 를
+         각각 artifact 갱신으로 래핑
+      3) 최종 `TaskStatusUpdateEvent` (kind="status-update", state=COMPLETED,
+         final=true). 오류 시 state=FAILED + 에러 메시지.
+    """
+    # 요청 parse 오류는 SSE 진입 전에 일반 JSON-RPC 에러로 돌려줌.
+    try:
+        a2a_msg = Message.model_validate(params.get("message") or {})
+    except Exception as exc:
+        return _rpc_error(rpc_id, -32602, f"invalid message: {exc}")
+
+    human_parts = [p.text for p in a2a_msg.parts if p.text is not None]
+    if not human_parts:
+        return _rpc_error(rpc_id, -32602, "no text parts in message")
+    human = HumanMessage(content="\n".join(human_parts))
+
+    context_id = a2a_msg.context_id or str(uuid.uuid4())
+    task_id = f"{context_id}:{uuid.uuid4()}"
+    artifact_id = str(uuid.uuid4())
+    graph = request.app.state.graph
+    user_msg_payload = a2a_msg.model_dump(by_alias=True, exclude_none=True)
+
+    async def event_generator():
+        # 1) 초기 Task
+        initial_task = {
+            "kind": "task",
+            "id": task_id,
+            "contextId": context_id,
+            "status": {"state": "TASK_STATE_SUBMITTED"},
+            "history": [user_msg_payload],
+        }
+        yield _sse_event({"jsonrpc": "2.0", "id": rpc_id, "result": initial_task})
+
+        try:
+            async for chunk_tuple in graph.astream(
+                {"messages": [human]},
+                config={"configurable": {"thread_id": context_id}},
+                stream_mode="messages",
+            ):
+                # stream_mode="messages" → (AIMessageChunk-like, metadata)
+                msg_chunk, _metadata = chunk_tuple
+                if not isinstance(msg_chunk, AIMessage):
+                    continue
+                text = _stringify_ai_content(msg_chunk.content)
+                if not text:
+                    continue
+                artifact_event = {
+                    "kind": "artifact-update",
+                    "taskId": task_id,
+                    "contextId": context_id,
+                    "artifact": {
+                        "artifactId": artifact_id,
+                        "parts": [{"kind": "text", "text": text}],
+                    },
+                    "append": True,
+                    "lastChunk": False,
+                }
+                yield _sse_event(
+                    {"jsonrpc": "2.0", "id": rpc_id, "result": artifact_event}
+                )
+        except Exception as exc:
+            logger.exception("graph.astream failed")
+            detail = f"{type(exc).__name__}: {exc}"
+            if "credit balance" in str(exc).lower():
+                detail += (
+                    " — Anthropic 크레딧 부족 가능성. "
+                    "https://console.anthropic.com/settings/billing 확인."
+                )
+            fail_event = {
+                "kind": "status-update",
+                "taskId": task_id,
+                "contextId": context_id,
+                "status": {
+                    "state": "TASK_STATE_FAILED",
+                    "message": {
+                        "kind": "message",
+                        "role": "ROLE_AGENT",
+                        "parts": [{"kind": "text", "text": detail}],
+                        "messageId": f"err-{uuid.uuid4()}",
+                        "taskId": task_id,
+                        "contextId": context_id,
+                    },
+                },
+                "final": True,
+            }
+            yield _sse_event(
+                {"jsonrpc": "2.0", "id": rpc_id, "result": fail_event}
+            )
+            return
+
+        # 3) 완료 이벤트
+        complete_event = {
+            "kind": "status-update",
+            "taskId": task_id,
+            "contextId": context_id,
+            "status": {"state": "TASK_STATE_COMPLETED"},
+            "final": True,
+        }
+        yield _sse_event(
+            {"jsonrpc": "2.0", "id": rpc_id, "result": complete_event}
+        )
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # nginx 등 프록시 buffering 방지
+        },
+    )
+
+
+def _sse_event(payload: dict[str, Any]) -> str:
+    """SSE `data:` 라인 + blank-line 종결자. 유니코드 그대로 전달(ensure_ascii=False)."""
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
 def _rpc_error(rpc_id: Any, code: int, message: str) -> JSONResponse:
