@@ -1,0 +1,14 @@
+# Primary 에이전트 override config.
+#
+# docker compose 가 이 파일을 `/app/config.override.yaml` 로 마운트하며,
+# 컨테이너 기동 시 shared.config_loader 가 base.yaml 과 deep merge 한다.
+#
+# ⚠️  평문 시크릿을 이 파일에 쓰지 마세요.
+#     반드시 `${ENV_VAR}` 로 env 참조만 사용 — 실제 값은 레포 루트 `.env` 에.
+# ⚠️  Override 금지 필드 (config_loader denylist): role, specialty, persona, workflow
+#
+# 참고: docs/proposal.md §2.4, docs/agent-runtime.md
+
+llm:
+  # 실제 값은 레포 루트 `.env` 의 ANTHROPIC_API_KEY 에서 주입됨.
+  api_key: ${ANTHROPIC_API_KEY}

@@ -7,6 +7,10 @@
 .env.local
 *.env.local
 
+# Override configs — 실제 파일은 로컬에서만 관리, 템플릿(*.example)만 커밋
+overrides/*.yaml
+!overrides/*.yaml.example
+
 # Python
 __pycache__/
 *.pyc
