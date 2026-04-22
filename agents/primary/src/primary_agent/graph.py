@@ -3,7 +3,8 @@
 M2 스코프: 수신 → LLM 호출 → 응답 최소 흐름.
 외부 MCP / Librarian / 다른 에이전트 연동 없음 (Issue #6 참조).
 
-- 상태 키 `messages` 단일 — A2A text parts 와 호환 (docs/agent-runtime.md §5).
+- 상태에 `messages` 키 포함 — langgraph-api 의 A2A 어댑터가 이 이름을 규약으로
+  삼아 text parts 를 자동 매핑한다 (docs/agent-runtime.md §5).
 - 설정 경로는 패키지 위치 기준 고정 (env 변수 미사용).
   - base: agents/primary/config/base.yaml
   - override: agents/primary/config/override.yaml (선택, 없으면 skip)
@@ -29,7 +30,15 @@ _OVERRIDE_CONFIG_PATH = _PACKAGE_ROOT / "config" / "override.yaml"
 
 
 class State(TypedDict):
-    """LangGraph 상태. A2A 호환을 위해 `messages` 키 단일 보유."""
+    """LangGraph 상태.
+
+    langgraph-api 의 A2A 어댑터가 `messages` 키 이름을 규약으로 삼아
+    수신 text parts 를 HumanMessage 로 변환해 주입하고, 응답 시에는
+    마지막 AIMessage 를 꺼내 A2A Message 로 포장한다.
+    따라서 이 키의 존재가 A2A 자동 연동의 요구 조건 — 키가 하나여야
+    한다는 뜻은 아니며, 향후 다른 상태 키(예: retrieved_docs, plan_steps)
+    를 추가해도 A2A 호환은 유지된다.
+    """
 
     messages: Annotated[list[AnyMessage], add_messages]
 
