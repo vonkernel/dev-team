@@ -7,6 +7,14 @@
 .env.local
 *.env.local
 
+# Override configs — 실제 파일은 로컬에서만 관리, 템플릿(*.example)만 커밋
+overrides/*.yaml
+!overrides/*.yaml.example
+
+# LangGraph dev / langgraph-api 런타임 아티팩트
+# (in-memory checkpoint/ops/store pickle. 모든 에이전트 디렉토리 하위에 생성됨)
+.langgraph_api/
+
 # Python
 __pycache__/
 *.pyc
