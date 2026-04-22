@@ -1,47 +1,50 @@
 # syntax=docker/dockerfile:1
 #
-# Primary 에이전트 이미지.
+# Primary 에이전트 이미지 — self-hosted OSS 경로.
 #
-# 생성 기준: `langgraph dockerfile ./Dockerfile` (langgraph-cli 0.4.x) 결과에
-# 다음 두 가지를 커스텀 추가:
-#   1) shared 패키지 설치 레이어 (primary 가 dev-team-shared 에 의존).
-#   2) `ADD` 경로를 repo root 기준으로 변경 (빌드 컨텍스트 = repo root).
+# 베이스: python:3.13-slim (langgraph-api / proprietary runtime 의존 없음).
+# 런타임: FastAPI + uvicorn. 엔드포인트는 primary_agent.server:app 에서 정의.
+# 영속: OSS langgraph-checkpoint-postgres (AsyncPostgresSaver) 를 server.lifespan
+#       에서 wiring. DATABASE_URI 환경변수로 주입.
 #
 # 빌드 (레포 루트에서):
-#   docker build -f agents/primary/Dockerfile -t primary:latest .
+#   docker build -f agents/primary/Dockerfile -t dev-team/primary:latest .
+#
+# 런타임 변수:
+#   ANTHROPIC_API_KEY  (필수, overrides/primary.yaml 통해 주입)
+#   DATABASE_URI       (선택, 미설정 시 in-memory)
 #
 # 빌드 전략 전반은 docs/agent-runtime.md §3 참조.
 
-FROM langchain/langgraph-api:3.13
+FROM python:3.13-slim
 
-# -- 1) shared 패키지 설치 (커스텀 레이어, primary 보다 먼저 설치) --
-#    shared 를 먼저 설치해 두면 primary 설치 시 `dev-team-shared` 의존을
-#    이미 설치된 패키지에서 해소한다 (uv pip 는 pyproject.toml 의
-#    [tool.uv.sources] 를 무시하므로 workspace 참조 문제 없음).
-ADD ./shared /deps/shared
-RUN cd /deps/shared && PYTHONDONTWRITEBYTECODE=1 uv pip install --system --no-cache-dir -c /api/constraints.txt -e .
+# 시스템 빌드 의존성 (psycopg 바이너리 / httpx C 확장 등 wheel 에서 처리되지만
+# 일부 환경에서 필요할 수 있어 최소 도구 설치)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# -- 2) primary 패키지 설치 (local package) --
-#    Docker 환경에는 workspace 루트 pyproject.toml 이 없으므로, primary 의
-#    [tool.uv.sources] 블록(workspace 참조)을 제거한 뒤 설치한다.
-#    shared 는 위에서 이미 설치되어 있어 `dev-team-shared` 는 일반 패키지
-#    레퍼런스로 즉시 해소됨. 로컬 dev 의 pyproject.toml 원본은 영향 없음.
-ADD ./agents/primary /deps/primary
-RUN sed -i '/^\[tool\.uv\.sources\]/,/^$/d' /deps/primary/pyproject.toml
-RUN cd /deps/primary && PYTHONDONTWRITEBYTECODE=1 uv pip install --system --no-cache-dir -c /api/constraints.txt -e .
+# pip 캐시 크기 최소화 + byte-compile 생략 (이미지 용량 감축)
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# langgraph-api 런타임이 로드할 graph 매핑 (langgraph.json 의 graphs 와 동일).
-ENV LANGSERVE_GRAPHS='{"primary": "primary_agent.graph:graph"}'
+WORKDIR /app
 
-# -- Ensure user deps didn't inadvertently overwrite langgraph-api --
-RUN mkdir -p /api/langgraph_api /api/langgraph_runtime /api/langgraph_license && touch /api/langgraph_api/__init__.py /api/langgraph_runtime/__init__.py /api/langgraph_license/__init__.py
-RUN PYTHONDONTWRITEBYTECODE=1 uv pip install --system --no-cache-dir --no-deps -e /api
-# -- End of ensuring user deps didn't inadvertently overwrite langgraph-api --
+# -- 1) shared 패키지 설치 (primary 보다 먼저 — dev-team-shared 의존 해소) --
+COPY shared /app/shared
+RUN pip install -e /app/shared
 
-# -- Removing build deps from the final image ~<:===~~~ --
-RUN pip uninstall -y pip setuptools wheel
-RUN rm -rf /usr/local/lib/python*/site-packages/pip* /usr/local/lib/python*/site-packages/setuptools* /usr/local/lib/python*/site-packages/wheel* && find /usr/local/bin -name "pip*" -delete || true
-RUN rm -rf /usr/lib/python*/site-packages/pip* /usr/lib/python*/site-packages/setuptools* /usr/lib/python*/site-packages/wheel* && find /usr/bin -name "pip*" -delete || true
-RUN uv pip uninstall --system pip setuptools wheel && rm /usr/bin/uv /usr/bin/uvx
+# -- 2) primary 패키지 설치 --
+#    workspace root pyproject.toml 이 없으므로 [tool.uv.sources] 블록 제거 후 설치.
+#    shared 는 위에서 이미 등록되어 `dev-team-shared` 의존은 PyPI lookup 없이 해소됨.
+COPY agents/primary /app/primary
+RUN sed -i '/^\[tool\.uv\.sources\]/,/^$/d' /app/primary/pyproject.toml \
+ && pip install -e /app/primary
 
-WORKDIR /deps/primary
+WORKDIR /app/primary
+EXPOSE 8000
+
+# FastAPI 서버 기동. 재시작 시 lifespan 이 Postgres checkpointer 재설정.
+CMD ["uvicorn", "primary_agent.server:app", "--host", "0.0.0.0", "--port", "8000"]
