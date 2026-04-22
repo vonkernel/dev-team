@@ -1,7 +1,0 @@
-{
-  "python_version": "3.13",
-  "dependencies": ["."],
-  "graphs": {
-    "primary": "primary_agent.graph:graph"
-  }
-}

@@ -94,14 +94,28 @@ a2a_peers:
 allowed_clients:
   - user-gateway
 
-# AgentCard 커스터마이즈 (langgraph-api 자동 생성 카드 위에 덧씌움).
-# M2 단계에서는 langgraph-api 자동 노출을 사용하므로 대부분 선택 값.
-# 참고: docs/agent-runtime.md §8
+# AgentCard — 자체 FastAPI 서버가 `/.well-known/agent-card.json` 으로 노출.
+# shared/a2a/agent_card.py 의 build_agent_card() 가 이 블록을 소비한다.
+# A2A spec §4.4 필수 필드: url, capabilities, defaultInputModes, defaultOutputModes, skills.
 agent_card:
   version: "0.1"
+  url: http://primary:8000/a2a/primary           # 외부에서 이 에이전트를 호출하는 URL (Docker 네트워크 기준)
+  protocol_binding: JSONRPC
+  capabilities:
+    streaming: false                             # M2 미지원. 향후 SSE 구현 시 true 로
+    pushNotifications: false
+  default_input_modes: [text/plain]
+  default_output_modes: [text/plain]
   provider:
     organization: dev-team
     url: https://github.com/vonkernel/dev-team
+  skills:
+    - id: pm.discuss_plan
+      name: Planning Discussion
+      description: |
+        사용자와 대화하며 모호한 요구를 구체적 PRD 로 정제.
+        M2 단계에서는 PRD 저장 / 외부 PM 도구 동기화는 제외.
+      tags: [pm, planning, chat]
 
 # TODO(M3+): 외부 PM MCP, Librarian 질의, workflow 확장 활성화 시 추가
 # mcp_servers:
