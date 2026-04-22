@@ -1,0 +1,29 @@
+[project]
+name = "primary-agent"
+version = "0.1.0"
+description = "Primary (PM) 에이전트 — LangGraph + A2A server + LLM 응답"
+requires-python = ">=3.13,<3.14"
+
+# langchain/langgraph 생태계는 dev-team-shared 를 통해 이미 들어오지만,
+# 본 패키지가 직접 사용하는 것만 최소한으로 명시 (직접 의존성 투명성 목적).
+dependencies = [
+  "dev-team-shared",
+  "langgraph>=1.1.9",
+  "langgraph-api>=0.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=9.0.3",
+  "pytest-asyncio>=1.3.0",
+]
+
+[tool.uv.sources]
+dev-team-shared = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.29.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/primary_agent"]

@@ -7,7 +7,7 @@ requires-python = ">=3.13,<3.14"
 # 루트는 빈 메타 — 실제 구현은 workspace 멤버에 있음
 
 [tool.uv.workspace]
-members = ["shared"]
+members = ["shared", "agents/primary"]
 
 [tool.ruff]
 line-length = 100
