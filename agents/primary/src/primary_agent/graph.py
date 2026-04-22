@@ -12,6 +12,7 @@ M2 스코프: 수신 → LLM 호출 → 응답 최소 흐름.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Annotated, Any, TypedDict
 
@@ -21,6 +22,8 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
+
+logger = logging.getLogger(__name__)
 
 # 패키지 위치 기준 고정 경로:
 # graph.py = agents/primary/src/primary_agent/graph.py  → parents[2] = agents/primary/
@@ -64,9 +67,28 @@ _PERSONA, _LLM = _load_runtime()
 
 
 async def _llm_call(state: State) -> dict[str, list[AnyMessage]]:
-    """Persona(system) + 누적 메시지를 LLM 에 전달, 응답 1개를 append."""
+    """Persona(system) + 누적 메시지를 LLM 에 전달, 응답 1개를 append.
+
+    실패 시 처리:
+    - 서버 로그에 full traceback 기록 (`logger.exception`) — 원인 분석 근거 확보.
+    - 예외 메시지를 풍부하게 감싼 `RuntimeError` 로 re-raise →
+      langgraph-api worker 가 Task status 를 FAILED 로 전파할 때
+      provider 원본 메시지가 보존되도록 한다.
+    - Anthropic 크레딧 부족 같은 흔한 운영 이슈는 힌트를 덧붙여
+      디버깅 시간을 줄인다.
+    """
     system = SystemMessage(content=_PERSONA)
-    response = await _LLM.ainvoke([system, *state["messages"]])
+    try:
+        response = await _LLM.ainvoke([system, *state["messages"]])
+    except Exception as exc:
+        logger.exception("LLM call failed in `_llm_call` node")
+        detail = f"{type(exc).__name__}: {exc}"
+        if "credit balance" in str(exc).lower():
+            detail += (
+                " — Anthropic 크레딧 부족 가능성. "
+                "https://console.anthropic.com/settings/billing 확인."
+            )
+        raise RuntimeError(f"LLM call failed — {detail}") from exc
     return {"messages": [response]}
 
 
