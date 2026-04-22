@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 #
-# MongoDB 초기화 스크립트
+# MongoDB 초기화 스크립트 (뼈대)
 #
-# 적용 대상: proposal.md §4.2 (Episodic Layer)
-#   컬렉션: tasks, sessions, items, technical_notes, design_alternatives
-#   인덱스: 주요 조회 패턴(by_task, by_session, thread) 대응
+# 현재 범위: 접속 확인 + app DB 참조까지.
+# 컬렉션/인덱스 설계는 별도 결정 후 이 스크립트에 추가 예정.
 #
 # 용도:
 #   1) docker compose의 one-shot init 서비스에서 자동 실행
@@ -16,6 +15,9 @@
 #        bash infra/init/mongo-init.sh
 #
 # 요구 바이너리: mongosh (mongo:8 이미지에 기본 포함)
+#
+# 참고: MongoDB 는 데이터베이스를 최초 쓰기 시점에 자동 생성한다.
+#        따라서 별도의 "DB 생성" 단계는 필요 없고, 이 스크립트는 접속 확인만 수행한다.
 
 set -euo pipefail
 
@@ -25,39 +27,11 @@ MONGO_USER="${MONGO_INITDB_ROOT_USERNAME:-root}"
 MONGO_PASS="${MONGO_INITDB_ROOT_PASSWORD:?MONGO_INITDB_ROOT_PASSWORD is required}"
 APP_DB="${MONGO_APP_DB:-dev_team}"
 
-echo "[mongo-init] initializing database '${APP_DB}' on ${MONGO_HOST}:${MONGO_PORT} ..."
-
+echo "[mongo-init] checking connectivity to ${MONGO_HOST}:${MONGO_PORT} (app db: ${APP_DB}) ..."
 mongosh --quiet \
   --host "${MONGO_HOST}" --port "${MONGO_PORT}" \
   -u "${MONGO_USER}" -p "${MONGO_PASS}" \
   --authenticationDatabase admin \
-  --eval "
-const appDb = '${APP_DB}';
-const cols = ['tasks', 'sessions', 'items', 'technical_notes', 'design_alternatives'];
+  --eval "db.getSiblingDB('${APP_DB}').runCommand({ ping: 1 }).ok" >/dev/null
 
-const target = db.getSiblingDB(appDb);
-const existing = target.getCollectionNames();
-
-// 1) 컬렉션 생성 (idempotent)
-cols.forEach(function (c) {
-  if (!existing.includes(c)) {
-    target.createCollection(c);
-    print('[mongo-init] created collection: ' + c);
-  } else {
-    print('[mongo-init] exists: ' + c);
-  }
-});
-
-// 2) 인덱스 (createIndex 는 동일 spec 이면 idempotent)
-target.sessions.createIndex({ task_id: 1 });
-target.items.createIndex({ task_id: 1 });
-target.items.createIndex({ session_id: 1 });
-target.items.createIndex({ prev_item_id: 1 });
-target.items.createIndex({ task_id: 1, timestamp: 1 });
-target.technical_notes.createIndex({ task_id: 1 });
-target.design_alternatives.createIndex({ task_id: 1 });
-
-print('[mongo-init] indexes applied.');
-"
-
-echo "[mongo-init] done."
+echo "[mongo-init] connection OK. (collections/indexes will be added later when designed)"
