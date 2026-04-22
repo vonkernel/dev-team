@@ -28,3 +28,8 @@ build/
 # Node
 node_modules/
 .next/
+
+# Frontend 빌드 산출물 (Vite) / backend 에 복사된 정적 자원
+user-gateway/frontend/dist/
+user-gateway/frontend/tsconfig.tsbuildinfo
+user-gateway/static/
