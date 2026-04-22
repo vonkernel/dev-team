@@ -1,8 +1,9 @@
-# OpenCode 기반 A2A 멀티 에이전트 협업 시스템 - 기획서 초안
+# LangGraph 기반 A2A 멀티 에이전트 협업 시스템
 
-> **문서 버전:** v0.1 (Draft)  
-> **작성일:** 2026-04-14  
-> **상태:** 초안 검토 대기
+> **문서 버전:** v0.2  
+> **최초 작성일:** 2026-04-14  
+> **최종 수정일:** 2026-04-22  
+> **상태:** 진행 — 주요 설계 확정, 구현 단계 진입
 
 ---
 
@@ -146,10 +147,12 @@ graph TD
 사용자는 에이전트에 직접 접속하지 않고 **User Gateway**를 통해 소통한다. User Gateway는 사용자 측 UI(웹/CLI/채팅)와 내부 A2A 네트워크를 연결하는 **중계 계층**이다.
 
 **역할:**
-- 사용자 채팅 입력을 A2A 메시지로 변환하여 P 또는 A에게 전달
-- P/A가 사용자에게 전달할 메시지를 수신하여 UI로 렌더링
+- 사용자 채팅 입력을 A2A `SendMessage` 또는 `SendStreamingMessage` 로 변환하여 P 또는 A 에게 전달
+- **SSE streaming** 활용 — 에이전트 응답(LLM 토큰, 중간 상태)을 실시간 UI 로 렌더링
+- P/A 가 사용자에게 전달할 메시지를 수신하여 UI 로 렌더링
+- 긴 작업은 `Task` 객체로 반환받아 `GetTask` 로 상태 추적 (`TASK_STATE_INPUT_REQUIRED` 상태면 사용자 입력 유도 UI 표시)
 - 사용자 인증/세션 관리
-- 사용자 개입 이벤트도 일반 A2A 이벤트와 동일하게 Librarian에게 publish → Document DB에 기록되어 추적 가능
+- 사용자 개입 이벤트도 일반 A2A 이벤트와 동일하게 Valkey Streams 로 publish → Chronicler 가 Document DB 에 기록
 
 **라우팅 규칙:**
 - 기획 관련 대화 (요구사항, PRD, 일정 등) → P로 전달
@@ -183,7 +186,7 @@ graph TD
             SharedMcpClient["공유 MCP 클라이언트<br/>(Librarian만 Shared Memory MCP,<br/>P만 External PM MCP)"]
         end
 
-        A2A["A2A 서버/클라이언트<br/>- 수신 엔드포인트<br/>- 피어 호출"]
+        A2A["A2A 서버/클라이언트<br/>(langgraph-api 내장)<br/>- POST /a2a/{assistant_id}<br/>&nbsp;&nbsp;SendMessage · SendStreamingMessage · GetTask<br/>- GET /.well-known/agent-card.json"]
         BrokerClient["Valkey 클라이언트<br/>(대화 이벤트 publish 전용)"]
     end
 
@@ -1051,7 +1054,7 @@ P와 Librarian 이미지는 Code Agent 불필요 → Bun/OpenCode 미설치.
 
 | 컴포넌트 | 기술 | 역할 |
 |----------|------|------|
-| 워크플로우 엔진 | LangGraph | 에이전트 내부 상태 머신 + A2A 통신 |
+| 워크플로우 엔진 | LangGraph (+ `langgraph-api` ≥ 0.4.21) | 에이전트 내부 상태 머신 + **A2A v1.0 서버 내장** (JSON-RPC 2.0, SSE) |
 | 코드 실행 도구 | 추상화 인터페이스 (기본: OpenCode CLI) | 코드 조작 실행 엔진, 추후 교체 가능 |
 | 추론 엔진 | LLM API (역할·서브 에이전트별 선택) | 모든 에이전트의 판단/검증 |
 | Runtime | Docker (1 Agent = 1 Container) | 격리된 실행 환경 |
@@ -1632,31 +1635,122 @@ primary:
 - 쓰기 범위는 에이전트 내부 로직 + Role Config에서 허용 디렉토리를 명시하여 제한
 - P와 Librarian은 코드베이스를 마운트하지 않음 (불필요)
 
-### 6.2. A2A 통신
+### 6.2. A2A 통신 (A2A Protocol v1.0)
 
-에이전트 간 통신은 **LangGraph의 A2A 지원**을 활용한다. 별도의 A2A Gateway(FastAPI)를 구축하지 않고, 각 에이전트의 LangGraph 인스턴스가 직접 A2A 엔드포인트를 노출한다.
+에이전트 간 통신은 **[A2A Protocol v1.0](https://a2a-protocol.org/latest/)** (Linux Foundation 표준) 을 따른다. 구현은 **`langgraph-api` ≥ 0.4.21** 이 내장 제공하는 A2A 서버를 활용하며, 각 에이전트의 LangGraph 인스턴스가 `/a2a/{assistant_id}` 엔드포인트를 직접 노출하므로 별도의 A2A Gateway 구축은 불필요하다.
+
+**JSON 직렬화 규약** ([spec §5.5](https://a2a-protocol.org/latest/specification/)): 필드는 **camelCase**, enum은 proto 이름 그대로 SCREAMING_SNAKE_CASE 문자열 (예: `"TASK_STATE_SUBMITTED"`, `"ROLE_USER"`).
+
+#### 지원 RPC 메서드 (JSON-RPC 2.0)
+
+A2A v1.0 스펙의 공식 메서드명은 PascalCase:
+
+| 메서드 | 설명 | 우리 용도 |
+|--------|------|----------|
+| `SendMessage` | 동기 요청-응답. 짧은 작업은 `Message` 직접 반환, 긴 작업은 `Task` 객체 반환 | 일반 에이전트 간 대화 (기본 경로) |
+| `SendStreamingMessage` | SSE 스트리밍 — 초기 `Task`/`Message` 후 `TaskStatusUpdateEvent` / `TaskArtifactUpdateEvent` 전달 | **User Gateway ↔ Primary** 사용자 채팅 실시간 렌더링, 장시간 응답 점진 전달 |
+| `GetTask` | 이전 task 상태·아티팩트·history 조회 | 비동기 긴 작업 상태 추적 |
+
+> **참고:** `langgraph-api` 초기 버전의 A2A 엔드포인트는 구(舊) 명세 기반 `message/send` / `message/stream` / `tasks/get` (슬래시 형식) 메서드명을 노출한다. A2A v1.0 으로의 메서드명 일치는 `langgraph-api` 후속 릴리스에서 정렬 예상 — 실구현 시 버전별 호환성 확인 필요.
+
+#### Task Lifecycle
+
+[spec §4.1.1 TaskState](https://a2a-protocol.org/latest/specification/) enum 값(JSON 직렬화 값) 과 우리 시나리오 매핑:
+
+| State (JSON 값) | 분류 | 우리 시스템 매핑 예 |
+|----------------|------|-------------------|
+| `TASK_STATE_SUBMITTED` | 진행 | 태스크 배분 직후 |
+| `TASK_STATE_WORKING` | 진행 | Eng 구현 중, QA 테스트 중 |
+| `TASK_STATE_INPUT_REQUIRED` | **인터럽트** | Eng 이 Architect 에게 설계 수정 건의 후 응답 대기 / 사용자 기술 조율 요청 대기 / 다자간 논의 소집 중 |
+| `TASK_STATE_AUTH_REQUIRED` | 인터럽트 | (예비) 외부 시스템 인증 요구 시 |
+| `TASK_STATE_COMPLETED` | 종단 | 정상 종료 |
+| `TASK_STATE_FAILED` | 종단 | 빌드 실패, 예외 등 |
+| `TASK_STATE_CANCELED` | 종단 | 요청자 취소 |
+| `TASK_STATE_REJECTED` | 종단 | 상위 설계 반려 등 |
+
+`TASK_STATE_INPUT_REQUIRED` 를 적극 활용하여 LangGraph 내부 상태가 외부 인터럽션 때문에 블로킹되지 않도록 한다.
+
+#### Agent Card
+
+각 에이전트는 `/.well-known/agent-card.json` 경로에 **AgentCard** 를 노출한다. Role Config 의 공개 가능한 부분을 [spec §4.4.1](https://a2a-protocol.org/latest/specification/) 정의에 맞는 JSON 포맷으로 제공:
 
 ```json
 {
-  "protocol": "a2a/v1",
-  "from": "A",
-  "to": "L",
-  "type": "memory_write",
-  "payload": {
-    "action": "update_graph",
-    "changes": [
-      { "op": "add_node", "type": "Interface", "name": "PaymentGateway" },
-      { "op": "add_edge", "from": "StripeAdapter", "to": "PaymentGateway", "rel": "IMPLEMENTS" }
-    ],
-    "context": "결제 모듈 설계안 확정에 따른 그래프 업데이트"
+  "name": "architect",
+  "description": "시스템 아키텍트 — OO 설계 주도, 설계 결정권 보유",
+  "version": "0.1.0",
+  "supportedInterfaces": [
+    {
+      "url": "http://architect:9000/a2a/architect",
+      "protocolBinding": "JSONRPC"
+    }
+  ],
+  "provider": {
+    "organization": "dev-team",
+    "url": "https://github.com/vonkernel/dev-team"
   },
-  "metadata": {
-    "task_id": "TASK-001",
-    "priority": "high",
-    "timestamp": "2026-04-14T10:00:00Z"
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false,
+    "extendedAgentCard": false
+  },
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain"],
+  "skills": [
+    {
+      "id": "design_proposal",
+      "name": "OO 설계안 생성",
+      "description": "요구사항·코드 제약을 고려한 복수 설계안 도출",
+      "tags": ["architecture", "design"]
+    },
+    {
+      "id": "code_review",
+      "name": "Quality Gate 코드 검수",
+      "description": "Eng 의 diff 와 설계 의도 합치 여부 검증",
+      "tags": ["review"]
+    }
+  ]
+}
+```
+
+**필수 필드**(스펙 `REQUIRED`): `name`, `description`, `supportedInterfaces[]`, `version`, `capabilities`, `defaultInputModes[]`, `defaultOutputModes[]`, `skills[]`. 각 `skill` 은 `id`, `name`, `description`, `tags[]` 가 필수.
+
+**시그니처**(`signatures[]`, [spec §4.4.7](https://a2a-protocol.org/latest/specification/) AgentCardSignature) 는 미채택 — 부록 참조.
+
+#### A2A 메시지 포맷 (JSON-RPC 2.0)
+
+`SendMessage` 요청 예:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "req-001",
+  "method": "SendMessage",
+  "params": {
+    "message": {
+      "messageId": "ITM-42",
+      "role": "ROLE_USER",
+      "parts": [
+        {
+          "text": "결제 모듈 설계안 검토 부탁드립니다.",
+          "mediaType": "text/plain"
+        }
+      ],
+      "contextId": "SES-xxx",
+      "taskId": "TASK-001"
+    }
   }
 }
 ```
+
+- `messageId`: 발신자가 생성하는 고유 ID (UUID 권장) — **필수**
+- `role`: `ROLE_USER` 또는 `ROLE_AGENT` — **필수**
+- `parts[]`: 컨텐츠 컨테이너 — **필수**. 각 `Part` 는 `text` / `raw` / `url` / `data` 중 하나 (oneof) + 선택적 `mediaType`, `filename`, `metadata`
+- `contextId`: 대화 문맥 (우리 시스템의 Session 매핑)
+- `taskId`: 기존 Task 에 붙이는 경우 지정
+- `referenceTaskIds[]`: 관련 Task 들 참조 (다자간 논의 등에서 활용 가능)
+
+응답은 짧은 작업이면 `Message`, 긴 작업이면 `Task`(`status.state`가 `TASK_STATE_SUBMITTED`/`TASK_STATE_WORKING`)를 반환. 후자는 `GetTask` 폴링 또는 `SendStreamingMessage` SSE 구독으로 진행.
 
 ### 6.3. MCP 연동 계획
 
@@ -1842,7 +1936,10 @@ dev-team/
 | 2 | Code Agent 위치 | 에이전트의 "두뇌"가 아닌 "손" — 추상화 인터페이스로 교체 가능 (기본: OpenCode CLI) |
 | 3 | 사용자 접점 | 사용자는 P(기획)와 A(기술 설계) 양쪽과 상시 직접 소통 가능 |
 | 4 | A의 내부 구조 | 메인 설계 / 검증 / 최종 컨펌 3개 서브 에이전트 루프, 각자 다른 LLM 모델 사용 가능 |
-| 5 | A2A 통신 | LangGraph A2A 지원 활용, 별도 게이트웨이 불필요 |
+| 5 | A2A 통신 | **A2A Protocol v1.0** (Linux Foundation 표준) 준수. `langgraph-api` 내장 A2A 서버 활용 — JSON-RPC 2.0 바인딩 / `SendMessage` / `SendStreamingMessage` (SSE) / `GetTask`. 필드는 camelCase, enum은 SCREAMING_SNAKE_CASE 문자열. 별도 게이트웨이 불필요 |
+| 5-1 | Task lifecycle | A2A 표준 `TaskState` 사용 — `TASK_STATE_SUBMITTED`, `TASK_STATE_WORKING`, `TASK_STATE_COMPLETED`, `TASK_STATE_FAILED`, `TASK_STATE_CANCELED`, `TASK_STATE_REJECTED`, **`TASK_STATE_INPUT_REQUIRED`** (인간·상위 에이전트 개입 대기), `TASK_STATE_AUTH_REQUIRED` |
+| 5-2 | Agent Card | 각 에이전트 `/.well-known/agent-card.json` 에 [AgentCard](https://a2a-protocol.org/latest/specification/) 스펙 JSON 노출. 필수: `name`, `description`, `supportedInterfaces`, `version`, `capabilities`, `defaultInputModes`, `defaultOutputModes`, `skills`. 시그니처(`signatures[]`)는 향후 과제 |
+| 5-3 | 스트리밍 | User Gateway ↔ Primary 사용자 채팅은 `SendStreamingMessage` 기반 SSE. 초기 `Task`/`Message` 이후 `TaskStatusUpdateEvent` / `TaskArtifactUpdateEvent` 이벤트 전달 |
 | 6 | Shared Memory 관리 | Librarian(L)이 전담 — 쓰기 독점, Diff 색인, 대화 수집, 조회 응답 |
 | 7 | Shared Memory 접근 구조 | 쓰기·복잡한 질의: A2A → Librarian → MCP → DB / 단순 읽기: 에이전트 → MCP → DB (보조) |
 | 8 | Librarian DB 접근 | Librarian도 MCP 경유 (직접 연결 아님) → 다른 에이전트와 일관된 접근 패턴 |
@@ -1905,3 +2002,19 @@ dev-team/
     - 프롬프트 조립기 구현
     - `opencode run` permission=deny 적용 시 실제 탐색이 차단되는지 검증
     - git diff 화이트리스트 검증 + 롤백 동작 확인
+
+---
+
+## 부록: 향후 검토 메모
+
+### Agent Card 서명
+
+현재 Agent Card 는 **미서명** 상태로 노출. A2A v1.0 의 서명 Agent Card 는 도메인 소유자가 카드 발급을 암호학적으로 보증하는 기능으로, 향후 신규 외부 에이전트가 우리 팀에 동적으로 합류하는 시나리오가 생기면 위변조 방지 목적으로 도입 검토.
+
+### A2A Push Notifications
+
+A2A v1.0 의 Push notifications (웹훅 기반 비동기 콜백) 은 현재 미채택. 현재는 `GetTask` 폴링 + `SendStreamingMessage` SSE 로 충분하다고 판단. 에이전트 간 완전 비동기 완료 통보가 과도한 폴링 부담을 유발할 때 재검토.
+
+### Python 3.14 상향
+
+LangGraph 가 Python 3.14 를 공식 classifier 에 포함하면 버전 상향 검토 (2026-04 기준 3.13 까지만 지원).
