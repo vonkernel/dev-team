@@ -1,0 +1,6 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "primary": "primary_agent.graph:graph"
+  }
+}
