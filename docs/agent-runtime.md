@@ -224,7 +224,7 @@ docker exec dev-team-postgres psql -U devteam -d langgraph -c "\dt"
 
 **정상 판정 기준**:
 - AgentCard 가 `name`, `supportedInterfaces[].url`, `capabilities.streaming=true`, `skills[]` 반환
-- SendMessage → `result.task.status.state == "TASK_STATE_COMPLETED"`, `history[1].role == "ROLE_AGENT"` 에 LLM 응답 텍스트
+- SendMessage → `result.kind == "task"`, `result.status.state == "TASK_STATE_COMPLETED"`, `result.history[1].role == "ROLE_AGENT"` 에 LLM 응답 텍스트
 - SendStreamingMessage → `task(SUBMITTED)` → N × `artifact-update` → `status-update(COMPLETED, final=true)` 순서로 event 스트림
 - `\dt` 에 `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`, `checkpoint_migrations` 4개 존재
 

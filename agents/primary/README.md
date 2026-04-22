@@ -116,7 +116,7 @@ curl -sS -X POST http://localhost:9001/a2a/primary \
     "id":"verify-1",
     "method":"SendMessage",
     "params":{"message":{"messageId":"ITM-1","role":"ROLE_USER","parts":[{"text":"자기 소개 한 줄."}]}}
-  }' | jq '.result.task.history[1].parts[0].text'
+  }' | jq '.result.history[1].parts[0].text'
 
 # 체크포인트 테이블 확인 (AsyncPostgresSaver 가 생성)
 docker exec dev-team-postgres psql -U devteam -d langgraph -c "\dt"
@@ -124,7 +124,7 @@ docker exec dev-team-postgres psql -U devteam -d langgraph -c "\dt"
 
 정상이면:
 - AgentCard `name == "primary"`, `skills[].id == "pm.discuss_plan"`, `capabilities.streaming == true`
-- SendMessage `result.task.status.state == "TASK_STATE_COMPLETED"`
+- SendMessage `result.kind == "task"` · `result.status.state == "TASK_STATE_COMPLETED"`
 - `\dt` 에 `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`, `checkpoint_migrations`
 
 ### SSE 스트리밍 (`SendStreamingMessage`)

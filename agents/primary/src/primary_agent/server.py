@@ -1,71 +1,72 @@
 """Primary 에이전트 FastAPI HTTP 서버.
 
-langgraph-api 의존을 버리고 자체 구현한 A2A JSON-RPC 2.0 + AgentCard 제공.
-영속 체크포인팅은 OSS `AsyncPostgresSaver` 를 `build_graph` 에 직접 주입.
+공용 A2A 라우터 팩토리(`shared.a2a.server.make_a2a_router`)와 공용 LangGraph
+핸들러(`shared.a2a.server.graph_handlers`) 위에 얇은 조립 레이어.
+이 모듈의 책임은 다음 세 가지로 국한된다:
 
-엔드포인트:
-  GET  /healthz                            - liveness
-  GET  /.well-known/agent-card.json        - A2A AgentCard (spec §4.4)
-  POST /a2a/{assistant_id}                 - A2A JSON-RPC 2.0
-                                             methods: SendMessage, SendStreamingMessage
+  1) Role Config 로드 → persona / LLM / AsyncPostgresSaver 준비 (lifespan)
+  2) 그래프 compile → `app.state.graph` 세팅
+  3) AgentCard 빌드 → `app.state.agent_card` 세팅
+  4) A2A 라우터 `include_router` (method handler 등록)
+
+A2A 프로토콜 레이어(Task / Event 직렬화, SSE, JSON-RPC envelope) 는 전부
+shared 에 있으며, 본 파일에서 **프로토콜 로직을 다시 작성하지 않는다**.
 
 환경변수:
-  DATABASE_URI  (선택) - Postgres DSN. 있으면 AsyncPostgresSaver 로 영속 체크포인팅.
-                        미설정 시 in-memory (재기동 시 상태 소실).
+  ANTHROPIC_API_KEY  (필수, overrides/primary.yaml 통해 config 에 치환)
+  DATABASE_URI       (선택) - Postgres DSN. 있으면 AsyncPostgresSaver 로 영속 체크포인팅.
+                             미설정 시 in-memory (재기동 시 상태 소실).
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import uuid
 from contextlib import asynccontextmanager
-from typing import Any
 
-from dev_team_shared.a2a import Message, Part, build_agent_card
-from dev_team_shared.a2a.types import Role
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, StreamingResponse
-from langchain_core.messages import AIMessage, HumanMessage
+from dev_team_shared.a2a import build_agent_card
+from dev_team_shared.a2a.server import make_a2a_router
+from dev_team_shared.a2a.server.graph_handlers import (
+    GraphSendMessageHandler,
+    GraphSendStreamingMessageHandler,
+)
+from fastapi import FastAPI
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from primary_agent.graph import build_graph, build_llm, load_runtime_config
 
 logger = logging.getLogger(__name__)
 
-# assistant_id 는 role 이름 고정 사용 (langgraph-api 의 UUID 변환 없음 — 자체 구현).
 _ASSISTANT_ID = "primary"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """기동: config 로드 → LLM 초기화 → (선택) Postgres checkpointer → graph compile."""
+    """기동: config → LLM → (선택) Postgres checkpointer → graph compile → state 세팅."""
     config = load_runtime_config()
     persona = config.get("persona")
     if not persona:
         raise RuntimeError("config.persona is required")
-    llm_cfg = config.get("llm") or {}
-
-    llm = build_llm(llm_cfg)
+    llm = build_llm(config.get("llm") or {})
 
     database_uri = os.environ.get("DATABASE_URI")
+    agent_card = build_agent_card(config)
+
     if database_uri:
-        # AsyncPostgresSaver 는 async context manager. app 수명 동안 연결 유지.
         async with AsyncPostgresSaver.from_conn_string(database_uri) as checkpointer:
             await checkpointer.setup()  # idempotent schema/table 생성
-            graph = build_graph(persona=persona, llm=llm, checkpointer=checkpointer)
-            app.state.graph = graph
-            app.state.agent_card = build_agent_card(config)
+            app.state.graph = build_graph(
+                persona=persona, llm=llm, checkpointer=checkpointer,
+            )
+            app.state.agent_card = agent_card
             logger.info(
                 "primary agent ready (Postgres checkpointer at %s)",
                 _mask_dsn(database_uri),
             )
             yield
     else:
-        graph = build_graph(persona=persona, llm=llm, checkpointer=None)
-        app.state.graph = graph
-        app.state.agent_card = build_agent_card(config)
+        app.state.graph = build_graph(persona=persona, llm=llm, checkpointer=None)
+        app.state.agent_card = agent_card
         logger.warning(
             "DATABASE_URI not set — running with in-memory state "
             "(non-durable across restarts)",
@@ -79,281 +80,21 @@ app = FastAPI(
     description="A2A-compatible LangGraph agent — self-hosted OSS path.",
 )
 
-
-@app.get("/healthz")
-async def healthz() -> dict[str, bool]:
-    return {"ok": True}
-
-
-@app.get("/.well-known/agent-card.json")
-async def agent_card_endpoint(request: Request) -> dict:
-    """A2A Protocol v1.0 §4.4.1 — 에이전트 자기소개서."""
-    card = request.app.state.agent_card
-    return card.model_dump(by_alias=True, exclude_none=True)
-
-
-@app.post("/a2a/{assistant_id}")
-async def a2a_rpc(assistant_id: str, request: Request) -> JSONResponse:
-    """A2A JSON-RPC 2.0 엔드포인트. M2 지원 메서드: `SendMessage`."""
-    try:
-        body = await request.json()
-    except Exception as exc:
-        return _rpc_error(None, -32700, f"parse error: {exc}")
-
-    rpc_id = body.get("id")
-    method = body.get("method")
-    params = body.get("params") or {}
-
-    if assistant_id != _ASSISTANT_ID:
-        return _rpc_error(rpc_id, -32602, f"unknown assistant_id: {assistant_id!r}")
-
-    if method == "SendMessage":
-        return await _handle_send_message(request, rpc_id, params)
-    if method == "SendStreamingMessage":
-        return await _handle_send_streaming_message(request, rpc_id, params)
-
-    return _rpc_error(rpc_id, -32601, f"method not found: {method!r}")
-
-
-async def _handle_send_message(
-    request: Request,
-    rpc_id: Any,
-    params: dict[str, Any],
-) -> JSONResponse:
-    try:
-        a2a_msg = Message.model_validate(params.get("message") or {})
-    except Exception as exc:
-        return _rpc_error(rpc_id, -32602, f"invalid message: {exc}")
-
-    human_parts = [p.text for p in a2a_msg.parts if p.text is not None]
-    if not human_parts:
-        return _rpc_error(rpc_id, -32602, "no text parts in message")
-    human = HumanMessage(content="\n".join(human_parts))
-
-    context_id = a2a_msg.context_id or str(uuid.uuid4())
-    task_id = f"{context_id}:{uuid.uuid4()}"
-
-    graph = request.app.state.graph
-    try:
-        result = await graph.ainvoke(
-            {"messages": [human]},
-            config={"configurable": {"thread_id": context_id}},
-        )
-    except Exception as exc:
-        logger.exception("graph.ainvoke failed")
-        err_reply = Message(
-            message_id=f"err-{uuid.uuid4()}",
-            role=Role.AGENT,
-            parts=[Part(text=f"{type(exc).__name__}: {exc}")],
-            context_id=context_id,
-            task_id=task_id,
-        )
-        return JSONResponse(
-            {
-                "jsonrpc": "2.0",
-                "id": rpc_id,
-                "result": {
-                    "task": {
-                        "id": task_id,
-                        "contextId": context_id,
-                        "status": {
-                            "state": "TASK_STATE_FAILED",
-                            "message": err_reply.model_dump(
-                                by_alias=True, exclude_none=True
-                            ),
-                        },
-                        "history": [
-                            a2a_msg.model_dump(by_alias=True, exclude_none=True),
-                        ],
-                    }
-                },
-            },
-        )
-
-    ai = next(
-        (m for m in reversed(result["messages"]) if isinstance(m, AIMessage)),
-        None,
-    )
-    ai_text = _stringify_ai_content(ai.content) if ai is not None else ""
-
-    agent_reply = Message(
-        message_id=f"reply-{uuid.uuid4()}",
-        role=Role.AGENT,
-        parts=[Part(text=ai_text)],
-        context_id=context_id,
-        task_id=task_id,
-    )
-
-    return JSONResponse(
-        {
-            "jsonrpc": "2.0",
-            "id": rpc_id,
-            "result": {
-                "task": {
-                    "id": task_id,
-                    "contextId": context_id,
-                    "status": {"state": "TASK_STATE_COMPLETED"},
-                    "history": [
-                        a2a_msg.model_dump(by_alias=True, exclude_none=True),
-                        agent_reply.model_dump(by_alias=True, exclude_none=True),
-                    ],
-                }
-            },
-        },
-    )
-
-
-async def _handle_send_streaming_message(
-    request: Request,
-    rpc_id: Any,
-    params: dict[str, Any],
-) -> JSONResponse | StreamingResponse:
-    """A2A `SendStreamingMessage` — SSE 로 Task / 이벤트 스트림 반환.
-
-    이벤트 순서 (spec §3 Task lifecycle + SSE 전달):
-      1) 초기 `Task` (kind="task", state=TASK_STATE_SUBMITTED)
-      2) 0..N 개의 `TaskArtifactUpdateEvent` (kind="artifact-update", append=true)
-         — LangGraph `astream(stream_mode="messages")` 가 내보내는 LLM 토큰 chunk 를
-         각각 artifact 갱신으로 래핑
-      3) 최종 `TaskStatusUpdateEvent` (kind="status-update", state=COMPLETED,
-         final=true). 오류 시 state=FAILED + 에러 메시지.
-    """
-    # 요청 parse 오류는 SSE 진입 전에 일반 JSON-RPC 에러로 돌려줌.
-    try:
-        a2a_msg = Message.model_validate(params.get("message") or {})
-    except Exception as exc:
-        return _rpc_error(rpc_id, -32602, f"invalid message: {exc}")
-
-    human_parts = [p.text for p in a2a_msg.parts if p.text is not None]
-    if not human_parts:
-        return _rpc_error(rpc_id, -32602, "no text parts in message")
-    human = HumanMessage(content="\n".join(human_parts))
-
-    context_id = a2a_msg.context_id or str(uuid.uuid4())
-    task_id = f"{context_id}:{uuid.uuid4()}"
-    artifact_id = str(uuid.uuid4())
-    graph = request.app.state.graph
-    user_msg_payload = a2a_msg.model_dump(by_alias=True, exclude_none=True)
-
-    async def event_generator():
-        # 1) 초기 Task
-        initial_task = {
-            "kind": "task",
-            "id": task_id,
-            "contextId": context_id,
-            "status": {"state": "TASK_STATE_SUBMITTED"},
-            "history": [user_msg_payload],
-        }
-        yield _sse_event({"jsonrpc": "2.0", "id": rpc_id, "result": initial_task})
-
-        try:
-            async for chunk_tuple in graph.astream(
-                {"messages": [human]},
-                config={"configurable": {"thread_id": context_id}},
-                stream_mode="messages",
-            ):
-                # stream_mode="messages" → (AIMessageChunk-like, metadata)
-                msg_chunk, _metadata = chunk_tuple
-                if not isinstance(msg_chunk, AIMessage):
-                    continue
-                text = _stringify_ai_content(msg_chunk.content)
-                if not text:
-                    continue
-                artifact_event = {
-                    "kind": "artifact-update",
-                    "taskId": task_id,
-                    "contextId": context_id,
-                    "artifact": {
-                        "artifactId": artifact_id,
-                        "parts": [{"kind": "text", "text": text}],
-                    },
-                    "append": True,
-                    "lastChunk": False,
-                }
-                yield _sse_event(
-                    {"jsonrpc": "2.0", "id": rpc_id, "result": artifact_event}
-                )
-        except Exception as exc:
-            logger.exception("graph.astream failed")
-            detail = f"{type(exc).__name__}: {exc}"
-            if "credit balance" in str(exc).lower():
-                detail += (
-                    " — Anthropic 크레딧 부족 가능성. "
-                    "https://console.anthropic.com/settings/billing 확인."
-                )
-            fail_event = {
-                "kind": "status-update",
-                "taskId": task_id,
-                "contextId": context_id,
-                "status": {
-                    "state": "TASK_STATE_FAILED",
-                    "message": {
-                        "kind": "message",
-                        "role": "ROLE_AGENT",
-                        "parts": [{"kind": "text", "text": detail}],
-                        "messageId": f"err-{uuid.uuid4()}",
-                        "taskId": task_id,
-                        "contextId": context_id,
-                    },
-                },
-                "final": True,
-            }
-            yield _sse_event(
-                {"jsonrpc": "2.0", "id": rpc_id, "result": fail_event}
-            )
-            return
-
-        # 3) 완료 이벤트
-        complete_event = {
-            "kind": "status-update",
-            "taskId": task_id,
-            "contextId": context_id,
-            "status": {"state": "TASK_STATE_COMPLETED"},
-            "final": True,
-        }
-        yield _sse_event(
-            {"jsonrpc": "2.0", "id": rpc_id, "result": complete_event}
-        )
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # nginx 등 프록시 buffering 방지
-        },
-    )
-
-
-def _sse_event(payload: dict[str, Any]) -> str:
-    """SSE `data:` 라인 + blank-line 종결자. 유니코드 그대로 전달(ensure_ascii=False)."""
-    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-
-def _rpc_error(rpc_id: Any, code: int, message: str) -> JSONResponse:
-    return JSONResponse(
-        {"jsonrpc": "2.0", "id": rpc_id, "error": {"code": code, "message": message}},
-    )
-
-
-def _stringify_ai_content(content: Any) -> str:
-    """AIMessage.content 는 str 또는 content block 리스트. text 부분만 결합."""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, dict):
-                if item.get("type") == "text" and "text" in item:
-                    parts.append(str(item["text"]))
-            elif isinstance(item, str):
-                parts.append(item)
-        return "".join(parts)
-    return str(content)
+# 공용 A2A 라우터 — 이 에이전트가 지원하는 메서드만 핸들러로 등록.
+# 메서드 추가 시 shared 의 MethodHandler 구현체 하나 더 등록하면 된다 (OCP).
+app.include_router(
+    make_a2a_router(
+        assistant_id=_ASSISTANT_ID,
+        handlers=[
+            GraphSendMessageHandler(),
+            GraphSendStreamingMessageHandler(),
+        ],
+    ),
+)
 
 
 def _mask_dsn(dsn: str) -> str:
-    """비밀번호를 마스킹한 DSN 을 반환 (로그 안전성)."""
+    """비밀번호를 마스킹한 DSN (로그 안전성)."""
     if "@" in dsn and "://" in dsn:
         scheme, rest = dsn.split("://", 1)
         creds, host = rest.split("@", 1)
