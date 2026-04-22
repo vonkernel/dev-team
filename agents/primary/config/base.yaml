@@ -79,6 +79,12 @@ llm:
 
 # 클라이언트 측 — Primary 가 먼저 호출할 피어.
 # M2 단계에서는 User Gateway 만 (Architect/Librarian 은 이후 단계).
+#
+# ⚠️  `url` 은 피어의 **base URL** (host:port) 이며 `/a2a/{assistant_id}` 경로를
+#     포함하지 않는다. langgraph-api 는 graph ID 가 아닌 deterministic UUID 를
+#     assistant_id 로 쓰므로 (docs/agent-runtime.md §5), 실제 호출 경로는
+#     런타임에 `/assistants/search` 로 UUID discovery 후 `{url}/a2a/{uuid}` 로 조립.
+#     이 discovery 로직은 shared/a2a/client 에 별도 이슈로 추가 예정.
 a2a_peers:
   - name: user-gateway
     url: http://user-gateway:9000

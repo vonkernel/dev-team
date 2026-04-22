@@ -143,8 +143,11 @@ docker run --env-file .env primary:latest
 | `GET /a2a/{assistant_id}/.well-known/agent-card.json` | assistant 별 AgentCard |
 | `GET /.well-known/agent-card.json?assistant_id=<id>` | 동일 (쿼리 기반) |
 
-**assistant_id 매핑**: `langgraph.json` 의 graphs 섹션에 등록한 graph ID
-가 그대로 default assistant_id 로 사용된다.
+**assistant_id 매핑 (⚠️ 중요 — 초기 오해 교정)**:
+
+langgraph-api 는 `langgraph.json` 의 graphs 섹션에 등록한 graph ID 로부터
+**deterministic UUID 를 파생** 해 assistant_id 로 사용한다.
+**graph ID 문자열을 그대로 assistant_id 로 쓸 수 없다.**
 
 ```json
 {
@@ -153,31 +156,54 @@ docker run --env-file .env primary:latest
   }
 }
 ```
-→ `assistant_id = "primary"`
+→ `graph_id = "primary"`
+→ `assistant_id = <UUID, 예: c8b99dc6-1289-590c-b65a-720a433c53ec>`
+
+같은 graph ID 는 (동일 서버 버전에서) 항상 같은 UUID 로 해석되므로 안정적이다.
+assistant_id 는 기동 후 `POST /assistants/search` (빈 body) 로 조회해야 한다.
+
+```bash
+curl -sS -X POST http://localhost:8000/assistants/search \
+  -H 'Content-Type: application/json' -d '{}' | jq '.[] | {graph_id, assistant_id, name}'
+```
+
+외부 클라이언트가 이 discovery 과정 없이 Primary 에 직접 접속하려면
+서버 컨테이너에서 `DEFAULT_A2A_ASSISTANT_ID` env 변수를 UUID 로 세팅해 두고
+`/.well-known/agent-card.json` (쿼리 없이) 를 쓰는 방법도 있다 (§7 참조).
 
 ---
 
 ## 6. 기동 후 검증
 
-컨테이너가 떴을 때 AgentCard 가 올바로 노출되는지 확인:
+기동 직후 assistant_id 를 조회하고 그 UUID 로 AgentCard 를 확인한다.
 
 ```bash
-curl http://localhost:8000/.well-known/agent-card.json?assistant_id=primary | jq .
+# 1) assistant_id 디스커버리
+UUID=$(curl -sS -X POST http://localhost:8000/assistants/search \
+  -H 'Content-Type: application/json' -d '{}' | jq -r '.[0].assistant_id')
+
+# 2) AgentCard 조회
+curl -sS "http://localhost:8000/.well-known/agent-card.json?assistant_id=$UUID" | jq .
 ```
 
 기대 응답 (요지):
 ```json
 {
   "name": "primary",
-  "description": "...",
-  "url": "http://<host>:<port>/...",
+  "description": "primary assistant",
+  "url": "http://<host>:<port>/a2a/<UUID>",
+  "supportedInterfaces": [
+    { "url": "http://<host>:<port>/a2a/<UUID>",
+      "protocolBinding": "jsonrpc",
+      "protocolVersion": "1.0" }
+  ],
   "capabilities": {
     "streaming": true,
     "pushNotifications": false,
     "stateTransitionHistory": false
   },
   "skills": [
-    { "id": "primary-main", "name": "primary Capabilities", ... }
+    { "id": "<UUID>-main", "name": "primary Capabilities", ... }
   ],
   "version": "<langgraph_api 버전>"
 }
@@ -186,7 +212,7 @@ curl http://localhost:8000/.well-known/agent-card.json?assistant_id=primary | jq
 **검증 포인트**:
 - `url` 이 예상한 외부 호스트로 나오는지 (리버스 프록시 뒤면 §7 의 `HOST_OVERRIDE` 필요)
 - `skills` 가 최소 1개 이상
-- `assistant_id` 가 graph 이름과 일치
+- skill id 가 `<UUID>-main` 포맷인지 (graph ID 가 아니라 UUID 기반)
 
 ---
 
