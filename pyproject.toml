@@ -1,0 +1,21 @@
+[project]
+name = "dev-team"
+version = "0.1.0"
+description = "LangGraph 기반 A2A 멀티 에이전트 협업 시스템"
+requires-python = ">=3.13,<3.14"
+
+# 루트는 빈 메타 — 실제 구현은 workspace 멤버에 있음
+
+[tool.uv.workspace]
+members = ["shared"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["shared/tests"]
+addopts = "-ra"
