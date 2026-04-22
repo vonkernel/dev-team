@@ -158,7 +158,7 @@ else:
 | 메서드 | 경로 | 내용 |
 |---|---|---|
 | `GET` | `/.well-known/agent-card.json` | A2A spec §4.4 에이전트 자기소개서. `shared.a2a.build_agent_card(config)` 로 빌드. |
-| `POST` | `/a2a/{assistant_id}` | JSON-RPC 2.0. 현재 구현 메서드: `SendMessage`. |
+| `POST` | `/a2a/{assistant_id}` | JSON-RPC 2.0. 구현 메서드: `SendMessage`, `SendStreamingMessage`. |
 | `GET` | `/healthz` | liveness. |
 
 ### assistant_id 규약
@@ -175,6 +175,22 @@ else:
 4. `TASK_STATE_COMPLETED` 와 함께 `history` 반환
 
 실패 시엔 `TASK_STATE_FAILED` + 에러 메시지 포함 `status.message` 반환.
+
+### SendStreamingMessage 처리 흐름
+
+`FastAPI StreamingResponse` (`media_type="text/event-stream"`) + LangGraph
+`astream(stream_mode="messages")` 조합.
+
+1. 초기 SSE 이벤트: `Task{state=TASK_STATE_SUBMITTED}`
+2. LLM 토큰 chunk 마다: `TaskArtifactUpdateEvent{append=true, lastChunk=false}` —
+   artifact 의 text part 에 chunk 내용 append
+3. 완료 시: `TaskStatusUpdateEvent{state=TASK_STATE_COMPLETED, final=true}`
+
+오류 발생 시 3) 이 `state=TASK_STATE_FAILED` 로 바뀌고 `status.message` 에
+`SendMessage` 와 동일한 에러 힌트(크레딧 부족 등) 포함.
+
+전송 포맷은 표준 SSE (`data: {json}\n\n`). 프록시 buffering 을 막기 위해
+`Cache-Control: no-cache`, `X-Accel-Buffering: no` 헤더를 함께 내려준다.
 
 ---
 
@@ -194,13 +210,22 @@ curl -sS -X POST http://localhost:9001/a2a/primary \
     "params":{"message":{"messageId":"ITM-1","role":"ROLE_USER","parts":[{"text":"hi"}]}}
   }' | jq .
 
-# 3) 체크포인트 테이블 존재 확인
+# 3) A2A SendStreamingMessage (SSE)
+curl -sS --no-buffer -X POST http://localhost:9001/a2a/primary \
+  -H 'Content-Type: application/json' -H 'Accept: text/event-stream' \
+  -d '{
+    "jsonrpc":"2.0","id":"stream-1","method":"SendStreamingMessage",
+    "params":{"message":{"messageId":"ITM-s","role":"ROLE_USER","parts":[{"text":"hi"}]}}
+  }'
+
+# 4) 체크포인트 테이블 존재 확인
 docker exec dev-team-postgres psql -U devteam -d langgraph -c "\dt"
 ```
 
 **정상 판정 기준**:
-- AgentCard 가 `name`, `supportedInterfaces[].url`, `capabilities`, `skills[]` 반환
+- AgentCard 가 `name`, `supportedInterfaces[].url`, `capabilities.streaming=true`, `skills[]` 반환
 - SendMessage → `result.task.status.state == "TASK_STATE_COMPLETED"`, `history[1].role == "ROLE_AGENT"` 에 LLM 응답 텍스트
+- SendStreamingMessage → `task(SUBMITTED)` → N × `artifact-update` → `status-update(COMPLETED, final=true)` 순서로 event 스트림
 - `\dt` 에 `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`, `checkpoint_migrations` 4개 존재
 
 ---
@@ -283,8 +308,8 @@ agent_card:
 그 대가로 라이센스 종속 없이 완전한 제어와 OSS 영속성을 모두 얻는다.
 
 잃은 것: langgraph-api 가 내장 제공하던 `/threads`, `/runs`, `/assistants` REST API,
-LangGraph Studio 연동, SSE 스트리밍 기본 구현. 필요해지면 그때 자체 구현하거나
-재평가.
+LangGraph Studio 연동. (SSE 스트리밍은 직접 구현 — §5 참조.) 필요해지면 그때 자체
+구현하거나 재평가.
 
 ---
 

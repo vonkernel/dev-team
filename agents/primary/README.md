@@ -123,9 +123,31 @@ docker exec dev-team-postgres psql -U devteam -d langgraph -c "\dt"
 ```
 
 정상이면:
-- AgentCard `name == "primary"`, `skills[].id == "pm.discuss_plan"`
+- AgentCard `name == "primary"`, `skills[].id == "pm.discuss_plan"`, `capabilities.streaming == true`
 - SendMessage `result.task.status.state == "TASK_STATE_COMPLETED"`
 - `\dt` 에 `checkpoints`, `checkpoint_blobs`, `checkpoint_writes`, `checkpoint_migrations`
+
+### SSE 스트리밍 (`SendStreamingMessage`)
+
+토큰 단위로 실시간 수신하려면 `method` 를 바꾸고 `curl --no-buffer`:
+
+```bash
+curl -sS --no-buffer -X POST http://localhost:9001/a2a/primary \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: text/event-stream' \
+  -d '{
+    "jsonrpc":"2.0","id":"s-1","method":"SendStreamingMessage",
+    "params":{"message":{"messageId":"m1","role":"ROLE_USER",
+              "parts":[{"text":"세 문장짜리 자기 소개."}]}}
+  }'
+```
+
+수신 이벤트 순서:
+1. `result.kind == "task"` · `status.state == "TASK_STATE_SUBMITTED"` (초기)
+2. `result.kind == "artifact-update"` · `append=true, lastChunk=false` (토큰 chunk들)
+3. `result.kind == "status-update"` · `state == "TASK_STATE_COMPLETED"` · `final=true` (마감)
+
+오류 시 마지막 이벤트가 `status-update` + `state=TASK_STATE_FAILED` + 에러 메시지.
 
 ---
 
