@@ -1,6 +1,9 @@
 # 로컬 인프라 셋업 & GUI 도구 연결 가이드
 
-로컬에서 dev-team 인프라(Neo4j + MongoDB + Valkey)를 띄우고, 각 데이터 시스템을 GUI 도구로 관찰하는 방법을 정리한다.
+로컬에서 dev-team 인프라(Neo4j + PostgreSQL + Valkey)를 띄우고, 각 데이터 시스템을 GUI 도구로 관찰하는 방법을 정리한다.
+
+> **참고** — Document DB 는 기존 MongoDB 에서 PostgreSQL + JSONB 로 전환되었다.
+> 전환 배경은 `docs/proposal.md §6.4` 및 이슈 #20 참조.
 
 ---
 
@@ -25,10 +28,11 @@ cp .env.example .env
 | `NEO4J_PASSWORD` | `devteam_neo4j` | 8자 이상 |
 | `NEO4J_HTTP_PORT` | `7474` | Neo4j Browser |
 | `NEO4J_BOLT_PORT` | `7687` | Bolt (driver/GUI) |
-| `MONGO_INITDB_ROOT_USERNAME` | `root` | |
-| `MONGO_INITDB_ROOT_PASSWORD` | `devteam_mongo` | |
-| `MONGO_APP_DB` | `dev_team` | 앱 DB 이름 |
-| `MONGO_PORT` | `27017` | |
+| `POSTGRES_USER` | `devteam` | 단일 role, 양 DB 에 동일 적용 |
+| `POSTGRES_PASSWORD` | `devteam_postgres` | |
+| `POSTGRES_DB` | `langgraph` | langgraph-api 전용 DB (컨테이너 부팅 시 자동 생성) |
+| `APP_DB` | `dev_team` | 애플리케이션 document DB (postgres-init 에서 추가 생성) |
+| `POSTGRES_PORT` | `5432` | |
 | `VALKEY_PORT` | `6379` | |
 
 ### 기동
@@ -43,7 +47,7 @@ docker compose -f infra/docker-compose.yml --env-file .env up -d
 docker compose -f infra/docker-compose.yml --env-file .env ps
 ```
 
-3개 컨테이너가 `healthy` 로 표시되고, init one-shot 서비스 2개(`neo4j-init`, `mongo-init`)가 `Exited (0)` 이면 정상.
+3개 컨테이너(`neo4j`, `postgres`, `valkey`)가 `healthy` 로 표시되고, init one-shot 서비스 2개(`neo4j-init`, `postgres-init`)가 `Exited (0)` 이면 정상.
 
 ### 중지 / 정리
 
@@ -81,28 +85,43 @@ docker compose -f infra/docker-compose.yml --env-file .env down -v
 
 ---
 
-## 3. MongoDB Compass
+## 3. PostgreSQL GUI (DBeaver 권장)
 
-MongoDB 공식 GUI. 각자 플랫폼에 맞게 **MongoDB Compass** 를 설치한다.
+**DBeaver Community** 설치를 권장한다 (오픈소스, 크로스플랫폼, Postgres/Neo4j/Valkey 를 단일 툴로 연결 가능). 단일 Postgres 전용이 더 편하다면 **pgAdmin 4** 를 써도 된다.
 
 ### 연결
-`New connection` → Connection string 에 아래 입력:
 
-```
-mongodb://<MONGO_INITDB_ROOT_USERNAME>:<MONGO_INITDB_ROOT_PASSWORD>@localhost:27017/?authSource=admin
-```
+DBeaver 의 `New Database Connection` → `PostgreSQL` 선택 후:
 
-`.env` 기본값 기준이면:
+| 필드 | 값 |
+|------|-----|
+| Host | `localhost` |
+| Port | `.env` 의 `POSTGRES_PORT` (기본 `5432`) |
+| Database | `langgraph` 또는 `dev_team` (둘 다 각각 연결 프로파일로 저장 권장) |
+| Username | `.env` 의 `POSTGRES_USER` (기본 `devteam`) |
+| Password | `.env` 의 `POSTGRES_PASSWORD` |
 
-```
-mongodb://root:devteam_mongo@localhost:27017/?authSource=admin
-```
+> ⚠️ 실제 비밀번호가 포함된 connection 정보를 공유하거나 저장하지 말 것. DBeaver 의 saved connections 는 로컬에만 남겨둘 것.
 
-> ⚠️ 실제 비밀번호가 포함된 connection string 을 공유하거나 저장하지 말 것. Compass 의 connection favorites 는 로컬에만 남겨둘 것.
+### 두 DB 의 역할
+
+| DB | 소유자 | 확인 대상 |
+|---|---|---|
+| `langgraph` | langgraph-api 프레임워크 | 체크포인트/스레드/런 테이블 (프레임워크가 직접 생성·관리) |
+| `dev_team` | 애플리케이션 | PRD, Session/Task/Item, 대화 이벤트 로그 등 (JSONB 컬럼 적극 활용 예정) |
 
 ### 기본 활용
-- 좌측 databases 트리에서 `dev_team` 선택 (아직 쓰기가 없으면 표시되지 않을 수 있음 — 첫 쓰기 시점에 생성됨)
-- Collection 을 클릭하면 문서 목록/인덱스/집계 등 확인 가능
+
+- 좌측 DB 트리에서 대상 DB 를 펼치면 `Schemas → public → Tables` 하위에 테이블 목록 확인
+- JSONB 컬럼은 DBeaver 에서 자동으로 트리 형태 렌더링 (MongoDB Compass 의 nested view 와 유사)
+- 쿼리 예시:
+  ```sql
+  -- langgraph DB
+  SELECT table_name FROM information_schema.tables WHERE table_schema = 'public';
+
+  -- dev_team DB (JSONB 예시)
+  -- SELECT id, payload -> 'title' AS title FROM prd LIMIT 5;
+  ```
 
 ---
 
@@ -161,19 +180,19 @@ docker compose -f infra/docker-compose.yml --env-file .env logs <service>
 ### init 컨테이너가 실패(exit code ≠ 0)로 끝날 때
 ```bash
 docker logs dev-team-neo4j-init
-docker logs dev-team-mongo-init
+docker logs dev-team-postgres-init
 ```
 해결 후 재실행:
 ```bash
 docker start -a dev-team-neo4j-init
-docker start -a dev-team-mongo-init
+docker start -a dev-team-postgres-init
 ```
 
 ### 포트가 이미 점유되어 바인딩 실패
 `.env` 에서 해당 포트 변수를 다른 값으로 변경하고 재기동:
 ```bash
 docker compose -f infra/docker-compose.yml --env-file .env down
-# .env 에서 NEO4J_HTTP_PORT, MONGO_PORT, VALKEY_PORT 등 수정
+# .env 에서 NEO4J_HTTP_PORT, POSTGRES_PORT, VALKEY_PORT 등 수정
 docker compose -f infra/docker-compose.yml --env-file .env up -d
 ```
 

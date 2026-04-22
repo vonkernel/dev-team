@@ -475,7 +475,7 @@ persona: |
 
   [기술 문서화]
   diff에 포함된 기술 노트(설계 결정, 구현 특이점, 주의사항, TODO, 주요 아이디어)를
-  분류하여 Document DB의 technical_notes 컬렉션에 task_id와 함께 저장합니다.
+  분류하여 Document DB의 technical_notes 테이블에 task_id와 함께 저장합니다.
 
   [질의 응답]
   다른 에이전트의 자연어 질의에 대해 Graph DB + Document DB 교차 조회로 정확한
@@ -835,7 +835,7 @@ graph TD
 ```
 
 - 발신 에이전트가 `session_id`, `item_id`, `prev_item_id`를 부여하여 Valkey Streams에 XADD
-- Chronicler가 Consumer Group으로 소비하여 Document DB의 sessions/items 컬렉션에 저장
+- Chronicler가 Consumer Group으로 소비하여 Document DB의 sessions/items 테이블(JSONB)에 저장
 - Session 생성 규칙: 새로운 주제의 첫 대화 시 발신자가 신규 `session_id` 생성, 기존 주제 이어가기는 동일 `session_id` 사용
 
 ### 2.7. 프로젝트 코드베이스 공유
@@ -1060,7 +1060,7 @@ P와 Librarian 이미지는 Code Agent 불필요 → Bun/OpenCode 미설치.
 | Runtime | Docker (1 Agent = 1 Container) | 격리된 실행 환경 |
 | **코드베이스 공유** | **Docker 볼륨 마운트** | **호스트 프로젝트 디렉토리를 전 에이전트에 bind mount** |
 | Graph DB | 추상화 인터페이스 (기본: Neo4j) | OO 구조 (Semantic Layer), 추후 교체 가능 |
-| Document DB | 추상화 인터페이스 (기본: MongoDB) | 기록/대화/문서 (Episodic Layer), 추후 교체 가능 |
+| Document DB | 추상화 인터페이스 (기본: **PostgreSQL + JSONB**) | 기록/대화/문서 (Episodic Layer), 추후 교체 가능. ※ Postgres 를 선택한 맥락은 §6.4 참조 |
 | Shared Memory 접근 | MCP Server (공유, FIFO 큐잉) | Librarian 및 Chronicler 전용 |
 | 도구 연동 | MCP (Model Context Protocol) | 역할별 외부 도구 연동 |
 | 외부 PM 도구 | 추상화 인터페이스 (기본: GitHub Wiki/Issue) | PRD/태스크 동기화, 추후 Jira/Confluence 등 지원 |
@@ -1578,7 +1578,7 @@ services:
 
   doc-db-mcp:
     build: ./mcp-servers/doc-db
-    depends_on: [mongodb]
+    depends_on: [postgres]
 
   external-pm-mcp:
     build: ./mcp-servers/external-pm   # 기본 구현: GitHub Wiki + Issue
@@ -1588,12 +1588,15 @@ services:
 
   # --- 데이터베이스 ---
   neo4j:
-    image: dhi.io/neo4j:5
+    image: neo4j:5
     ports: ["7474:7474", "7687:7687"]
 
-  mongodb:
-    image: dhi.io/mongodb:8
-    ports: ["27017:27017"]
+  # 단일 Postgres 인스턴스에 2개 DB 분리 운영 (§6.4 참조)
+  #   - langgraph : langgraph-api 프레임워크 전용
+  #   - dev_team  : 애플리케이션 document storage (JSONB)
+  postgres:
+    image: postgres:17
+    ports: ["5432:5432"]
 
   # --- 대화 기록 파이프라인 (Valkey Streams + Chronicler) ---
   valkey:
@@ -1780,11 +1783,31 @@ MCP 서버는 두 종류로 나뉜다:
 |------------|---------------|----------|--------------|---------|
 | **Code Agent** | 코드 편집/빌드/테스트 실행 | OpenCode CLI | Claude Code CLI, Aider CLI, Cursor CLI | 에이전트 내부 어댑터 |
 | **Graph DB** | OO 구조(Interface/Class/PublicMethod) 저장/조회 | Neo4j | ArangoDB, JanusGraph, Neptune | 공유 MCP 서버 |
-| **Document DB** | PRD/문서/대화(Task/Session/Item) 저장/조회 | MongoDB | CouchDB, DocumentDB, Elasticsearch | 공유 MCP 서버 |
+| **Document DB** | PRD/문서/대화(Task/Session/Item) 저장/조회 | **PostgreSQL + JSONB** | CouchDB, MongoDB, Elasticsearch | 공유 MCP 서버 |
 | **External PM Tool** | PRD/태스크 외부 공유 및 동기화 | GitHub Wiki + GitHub Issue | Jira, Confluence, Linear, Notion | **공유 MCP 서버** |
 | **LLM Provider** | 추론 엔진 | Claude API (ChatAnthropic) | OpenAI / Gemini / 로컬 LLM (ChatOpenAI, ChatGoogleGenerativeAI 등) | **LangChain `BaseChatModel` 인터페이스 사용** — config의 `provider` + `model`로 구현체 선택 |
 
 **DB/외부 도구 연동 통일:** Shared Memory(Graph/Document DB)뿐 아니라 External PM Tool도 **공유 MCP 서버**로 래핑한다. 에이전트 입장에서는 모든 외부 시스템이 MCP라는 동일 인터페이스로 추상화되며, 구현체 교체는 MCP 서버를 바꿔치기하는 것으로 끝난다.
+
+#### 저장소 선택 맥락 — 왜 PostgreSQL 인가 (Document DB 기본 구현)
+
+초기 설계에서는 Document DB 의 기본 구현을 MongoDB 로 두었으나, 다음 이유로 **PostgreSQL + JSONB** 로 전환한다 (이슈 #20):
+
+1. **워크플로우 엔진의 본질적 요구 — 영속 체크포인트** — LangGraph 는 에이전트 워크플로우 엔진이므로 **노드 실행 사이사이에 상태 스냅샷(체크포인트) 을 저장** 해야 한다. 이 영속 저장이 있어야 프로세스 중단 / 재기동 / 오류 복구 시 **직전 체크포인트부터 이어서 진행** 할 수 있다 (장시간 에이전트 작업의 정상화 보장). LangGraph 공식 프로덕션 런타임은 이 요구를 **PostgreSQL 위에 구현** 해 두었고, 그래서 `langgraph-api` 컨테이너가 `DATABASE_URI` 를 필수 요구한다. 별도 Document DB 를 두면 저장소 종류가 중복되고 운영 부담이 증가한다.
+2. **JSONB 가 문서형 유연성을 충분히 제공** — MongoDB BSON 과 동등한 스키마리스 저장 + 부분 업데이트 + 중첩 경로 인덱싱 지원. PRD/Session/Item 처럼 구조가 느슨한 데이터도 문제 없이 표현 가능.
+3. **관계형 보증과의 양립** — PRD 와 Task, Session 과 Item 간에는 명확한 관계가 존재하므로, 트랜잭션/외래키/조인을 활용할 수 있으면 무결성 유지가 쉬워진다. JSONB 는 관계형 기반 위에서 문서형을 얹어 두 관점을 모두 수용한다.
+4. **운영 단순화** — 저장소 종류를 하나 줄여 백업/모니터링/마이그레이션 관리 대상 감소.
+
+운영 형태는 **단일 Postgres 인스턴스 + 2개 DB 분리** 다:
+
+| DB | 소유자 | 용도 |
+|---|---|---|
+| `langgraph` | langgraph-api 프레임워크 | 체크포인트, 스레드, 런, 태스크 상태. **프레임워크가 직접 스키마/마이그레이션 관리** |
+| `dev_team` | 애플리케이션 | PRD, Session/Task/Item, 대화 이벤트 로그 등. 우리가 스키마 설계·관리 |
+
+같은 DB 에 섞지 않는 이유: langgraph-api 버전업 시 자체 마이그레이션이 애플리케이션 테이블을 건드릴 위험 제거 + 권한/백업 경계 분리. 인스턴스는 하나라 운영 복잡도는 거의 증가하지 않는다.
+
+`Document DB` 라는 **추상화 인터페이스 자체는 유지** 되므로, 향후 MongoDB / CouchDB / Elasticsearch 등 다른 document-oriented 구현체로 교체하고 싶어지면 Document DB MCP 서버 구현체만 바꿔치우면 된다.
 
 #### 인터페이스 예시
 
@@ -1907,7 +1930,7 @@ dev-team/
 │       └── main.py                # Valkey Streams 구독 → Doc DB MCP 저장
 ├── mcp-servers/                   # 공유 MCP 서버 (각각 별도 이미지 빌드)
 │   ├── graph-db/                  # Graph DB MCP (기본: Neo4j)
-│   ├── doc-db/                    # Document DB MCP (기본: MongoDB)
+│   ├── doc-db/                    # Document DB MCP (기본: PostgreSQL + JSONB)
 │   └── external-pm/               # External PM MCP (기본: GitHub Wiki+Issue)
 │
 ├── infra/
@@ -1954,7 +1977,7 @@ dev-team/
 | 16 | 코드베이스 공유 | 호스트 프로젝트 디렉토리를 전 에이전트 컨테이너에 `/workspace`로 bind mount |
 | 17 | 설계안 채택 UX | A가 복수 설계안 제시 → 사용자 선택 → 채택안은 코드베이스 `docs/design/`에 md로 저장, 미채택안은 Document DB |
 | 18 | 추상화 (OCP) | Code Agent, Graph DB, Document DB, External PM Tool, LLM Provider 모두 인터페이스로 추상화 |
-| 19 | 기본 구현체 | OpenCode CLI / Neo4j / MongoDB / GitHub Wiki+Issue / Claude API |
+| 19 | 기본 구현체 | OpenCode CLI / Neo4j / **PostgreSQL + JSONB** / GitHub Wiki+Issue / Claude API |
 | 20 | External PM 연동 방식 | 공유 MCP 서버로 외부화 (Graph DB/Doc DB MCP와 동일 패턴) |
 | 21 | PRD 이중 저장 | Document DB + External PM MCP 양쪽에 기록 |
 | 22 | Docker 이미지 전략 | **에이전트별 독립 이미지** (모듈 분리, 공통 코드는 `shared/` 패키지로 재사용) / Engineer·QA는 specialty별 config로 다수 컨테이너 기동 / MCP 서버·User Gateway·Chronicler: 별도 이미지 |
