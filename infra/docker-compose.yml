@@ -1,5 +1,5 @@
 # dev-team 로컬 인프라
-# 로컬에서 GUI 도구(Neo4j Browser, MongoDB Compass, RedisInsight)로
+# 로컬에서 GUI 도구(Neo4j Browser, MongoDB Compass, ARDM/RedisInsight 등 Valkey-compatible GUI)로
 # 직접 관찰할 수 있도록 호스트 포트를 노출한다.
 #
 # 사용:
@@ -80,18 +80,18 @@ services:
     entrypoint: ["bash", "/init.sh"]
     restart: "no"
 
-  redis:
-    image: redis:8
-    container_name: dev-team-redis
+  valkey:
+    image: valkey/valkey:9
+    container_name: dev-team-valkey
     restart: unless-stopped
     # AOF 영속화 활성화 — a2a-events stream 보존
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["valkey-server", "--appendonly", "yes"]
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${VALKEY_PORT:-6379}:6379"
     volumes:
-      - redis-data:/data
+      - valkey-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 10
@@ -101,4 +101,4 @@ volumes:
   neo4j-data:
   neo4j-logs:
   mongodb-data:
-  redis-data:
+  valkey-data:
