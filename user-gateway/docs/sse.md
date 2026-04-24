@@ -13,16 +13,22 @@
 
 ## 1. 현재 구조
 
-```
-Browser (React)           User Gateway                 Primary Agent
-  fetch("/api/chat")  ──▶  FastAPI /api/chat  ──httpx.stream──▶  /a2a/primary
-  (UG의 단순 이벤트 수신)   (A2A → UG 이벤트 번역)        (A2A SendStreamingMessage)
-       ▲                         │                             │
-       │                         ▼                             ▼
-       │                  graph.astream                  Anthropic API
-       │                  (체크포인트 · LLM)                 (LLM)
-       ▼
-  {type:"meta"|"chunk"|"done"|"error"}
+```mermaid
+flowchart LR
+    B["Browser (React)"]
+    subgraph UG["User Gateway (FastAPI)"]
+        API["POST /api/chat<br/>A2A ↔ 단순 이벤트 번역"]
+        Static["GET /*<br/>Vite 정적 자원"]
+    end
+    subgraph P["Primary Agent"]
+        Graph["graph.astream<br/>체크포인트 · LLM 호출"]
+    end
+    Anthropic["Anthropic API"]
+
+    B -->|GET /| Static
+    B <-->|"POST fetch + SSE<br/>{meta|chunk|done|error}"| API
+    API <-->|"httpx.stream + A2A SSE<br/>(SendStreamingMessage)"| Graph
+    Graph <-->|HTTP| Anthropic
 ```
 
 - **브라우저는 A2A 스펙을 직접 알 필요가 없다.** UG 가 A2A 이벤트
