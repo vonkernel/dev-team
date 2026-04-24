@@ -157,6 +157,28 @@ body {
   border-color: var(--error);
 }
 
+.bubble__retry {
+  margin-top: 8px;
+  align-self: flex-start;
+  border: 1px solid var(--error);
+  background: transparent;
+  color: var(--error);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bubble__retry:hover:not(:disabled) {
+  background: var(--error);
+  color: #fff;
+}
+
+.bubble__retry:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @keyframes blink {
   50% {
     opacity: 0;

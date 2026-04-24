@@ -13,6 +13,8 @@ export interface ChatMessage {
   text: string;
   streaming?: boolean;
   failed?: boolean;
+  /** agent 버블이 실패했을 때 재시도 용으로 쓰이는 원본 유저 발화. */
+  sourceText?: string;
 }
 
 /** /api/agent-card 응답 — 표시에 쓰는 최소 필드만 추출. */
