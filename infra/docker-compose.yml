@@ -141,6 +141,24 @@ services:
       postgres-init:
         condition: service_completed_successfully
 
+  user-gateway:
+    profiles: ["agents"]
+    build:
+      context: ..                                   # repo root (shared + user-gateway/*)
+      dockerfile: user-gateway/Dockerfile
+    image: dev-team/user-gateway:latest
+    container_name: dev-team-user-gateway
+    restart: unless-stopped
+    environment:
+      # Primary 의 A2A 엔드포인트 / AgentCard URL. compose 내부 DNS 기준.
+      PRIMARY_A2A_URL: "http://primary:8000/a2a/primary"
+      PRIMARY_CARD_URL: "http://primary:8000/.well-known/agent-card.json"
+    ports:
+      - "8080:8000"                                 # 호스트 8080 ← 컨테이너 8000 (브라우저 접속 경로)
+    depends_on:
+      primary:
+        condition: service_started
+
 volumes:
   neo4j-data:
   neo4j-logs:
