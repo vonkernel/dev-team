@@ -14,20 +14,31 @@
 user-gateway/
 ├── Dockerfile                 # 멀티스테이지 (node → python)
 ├── pyproject.toml             # FastAPI + dev-team-shared + httpx
+├── docs/sse.md                # UG 고유 SSE 사항 (모듈 책임 / 하드닝 / 번역 계약)
 ├── src/user_gateway/
-│   └── main.py                # FastAPI 서버 — /api/chat (SSE 중계), /api/agent-card, static 서빙
+│   ├── main.py                # 조립 (lifespan · 미들웨어 · 라우터 include · static mount)
+│   ├── config.py              # frozen AppConfig + env loader
+│   ├── upstream.py            # A2AUpstream — httpx 기반 Primary 호출 (connect retry)
+│   ├── translator.py          # A2A 이벤트 → UG ChatEvent 순수 함수
+│   ├── sse.py                 # sse_pack · KEEPALIVE_SENTINEL · line-iter
+│   ├── middleware.py          # CacheControlMiddleware
+│   └── routes.py              # /healthz · /api/agent-card · /api/chat
 ├── frontend/
 │   ├── package.json           # React 18 + Vite + TypeScript
 │   ├── index.html · vite.config.ts · tsconfig.json
 │   └── src/
 │       ├── App.tsx            # 상단 AgentCard + <Chat/>
 │       ├── components/Chat.tsx            # 입력창 + 버블 리스트 + SSE 소비
-│       ├── components/MessageBubble.tsx   # user/agent 버블
+│       ├── components/MessageBubble.tsx   # user/agent 버블 + retry 버튼
 │       ├── api.ts             # fetchAgentCard · streamChat (SSE 파서)
 │       ├── types.ts           # ChatEvent / ChatMessage / AgentCardSummary
 │       └── styles.css
 └── static/                    # Dockerfile 이 frontend/dist 를 여기 복사 (gitignored)
 ```
+
+각 모듈의 책임 / SOLID 분리 근거 / SSE 하드닝 (timeout · keepalive · disconnect
+polling · lifecycle 로깅 등) 의 환경변수 / 동작 상세는
+[`docs/sse.md`](./docs/sse.md) 참조.
 
 ---
 
@@ -138,6 +149,7 @@ curl -sS --no-buffer -X POST http://localhost:8080/api/chat \
 
 ## 관련 문서
 
-- [`docs/proposal.md`](../docs/proposal.md) — 전체 시스템 설계
-- [`docs/agent-runtime.md`](../docs/agent-runtime.md) — A2A 서버 규약 (Primary 기준)
-- [`agents/primary/README.md`](../agents/primary/README.md) — Primary 기동/검증
+- [`docs/sse.md`](./docs/sse.md) — UG 고유 SSE 사항 (모듈 책임, 하드닝, 환경변수, 번역 계약)
+- [`../docs/proposal.md`](../docs/proposal.md) — 전체 시스템 설계
+- [`../docs/agent-runtime.md`](../docs/agent-runtime.md) — A2A 서버 규약 (Primary 기준)
+- [`../agents/primary/README.md`](../agents/primary/README.md) — Primary 기동/검증
