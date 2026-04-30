@@ -12,10 +12,17 @@
 
 from dev_team_shared.a2a.server.handler import MethodHandler
 from dev_team_shared.a2a.server.router import make_a2a_router
-from dev_team_shared.a2a.server.sse import sse_pack, sse_response
+from dev_team_shared.a2a.server.sse import (
+    KEEPALIVE_SENTINEL,
+    aiter_with_keepalive,
+    sse_pack,
+    sse_response,
+)
 
 __all__ = [
+    "KEEPALIVE_SENTINEL",
     "MethodHandler",
+    "aiter_with_keepalive",
     "make_a2a_router",
     "sse_pack",
     "sse_response",

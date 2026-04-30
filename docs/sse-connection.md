@@ -103,8 +103,9 @@ flowchart LR
 
 | 대상 | 파일 |
 |---|---|
-| S1 disconnect polling · S2 keepalive · S3 lifecycle 로깅 | `graph_handlers.py` 의 `GraphSendStreamingMessageHandler.handle` |
-| S4 total timeout | 동일 위치 — `anyio.fail_after` 로 `event_generator` 감쌈 |
+| S1 disconnect polling · S2 keepalive | `graph_handlers/stream.py` (`stream_artifact_events`) |
+| S3 lifecycle 로깅 | `graph_handlers/session.py` (`log_session`) — 두 핸들러 모두에서 사용 |
+| S4 total timeout | `graph_handlers/send_message.py` · `send_streaming.py` (`anyio.fail_after`) |
 | SSE 직렬화 (sse_pack / keepalive sentinel) | `sse.py` |
 | MethodHandler 계약 | `handler.py` |
 | 라우터 조립 | `router.py` |
