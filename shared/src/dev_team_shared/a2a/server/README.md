@@ -17,8 +17,22 @@
 | `handler.py` | `MethodHandler` ABC — JSON-RPC 메서드 1개를 처리하는 단위 |
 | `router.py` | `make_a2a_router(assistant_id, handlers)` — `/healthz` · `/.well-known/agent-card.json` · `/a2a/{aid}` 마운트 |
 | `sse.py` | `sse_pack` · `sse_response` · `KEEPALIVE_SENTINEL` · `aiter_with_keepalive` |
-| `graph_handlers.py` | LangGraph 기반 기본 구현 — `GraphSendMessageHandler` · `GraphSendStreamingMessageHandler` |
+| `graph_handlers/` | LangGraph 기반 기본 구현 sub-package — 아래 §2 참조 |
 | `__init__.py` | 외부 노출 심볼 |
+
+### 1.1. `graph_handlers/` 서브모듈
+
+| 파일 | 책임 |
+|---|---|
+| `config.py` | env 기반 자원 관리 튜닝 (timeout / keepalive) |
+| `session.py` | `ChatContext` + `log_session` (lifecycle 로깅) |
+| `parse.py` | 요청 파싱 / LLM 응답 텍스트 추출 |
+| `factories.py` | A2A Task / 이벤트 모델 조립 + 에러 텍스트 |
+| `envelope.py` | JSON-RPC / SSE envelope 직렬화 |
+| `stream.py` | `graph.astream` → SSE 라인 번역 (S1 polling · S2 keepalive) |
+| `send_message.py` | `GraphSendMessageHandler` (단방향) |
+| `send_streaming.py` | `GraphSendStreamingMessageHandler` (SSE) |
+| `__init__.py` | 두 Handler 클래스만 외부 노출 |
 
 ---
 
