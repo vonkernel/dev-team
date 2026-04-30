@@ -35,6 +35,13 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from primary_agent.graph import build_graph, build_llm, load_runtime_config
 
+# uvicorn 은 자체 logger 만 INFO 로 올려두므로 app · shared logger 도 명시적 INFO.
+# shared/a2a/server/graph_handlers 의 sse_session.start/end 같은 lifecycle 로그가
+# stdout 에 흐르려면 root logger level 이 INFO 여야 함.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 _ASSISTANT_ID = "primary"
