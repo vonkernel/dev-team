@@ -4,13 +4,14 @@
 각 에이전트의 server.py 가 lifespan 에서 이 상태를 준비한 뒤 아래 핸들러들을
 `make_a2a_router(handlers=[...])` 로 등록하면 된다.
 
-핸들러의 단일 책임:
-- A2A `Message` → LangChain `HumanMessage` 번역
-- graph.ainvoke / astream 호출
-- 결과를 A2A Task / Event Pydantic 모델로 래핑 → JSON-RPC envelope 로 직렬화
+한 RPC 세션은 식별자 묶음(`_ChatContext`) + lifecycle 스코프(`_log_session`)
+위에서 흐른다. 핸들러는 ctx 를 만들고 lifecycle 스코프 안에서 graph 를 호출한
+뒤, 그 결과를 A2A Task / Event 모델로 조립(`_make_*`)해 envelope 헬퍼
+(`_rpc_result` · `_sse` · `_json_response`)로 직렬화해 내보낸다. 스트리밍
+경로는 `_stream_artifact_events` 가 graph.astream 을 SSE 라인으로 번역하면서
+client disconnect 폴링과 keepalive sentinel 처리를 함께 수행한다.
 
-FastAPI 결합은 `Request` 객체 하나로 제한 — handler 는 `request.app.state` 에서
-자원을 lookup. 생성자 의존성이 없어 에이전트마다 singleton 재사용 가능.
+SSE 자원 관리 정책 (#23, S1~S4) 은 `docs/sse-connection.md` 참조.
 """
 
 from __future__ import annotations
@@ -20,6 +21,9 @@ import logging
 import os
 import time
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 import anyio
@@ -53,7 +57,6 @@ logger = logging.getLogger(__name__)
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  하드닝 튜닝 (#23 — docs/sse-connection.md §5)
-#  env override 가능. 본 모듈을 재사용하는 모든 에이전트에 일괄 적용.
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -68,15 +71,99 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
-# Agent 측 graph 호출 전체 수명 상한 (S4). multi-tool / multi-node 그래프 도입
-# 시점을 위해 공용 인프라로 심어둠. M2 단일 LLM 호출은 langchain-anthropic 의
-# 자체 timeout 이 먼저 잡지만, 방어선 한 번 더.
+# graph 호출 전체 수명 상한 (S4).
 _AGENT_TOTAL_TIMEOUT_S: float = _env_float("A2A_AGENT_TOTAL_TIMEOUT_S", 600.0)
 
-# SSE keepalive comment 발송 간격 (S2). idle 구간이 이 시간을 넘기면
-# `:keepalive` 라인을 스트림에 흘려 프록시/LB idle timeout 을 방어하고
-# 동시에 disconnect polling 을 깨운다.
+# SSE keepalive comment 발송 간격 (S2).
 _SSE_KEEPALIVE_S: float = _env_float("A2A_SSE_KEEPALIVE_S", 15.0)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  세션 컨텍스트 + lifecycle 로깅
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class _ChatContext:
+    """한 번의 RPC 세션이 갖는 식별자 + 관측 메타.
+
+    핸들러 / 헬퍼 / 팩토리가 동일 ctx 를 공유하며 `reason` · `chunk_count` 를 갱신.
+    `started` 는 wall-clock 이 아닌 `time.monotonic()` 기준 (시계 보정에 영향 없음).
+    """
+
+    request: Request
+    rpc_id: Any
+    method: str
+    assistant: str
+    context_id: str
+    task_id: str
+    artifact_id: str
+    started: float = field(default_factory=time.monotonic)
+    chunk_count: int = 0
+    reason: str = "completed"
+
+    @classmethod
+    def create(
+        cls,
+        request: Request,
+        *,
+        rpc_id: Any,
+        method: str,
+        context_id: str,
+    ) -> _ChatContext:
+        return cls(
+            request=request,
+            rpc_id=rpc_id,
+            method=method,
+            assistant=_assistant_name(request),
+            context_id=context_id,
+            task_id=f"{context_id}:{uuid.uuid4()}",
+            artifact_id=str(uuid.uuid4()),
+        )
+
+
+@asynccontextmanager
+async def _log_session(ctx: _ChatContext) -> AsyncIterator[None]:
+    """SSE / RPC 세션 lifecycle 로깅.
+
+    수명: enter → start 로그, 정상 / 예외 종료 → end 로그 (reason / duration / chunks).
+    `asyncio.CancelledError` (Starlette 가 client disconnect 등으로 task 를 cancel)
+    가 발생하면 `reason` 을 `client_disconnect` 로 자동 갱신 후 cancel 로그 추가
+    출력하고 그대로 전파 (정리는 `finally` 가 수행).
+    """
+    logger.info(
+        "sse_session.start assistant=%s method=%s context_id=%s",
+        ctx.assistant, ctx.method, ctx.context_id,
+    )
+    try:
+        yield
+    except asyncio.CancelledError:
+        if ctx.reason == "completed":
+            ctx.reason = "client_disconnect"
+        logger.info(
+            "sse_session.cancel assistant=%s context_id=%s reason=%s",
+            ctx.assistant, ctx.context_id, ctx.reason,
+        )
+        raise
+    finally:
+        duration_ms = int((time.monotonic() - ctx.started) * 1000)
+        logger.info(
+            "sse_session.end assistant=%s method=%s context_id=%s "
+            "reason=%s duration_ms=%d chunks=%d",
+            ctx.assistant, ctx.method, ctx.context_id,
+            ctx.reason, duration_ms, ctx.chunk_count,
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  공통 헬퍼
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _assistant_name(request: Request) -> str:
+    """관측 로그용 assistant 이름. `app.state.agent_card.name` 이 있으면 사용."""
+    card = getattr(request.app.state, "agent_card", None)
+    return getattr(card, "name", "?")
 
 
 async def _is_disconnected(request: Request) -> bool:
@@ -87,19 +174,15 @@ async def _is_disconnected(request: Request) -> bool:
         return False
 
 
-def _assistant_name(request: Request) -> str:
-    """관측 로그용 — `app.state.agent_card.name` 가 있으면 사용, 없으면 `?`."""
-    card = getattr(request.app.state, "agent_card", None)
-    return getattr(card, "name", "?")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  내부 유틸 (A2A ↔ LangChain 메시지 번역 + 에러 포매팅)
-# ─────────────────────────────────────────────────────────────────────────────
+def _parse_message(params: dict[str, Any]) -> Message:
+    raw = params.get("message")
+    if raw is None:
+        raise ValueError("missing params.message")
+    return Message.model_validate(raw)
 
 
 def _extract_human_text(message: Message) -> str | None:
-    """A2A Message 의 text part 들을 줄바꿈으로 join. text 가 없으면 None."""
+    """A2A Message 의 text part 들을 줄바꿈 join. text 가 없으면 None."""
     parts = [p.text for p in message.parts if p.text is not None]
     if not parts:
         return None
@@ -107,7 +190,7 @@ def _extract_human_text(message: Message) -> str | None:
 
 
 def _stringify_ai_content(content: Any) -> str:
-    """AIMessage.content (str 또는 content block 리스트) 에서 text 부분만 추출."""
+    """AIMessage.content (str 또는 content block 리스트) 에서 text 만 추출."""
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -121,8 +204,17 @@ def _stringify_ai_content(content: Any) -> str:
     return str(content)
 
 
+def _extract_ai_reply_text(result: dict[str, Any]) -> str:
+    """graph.ainvoke 결과의 마지막 AIMessage 의 text 추출."""
+    ai = next(
+        (m for m in reversed(result["messages"]) if isinstance(m, AIMessage)),
+        None,
+    )
+    return _stringify_ai_content(ai.content) if ai is not None else ""
+
+
 def _error_detail(exc: BaseException) -> str:
-    """예외를 사용자·운영자 친화 문자열로. 흔한 운영 이슈는 힌트 덧붙임."""
+    """예외를 사용자·운영자 친화 문자열로. 흔한 운영 이슈 힌트 포함."""
     detail = f"{type(exc).__name__}: {exc}"
     if "credit balance" in str(exc).lower():
         detail += (
@@ -132,39 +224,154 @@ def _error_detail(exc: BaseException) -> str:
     return detail
 
 
-def _error_reply_message(
-    exc: BaseException,
-    *,
-    context_id: str,
-    task_id: str,
-) -> Message:
-    return Message(
-        message_id=f"err-{uuid.uuid4()}",
-        role=Role.AGENT,
-        parts=[Part(text=_error_detail(exc))],
-        context_id=context_id,
-        task_id=task_id,
-    )
+def _agent_timeout_text() -> str:
+    return f"agent total timeout after {int(_AGENT_TOTAL_TIMEOUT_S)}s"
 
 
-def _parse_message(params: dict[str, Any]) -> Message:
-    """params.message 를 Message 로 검증. 실패 시 ValueError."""
-    raw = params.get("message")
-    if raw is None:
-        raise ValueError("missing params.message")
-    return Message.model_validate(raw)
+def _parse_request_or_error(
+    rpc_id: Any,
+    params: dict[str, Any],
+) -> tuple[Message, str] | JSONResponse:
+    """params 검증·번역. 성공: `(a2a_msg, human_text)`, 실패: JSON-RPC 에러 응답."""
+    try:
+        a2a_msg = _parse_message(params)
+    except Exception as exc:
+        return JSONResponse(
+            rpc_error_response(rpc_id, INVALID_PARAMS, f"invalid message: {exc}"),
+        )
+    text = _extract_human_text(a2a_msg)
+    if text is None:
+        return JSONResponse(
+            rpc_error_response(rpc_id, INVALID_PARAMS, "no text parts in message"),
+        )
+    return a2a_msg, text
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  SendMessage — 단방향 요청/응답
+#  A2A Task / Event 팩토리 — model 조립만 담당 (직렬화 / 송신 X)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _error_message(ctx: _ChatContext, text: str) -> Message:
+    return Message(
+        message_id=f"err-{uuid.uuid4()}",
+        role=Role.AGENT,
+        parts=[Part(text=text)],
+        context_id=ctx.context_id,
+        task_id=ctx.task_id,
+    )
+
+
+def _make_initial_task(ctx: _ChatContext, user_msg: Message) -> Task:
+    return Task(
+        id=ctx.task_id,
+        context_id=ctx.context_id,
+        status=TaskStatus(state=TaskState.SUBMITTED),
+        history=[user_msg],
+    )
+
+
+def _make_completed_task(
+    ctx: _ChatContext, user_msg: Message, ai_text: str,
+) -> Task:
+    agent_reply = Message(
+        message_id=f"reply-{uuid.uuid4()}",
+        role=Role.AGENT,
+        parts=[Part(text=ai_text)],
+        context_id=ctx.context_id,
+        task_id=ctx.task_id,
+    )
+    return Task(
+        id=ctx.task_id,
+        context_id=ctx.context_id,
+        status=TaskStatus(state=TaskState.COMPLETED),
+        history=[user_msg, agent_reply],
+    )
+
+
+def _make_failed_task(
+    ctx: _ChatContext, user_msg: Message, error_text: str,
+) -> Task:
+    return Task(
+        id=ctx.task_id,
+        context_id=ctx.context_id,
+        status=TaskStatus(
+            state=TaskState.FAILED,
+            message=_error_message(ctx, error_text),
+        ),
+        history=[user_msg],
+    )
+
+
+def _make_completed_status_event(ctx: _ChatContext) -> TaskStatusUpdateEvent:
+    return TaskStatusUpdateEvent(
+        task_id=ctx.task_id,
+        context_id=ctx.context_id,
+        status=TaskStatus(state=TaskState.COMPLETED),
+        final=True,
+    )
+
+
+def _make_failed_status_event(
+    ctx: _ChatContext, error_text: str,
+) -> TaskStatusUpdateEvent:
+    return TaskStatusUpdateEvent(
+        task_id=ctx.task_id,
+        context_id=ctx.context_id,
+        status=TaskStatus(
+            state=TaskState.FAILED,
+            message=_error_message(ctx, error_text),
+        ),
+        final=True,
+    )
+
+
+def _make_artifact_event(
+    ctx: _ChatContext, text: str,
+) -> TaskArtifactUpdateEvent:
+    return TaskArtifactUpdateEvent(
+        task_id=ctx.task_id,
+        context_id=ctx.context_id,
+        artifact=Artifact(
+            artifact_id=ctx.artifact_id,
+            parts=[Part(text=text)],
+        ),
+        append=True,
+        last_chunk=False,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  RPC envelope 직렬화
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _rpc_result(ctx: _ChatContext, model: Any) -> dict[str, Any]:
+    """Pydantic 모델을 JSON-RPC 2.0 result 응답 dict 로."""
+    return rpc_result_response(
+        ctx.rpc_id, model.model_dump(by_alias=True, exclude_none=True),
+    )
+
+
+def _sse(ctx: _ChatContext, model: Any) -> str:
+    """Pydantic 모델을 SSE `data:` 라인 문자열로."""
+    return sse_pack(_rpc_result(ctx, model))
+
+
+def _json_response(ctx: _ChatContext, model: Any) -> JSONResponse:
+    """Pydantic 모델을 단방향 JSON-RPC 응답으로."""
+    return JSONResponse(_rpc_result(ctx, model))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  SendMessage (단방향)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 class GraphSendMessageHandler(MethodHandler):
     """A2A `SendMessage` — 단일 응답.
 
-    `request.app.state.graph.ainvoke(...)` 로 그래프를 한 번 실행하고
-    결과의 마지막 AIMessage 를 Task.history 에 포함해 반환.
+    `graph.ainvoke(...)` 한 번으로 LLM 응답을 받아 Task 로 감싸 반환.
     """
 
     method_name: ClassVar[str] = "SendMessage"
@@ -175,129 +382,49 @@ class GraphSendMessageHandler(MethodHandler):
         rpc_id: Any,
         params: dict[str, Any],
     ) -> Response:
-        try:
-            a2a_msg = _parse_message(params)
-        except Exception as exc:
-            return JSONResponse(
-                rpc_error_response(rpc_id, INVALID_PARAMS, f"invalid message: {exc}"),
-            )
+        parsed = _parse_request_or_error(rpc_id, params)
+        if isinstance(parsed, JSONResponse):
+            return parsed
+        a2a_msg, human_text = parsed
 
-        human_text = _extract_human_text(a2a_msg)
-        if human_text is None:
-            return JSONResponse(
-                rpc_error_response(rpc_id, INVALID_PARAMS, "no text parts in message"),
-            )
-
-        context_id = a2a_msg.context_id or str(uuid.uuid4())
-        task_id = f"{context_id}:{uuid.uuid4()}"
-        graph = request.app.state.graph
-        assistant = _assistant_name(request)
-
-        # S3 — lifecycle 로깅 (start)
-        started = time.monotonic()
-        reason = "completed"
-        logger.info(
-            "sse_session.start assistant=%s method=%s context_id=%s",
-            assistant, self.method_name, context_id,
+        ctx = _ChatContext.create(
+            request,
+            rpc_id=rpc_id,
+            method=self.method_name,
+            context_id=a2a_msg.context_id or str(uuid.uuid4()),
         )
-        try:
+
+        async with _log_session(ctx):
             try:
-                # S4 — agent 측 total timeout
-                with anyio.fail_after(_AGENT_TOTAL_TIMEOUT_S):
-                    result = await graph.ainvoke(
+                with anyio.fail_after(_AGENT_TOTAL_TIMEOUT_S):  # S4
+                    result = await request.app.state.graph.ainvoke(
                         {"messages": [HumanMessage(content=human_text)]},
-                        config={"configurable": {"thread_id": context_id}},
+                        config={"configurable": {"thread_id": ctx.context_id}},
                     )
             except TimeoutError:
+                ctx.reason = "total_timeout"
                 logger.warning(
                     "graph.ainvoke total timeout (>%ss) in SendMessage",
                     int(_AGENT_TOTAL_TIMEOUT_S),
                 )
-                reason = "total_timeout"
-                task = Task(
-                    id=task_id,
-                    context_id=context_id,
-                    status=TaskStatus(
-                        state=TaskState.FAILED,
-                        message=Message(
-                            message_id=f"err-{uuid.uuid4()}",
-                            role=Role.AGENT,
-                            parts=[Part(text=(
-                                f"agent total timeout after "
-                                f"{int(_AGENT_TOTAL_TIMEOUT_S)}s"
-                            ))],
-                            context_id=context_id,
-                            task_id=task_id,
-                        ),
-                    ),
-                    history=[a2a_msg],
+                return _json_response(
+                    ctx, _make_failed_task(ctx, a2a_msg, _agent_timeout_text()),
                 )
-                return JSONResponse(
-                    rpc_result_response(
-                        rpc_id, task.model_dump(by_alias=True, exclude_none=True),
-                    ),
-                )
-            except asyncio.CancelledError:
-                # Starlette 가 client disconnect 등으로 task 를 cancel 한 경우.
-                # finally 의 lifecycle 로그가 정확한 reason 으로 찍히도록 갱신 후 전파.
-                if reason == "completed":
-                    reason = "client_disconnect"
-                raise
             except Exception as exc:
+                ctx.reason = "graph_error"
                 logger.exception("graph.ainvoke failed in SendMessage")
-                reason = "graph_error"
-                task = Task(
-                    id=task_id,
-                    context_id=context_id,
-                    status=TaskStatus(
-                        state=TaskState.FAILED,
-                        message=_error_reply_message(
-                            exc, context_id=context_id, task_id=task_id,
-                        ),
-                    ),
-                    history=[a2a_msg],
-                )
-                return JSONResponse(
-                    rpc_result_response(
-                        rpc_id, task.model_dump(by_alias=True, exclude_none=True),
-                    ),
+                return _json_response(
+                    ctx, _make_failed_task(ctx, a2a_msg, _error_detail(exc)),
                 )
 
-            ai = next(
-                (m for m in reversed(result["messages"]) if isinstance(m, AIMessage)),
-                None,
-            )
-            ai_text = _stringify_ai_content(ai.content) if ai is not None else ""
-
-            agent_reply = Message(
-                message_id=f"reply-{uuid.uuid4()}",
-                role=Role.AGENT,
-                parts=[Part(text=ai_text)],
-                context_id=context_id,
-                task_id=task_id,
-            )
-            task = Task(
-                id=task_id,
-                context_id=context_id,
-                status=TaskStatus(state=TaskState.COMPLETED),
-                history=[a2a_msg, agent_reply],
-            )
-            return JSONResponse(
-                rpc_result_response(
-                    rpc_id, task.model_dump(by_alias=True, exclude_none=True),
-                ),
-            )
-        finally:
-            duration_ms = int((time.monotonic() - started) * 1000)
-            logger.info(
-                "sse_session.end assistant=%s method=%s context_id=%s "
-                "reason=%s duration_ms=%d",
-                assistant, self.method_name, context_id, reason, duration_ms,
+            return _json_response(
+                ctx,
+                _make_completed_task(ctx, a2a_msg, _extract_ai_reply_text(result)),
             )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  SendStreamingMessage — SSE 스트리밍
+#  SendStreamingMessage (SSE)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -308,9 +435,10 @@ class GraphSendStreamingMessageHandler(MethodHandler):
       1) 초기 `Task(state=TASK_STATE_SUBMITTED)`
       2) N × `TaskArtifactUpdateEvent(append=true, lastChunk=false)`
          — graph.astream(stream_mode="messages") 의 LLM 토큰 chunk 를 래핑
-      3) 최종 `TaskStatusUpdateEvent(state=TASK_STATE_COMPLETED, final=true)`
+      3) 최종 `TaskStatusUpdateEvent(state=COMPLETED|FAILED, final=true)`
 
-    실패 시 3) 이 `state=TASK_STATE_FAILED` + 에러 메시지로 바뀜.
+    하드닝 (#23): S1 disconnect polling · S2 keepalive · S3 lifecycle 로깅 ·
+    S4 total timeout 모두 본 핸들러에 적용. 자세한 분리는 모듈 docstring 참조.
     """
 
     method_name: ClassVar[str] = "SendStreamingMessage"
@@ -321,174 +449,90 @@ class GraphSendStreamingMessageHandler(MethodHandler):
         rpc_id: Any,
         params: dict[str, Any],
     ) -> Response:
-        try:
-            a2a_msg = _parse_message(params)
-        except Exception as exc:
-            return JSONResponse(
-                rpc_error_response(rpc_id, INVALID_PARAMS, f"invalid message: {exc}"),
-            )
+        parsed = _parse_request_or_error(rpc_id, params)
+        if isinstance(parsed, JSONResponse):
+            return parsed
+        a2a_msg, human_text = parsed
 
-        human_text = _extract_human_text(a2a_msg)
-        if human_text is None:
-            return JSONResponse(
-                rpc_error_response(rpc_id, INVALID_PARAMS, "no text parts in message"),
-            )
-
-        context_id = a2a_msg.context_id or str(uuid.uuid4())
-        task_id = f"{context_id}:{uuid.uuid4()}"
-        artifact_id = str(uuid.uuid4())
+        ctx = _ChatContext.create(
+            request,
+            rpc_id=rpc_id,
+            method=self.method_name,
+            context_id=a2a_msg.context_id or str(uuid.uuid4()),
+        )
         graph = request.app.state.graph
-        assistant = _assistant_name(request)
 
-        async def event_generator():
-            # S3 — lifecycle 로깅 (start)
-            started = time.monotonic()
-            chunk_count = 0
-            reason = "completed"
-            logger.info(
-                "sse_session.start assistant=%s method=%s context_id=%s",
-                assistant, self.method_name, context_id,
-            )
-            try:
-                # 1) 초기 Task
-                initial = Task(
-                    id=task_id,
-                    context_id=context_id,
-                    status=TaskStatus(state=TaskState.SUBMITTED),
-                    history=[a2a_msg],
-                )
-                yield sse_pack(rpc_result_response(
-                    rpc_id, initial.model_dump(by_alias=True, exclude_none=True),
-                ))
-
+        async def event_generator() -> AsyncIterator[str]:
+            async with _log_session(ctx):
+                yield _sse(ctx, _make_initial_task(ctx, a2a_msg))
                 try:
-                    # S4 — agent 측 total timeout
-                    with anyio.fail_after(_AGENT_TOTAL_TIMEOUT_S):
-                        # S2 — keepalive 래퍼: idle 시 sentinel 방출
-                        async for item in aiter_with_keepalive(
-                            graph.astream(
-                                {"messages": [HumanMessage(content=human_text)]},
-                                config={"configurable": {"thread_id": context_id}},
-                                stream_mode="messages",
-                            ),
-                            keepalive_s=_SSE_KEEPALIVE_S,
+                    with anyio.fail_after(_AGENT_TOTAL_TIMEOUT_S):  # S4
+                        async for line in _stream_artifact_events(
+                            graph, human_text, ctx,
                         ):
-                            # S1 — 매 이벤트(chunk or keepalive) 시점에 disconnect 체크
-                            if await _is_disconnected(request):
-                                reason = "client_disconnect"
-                                logger.info(
-                                    "sse_session.cancel assistant=%s context_id=%s "
-                                    "reason=client_disconnect",
-                                    assistant, context_id,
-                                )
-                                return
-
-                            # S2 — idle sentinel 이면 keepalive comment 발송하고 다음 iter
-                            if item is KEEPALIVE_SENTINEL:
-                                yield ":keepalive\n\n"
-                                continue
-
-                            # 통상 chunk 처리
-                            msg_chunk, _metadata = item
-                            if not isinstance(msg_chunk, AIMessage):
-                                continue
-                            text = _stringify_ai_content(msg_chunk.content)
-                            if not text:
-                                continue
-                            chunk_count += 1
-                            event = TaskArtifactUpdateEvent(
-                                task_id=task_id,
-                                context_id=context_id,
-                                artifact=Artifact(
-                                    artifact_id=artifact_id,
-                                    parts=[Part(text=text)],
-                                ),
-                                append=True,
-                                last_chunk=False,
-                            )
-                            yield sse_pack(rpc_result_response(
-                                rpc_id,
-                                event.model_dump(by_alias=True, exclude_none=True),
-                            ))
+                            yield line
                 except TimeoutError:
+                    ctx.reason = "total_timeout"
                     logger.warning(
                         "graph.astream total timeout (>%ss) in SendStreamingMessage",
                         int(_AGENT_TOTAL_TIMEOUT_S),
                     )
-                    reason = "total_timeout"
-                    fail_event = TaskStatusUpdateEvent(
-                        task_id=task_id,
-                        context_id=context_id,
-                        status=TaskStatus(
-                            state=TaskState.FAILED,
-                            message=Message(
-                                message_id=f"err-{uuid.uuid4()}",
-                                role=Role.AGENT,
-                                parts=[Part(text=(
-                                    f"agent total timeout after "
-                                    f"{int(_AGENT_TOTAL_TIMEOUT_S)}s"
-                                ))],
-                                context_id=context_id,
-                                task_id=task_id,
-                            ),
-                        ),
-                        final=True,
+                    yield _sse(
+                        ctx,
+                        _make_failed_status_event(ctx, _agent_timeout_text()),
                     )
-                    yield sse_pack(rpc_result_response(
-                        rpc_id, fail_event.model_dump(by_alias=True, exclude_none=True),
-                    ))
                     return
                 except asyncio.CancelledError:
-                    # Starlette 가 client disconnect 등으로 generator task 를
-                    # cancel 한 경우. polling 으로 잡히지 않은 비협조적 cancel.
-                    # reason 을 갱신하고 그대로 전파시켜 정리(finally)만 수행.
-                    if reason == "completed":
-                        reason = "client_disconnect"
-                    logger.info(
-                        "sse_session.cancel assistant=%s context_id=%s reason=%s",
-                        assistant, context_id, reason,
-                    )
+                    # _log_session 의 CancelledError 핸들러가 reason 갱신 +
+                    # 로그 + 정리 수행. 여기선 그대로 전파만.
                     raise
                 except Exception as exc:
+                    ctx.reason = "graph_error"
                     logger.exception("graph.astream failed in SendStreamingMessage")
-                    reason = "graph_error"
-                    fail_event = TaskStatusUpdateEvent(
-                        task_id=task_id,
-                        context_id=context_id,
-                        status=TaskStatus(
-                            state=TaskState.FAILED,
-                            message=_error_reply_message(
-                                exc, context_id=context_id, task_id=task_id,
-                            ),
-                        ),
-                        final=True,
+                    yield _sse(
+                        ctx,
+                        _make_failed_status_event(ctx, _error_detail(exc)),
                     )
-                    yield sse_pack(rpc_result_response(
-                        rpc_id, fail_event.model_dump(by_alias=True, exclude_none=True),
-                    ))
                     return
-
-                # 3) 완료 이벤트
-                complete = TaskStatusUpdateEvent(
-                    task_id=task_id,
-                    context_id=context_id,
-                    status=TaskStatus(state=TaskState.COMPLETED),
-                    final=True,
-                )
-                yield sse_pack(rpc_result_response(
-                    rpc_id, complete.model_dump(by_alias=True, exclude_none=True),
-                ))
-            finally:
-                # S3 — lifecycle 로깅 (end)
-                duration_ms = int((time.monotonic() - started) * 1000)
-                logger.info(
-                    "sse_session.end assistant=%s method=%s context_id=%s "
-                    "reason=%s duration_ms=%d chunks=%d",
-                    assistant, self.method_name, context_id,
-                    reason, duration_ms, chunk_count,
-                )
+                yield _sse(ctx, _make_completed_status_event(ctx))
 
         return sse_response(event_generator())
+
+
+async def _stream_artifact_events(
+    graph: Any,
+    human_text: str,
+    ctx: _ChatContext,
+) -> AsyncIterator[str]:
+    """graph.astream 소비 → keepalive comment / artifact-update SSE 라인 yield.
+
+    매 iteration 시 `request.is_disconnected()` 폴링 (S1). 끊김 감지 시 ctx.reason
+    을 갱신한 뒤 정상 종료 (return) — CancelledError 와는 별개의 협조적 cancel
+    경로. KEEPALIVE_SENTINEL 수신 시 `:keepalive\\n\\n` comment 만 발송 (S2).
+    chunk 수신 시 ctx.chunk_count 증가 + artifact-update SSE 라인 yield.
+    """
+    async for item in aiter_with_keepalive(
+        graph.astream(
+            {"messages": [HumanMessage(content=human_text)]},
+            config={"configurable": {"thread_id": ctx.context_id}},
+            stream_mode="messages",
+        ),
+        keepalive_s=_SSE_KEEPALIVE_S,
+    ):
+        if await _is_disconnected(ctx.request):
+            ctx.reason = "client_disconnect"
+            return
+        if item is KEEPALIVE_SENTINEL:
+            yield ":keepalive\n\n"
+            continue
+        msg_chunk, _metadata = item
+        if not isinstance(msg_chunk, AIMessage):
+            continue
+        text = _stringify_ai_content(msg_chunk.content)
+        if not text:
+            continue
+        ctx.chunk_count += 1
+        yield _sse(ctx, _make_artifact_event(ctx, text))
 
 
 __all__ = [
