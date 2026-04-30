@@ -1,0 +1,40 @@
+# Docker 빌드 컨텍스트에서 제외할 파일들.
+# (docker 는 .gitignore 를 보지 않으므로 별도 관리.)
+
+# VCS / 에디터
+.git
+.github
+.vscode
+.idea
+.DS_Store
+
+# Python
+**/__pycache__
+*.pyc
+*.pyo
+**/.venv
+.venv
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/dist
+**/build
+**/*.egg-info
+
+# LangGraph dev 런타임 아티팩트
+**/.langgraph_api
+
+# Node / Vite — Docker 내부 Stage 1 에서 처음부터 새로 설치·빌드.
+**/node_modules
+user-gateway/frontend/dist
+user-gateway/frontend/tsconfig.tsbuildinfo
+user-gateway/static
+
+# 로컬 전용 시크릿
+.env
+overrides/*.yaml
+!overrides/*.yaml.example
+
+# 문서·인프라는 이미지에 불필요
+docs
+infra
