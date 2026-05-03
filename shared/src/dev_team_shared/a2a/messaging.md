@@ -36,8 +36,10 @@ ID 가 부여되고, `state` 가 lifecycle 을 따라 변하며 (§4 참조), `h
 
 > 비유: Message 가 손님의 **주문서**, Task 가 주방의 **작업 티켓**. 주문서는 한 장 받고 끝, 티켓은 "접수 → 조리 → 완료" 처럼 상태가 변한다.
 
-**`contextId`** — 같은 대화 묶음.
-같은 `contextId` 를 공유하는 여러 Task = 한 다중 turn 대화. 우리 구현은 이를 **LangGraph 의 `thread_id` 로 매핑** 해 체크포인터(Postgres) 가 대화별 state 를 영속화한다 — `graph_handlers/send_message.py` 의 `graph.ainvoke(..., config={"configurable": {"thread_id": ctx.context_id}})` 부분.
+**`contextId`** — **한 에이전트 boundary 안의** 다중 turn 대화 묶음.
+같은 `contextId` 를 공유하는 여러 Task = 한 대화. 우리 구현은 이를 **LangGraph 의 `thread_id` 로 매핑** 해 체크포인터(Postgres) 가 대화별 state 를 영속화한다 — `graph_handlers/send_message.py` 의 `graph.ainvoke(..., config={"configurable": {"thread_id": ctx.context_id}})` 부분.
+
+⚠️ `contextId` 는 **에이전트 쌍 사이의 conversation 식별자**이지 시스템 전체 trace 식별자가 아니다. UG ↔ Primary 의 contextId 와 Primary ↔ Engineer 의 contextId 는 다른 값이어야 한다 (각각 다른 두 당사자의 대화). 시스템 전체를 묶어 추적하려면 **`traceId`** (§5.x) 를 쓴다.
 
 ---
 
@@ -183,23 +185,46 @@ A2A spec 의 불변식: **`SendMessage` / `SendStreamingMessage` 한 호출 = `T
 
 ### 위임은 별도 호출 → 트리
 
-Primary 가 다른 에이전트에게 일을 넘기는 건 **새로운 A2A 호출** 이고 그 호출은 그 호출대로 자기 Task 를 가진다:
+Primary 가 다른 에이전트에게 일을 넘기는 건 **새로운 A2A 호출** 이고 그 호출은 그 호출대로 **자기 Task + 자기 contextId** 를 가진다:
 
 ```mermaid
 sequenceDiagram
-    UG->>Primary: SendMessage("X 해줘")
-    Note over Primary: Task_A (Primary 입장)
-    Primary->>Engineer: SendMessage("이 모듈 구현해")
-    Note over Engineer: Task_B (Engineer 입장)
+    UG->>Primary: SendMessage(contextId=X)<br/>X-A2A-Trace-Id: T
+    Note over Primary: Task_A (contextId=X)
+    Primary->>Engineer: SendMessage(contextId=Y)<br/>X-A2A-Trace-Id: T (forward)
+    Note over Engineer: Task_B (contextId=Y, 별개 대화)
     Engineer-->>Primary: Task_B(COMPLETED)
     Primary-->>UG: Task_A(COMPLETED)
 ```
 
 각 호출 경계에서 **1:1** 이고, 트리는 그 노드들이 모인 결과. `client.py:A2AClient` 가 위임 호출자 역할.
 
+**핵심 — `contextId` 는 forward 하지 않는다**: UG ↔ Primary 의 `X` 와 Primary ↔ Engineer 의 `Y` 는 다른 값. 각 에이전트 boundary 가 자기 대화 namespace 를 가져 체크포인터 thread 가 격리된다. 시스템 전체 추적은 별도의 **`traceId`** 가 책임진다 (§5.x).
+
+### 5.x. `traceId` — 시스템 전체 추적
+
+`contextId` 가 boundary 안의 대화라면, `traceId` 는 boundary 를 **가로지르는** 추적 ID. UG 에서 시작한 한 사용자 요청이 Primary → Engineer → QA 까지 흐를 때 같은 traceId 가 따라다녀 **한 trace 로 묶여 로그 추적이 가능**.
+
+규약 (`tracing.py:TRACE_ID_HEADER`):
+
+| 항목 | 값 |
+|---|---|
+| Wire 위치 | HTTP 헤더 `X-A2A-Trace-Id` |
+| 부재 시 | 서버 (`router.py`) 가 새 UUID 발급 → `request.state.trace_id` 에 보관 |
+| 위임 시 forward | 위임자가 받은 traceId 를 `A2AClient.send_message(..., trace_id=...)` 인자로 그대로 forward |
+| 로그 | `sse_session.start/cancel/end` 모든 로그에 `trace_id=...` 포함 (`session.py:log_session`) |
+
+코드 매핑:
+
+- 서버 수신 — `router.py` 가 헤더 읽음 → `request.state.trace_id` 보관
+- 핸들러 — `ChatContext.create()` 가 자동으로 읽어 `ctx.trace_id` 에 저장
+- 클라이언트 송신 — `A2AClient(trace_id=...)` (생성자 default) 또는 메서드 인자 `send_message(trace_id=...)` (per-call override)
+
+추후 OpenTelemetry `traceparent` 헤더 도입 시 `tracing.py` 가 두 헤더를 모두 인식하도록 확장하면 된다.
+
 ### `contextId` 로 묶이는 다중 turn
 
-같은 `contextId` 의 SendMessage 를 N 번 부르면 → Task 가 N 개 누적되며 같은 LangGraph thread 위에서 history 가 이어진다. "한 발화당 Task 1개" 가 누적되어 "한 대화" 를 이룬다.
+같은 `contextId` 의 SendMessage 를 N 번 부르면 → Task 가 N 개 누적되며 같은 LangGraph thread 위에서 history 가 이어진다. "한 발화당 Task 1개" 가 누적되어 "한 대화" 를 이룬다 (단일 에이전트 boundary 안에서).
 
 ---
 
