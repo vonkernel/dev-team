@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Sequence
 
 from fastapi import APIRouter, Request
@@ -28,6 +29,7 @@ from dev_team_shared.a2a.jsonrpc import (
     rpc_error_response,
 )
 from dev_team_shared.a2a.server.handler import MethodHandler
+from dev_team_shared.a2a.tracing import TRACE_ID_HEADER
 
 
 def make_a2a_router(
@@ -68,6 +70,12 @@ def make_a2a_router(
 
     @router.post("/a2a/{aid}")
     async def a2a_rpc(aid: str, request: Request):
+        # trace_id: 클라이언트가 보낸 헤더가 우선, 없으면 서버가 발급.
+        # 핸들러는 request.state.trace_id 로 lookup (per-request 데이터).
+        request.state.trace_id = (
+            request.headers.get(TRACE_ID_HEADER) or str(uuid.uuid4())
+        )
+
         try:
             body = await request.json()
         except Exception as exc:
