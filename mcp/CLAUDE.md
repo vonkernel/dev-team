@@ -154,21 +154,24 @@ if __name__ == "__main__":
     main()
 ```
 
-### 1.5. 5 op 표준 도구 면
+### 1.5. 표준 도구 면 — 6 op (create + update 분리)
 
-CRUD-able entity 마다 동일한 5 op:
+CRUD-able entity 마다 동일한 6 op. **create / update 는 분리** (Pydantic 타입이 서로 달라 — Create 는 required 필드, Update 는 all-optional patch). 단순한 upsert 로 합치면 typed schema 가 모호해져 §1.3.1 의 정신과 맞지 않음.
 
-| 도구 | 시그니처 |
+| 도구 | 시그니처 (Pydantic 직접) |
 |---|---|
-| `<entity>.upsert` | `(doc, id?, expected_version?) → dict` |
-| `<entity>.get` | `(id) → dict \| null` |
-| `<entity>.list` | `(where?, limit, offset, order_by) → list[dict]` |
-| `<entity>.delete` | `(id) → bool` |
-| `<entity>.count` | `(where?) → int` |
+| `<entity>.create` | `(doc: <Entity>Create) → <Entity>Read` |
+| `<entity>.update` | `(id: str, patch: <Entity>Update, expected_version?: int) → <Entity>Read \| None` |
+| `<entity>.get` | `(id: str) → <Entity>Read \| None` |
+| `<entity>.list` | `(where?: dict, limit, offset, order_by) → list[<Entity>Read]` |
+| `<entity>.delete` | `(id: str) → bool` |
+| `<entity>.count` | `(where?: dict) → int` |
 
-추가 query 가 필요하면 collection 별 특수 도구 (예: `wiki_page.get_by_slug`) — 항상 5 op 위에 누적.
+추가 query 가 필요하면 collection 별 특수 도구 (예: `wiki_page.get_by_slug`) — 항상 6 op 위에 누적.
 
-Immutable entity (audit log 류) 는 update / upsert 미노출.
+**Immutable entity** (audit log 류 — 예: `agent_items`) 는 `update` 미노출 → 5 op (create / get / list / delete / count).
+
+`expected_version` 은 `version` 컬럼이 있는 entity 한정 (optimistic locking 필요한 경우).
 
 ---
 
