@@ -96,6 +96,43 @@
   - 이미지 빌드 시 `COPY` 로 컨테이너에 포함. 수정 = 컨테이너 재배포 (자산 변경 = 행동 변경 추적)
   - 사람이 읽는 설계 문서는 `docs/`, AI 에이전트 운영 규약은 `CLAUDE.md`, **에이전트 자체의 prompt 자료는 `resources/`** — 셋 모두 다른 카테고리
 
+## 통신 프로토콜 우선순위
+
+내부 모듈 / 서비스 간 통신 시 어떤 프로토콜을 쓸지 합의. 새 통신 경로 추가 시 본 표에 매핑한 뒤 결정.
+
+| 결 | 프로토콜 | 비고 |
+|---|---|---|
+| 에이전트 ↔ 에이전트 (대화) | **A2A** (`shared/a2a`) | Message / Task / FSM / contextId / traceId. JSON-RPC 2.0 위. |
+| 에이전트·스크립트 ↔ 도구 / 데이터 서비스 | **MCP 우선** (REST 보다) | 도구 catalog / Pydantic 입출력 / 표준 에러 / traceId. streamable HTTP. |
+| 외부 사용자 / 브라우저 ↔ Gateway | HTTP REST | 사용자 facing 표면 (UG `/chat` 등) |
+
+### 결정 가이드
+
+새 서비스 / 통신 경로가 생길 때:
+
+1. **사용자 / 브라우저가 직접 부르는가?** → REST (Gateway 가 받아 내부에선 A2A / MCP 로 분기)
+2. **상대가 LLM 에이전트 자기 자신인가?** → A2A (의도가 *대화*)
+3. **상대가 도구 / 데이터 서비스인가? (LLM 이 호출할 수 있어야 하나?)** → **MCP** (REST 두 번 안 만든다)
+4. **외부 SaaS 호출?** → 그쪽이 노출하는 프로토콜. 우리가 그 위에 MCP 어댑터로 감쌈 (예: GitHub API → IssueTracker MCP)
+
+원칙: **REST 와 MCP 양쪽을 평행 노출 금지**. 도구 / 데이터 서비스는 MCP 한 채널. 사용자 facing 만 REST. LLM 이 아닌 클라이언트 (CHR 등) 도 MCP 사용 — 일관성 우선.
+
+## 에이전트 명명 약어
+
+docs / commit / 이슈 본문 / 채팅에서 일관 사용. 새 에이전트 추가 시 본 표에 등록.
+
+| 에이전트 | 약어 | 도입 |
+|---|---|---|
+| Primary | **P** | M2 (구현됨) |
+| User Gateway | **UG** | M2 (구현됨) |
+| Librarian | **L** | M3 (#38) |
+| Chronicler | **CHR** | M3 (#34) |
+| Architect | **A** | M4 (#45) |
+| Engineer | **ENG** | M5+ |
+| QA | **QA** | M5+ |
+
+긴 이름 (`primary` / `chronicler` 등) 도 코드 / 식별자에선 여전히 사용. 약어는 자유 산문 (docs / commit / 이슈 본문 / 채팅) 한정.
+
 ## 포트 컨벤션
 
 호스트 노출 포트의 의미적 대역. 새 컨테이너 추가 시 따른다.

@@ -68,19 +68,67 @@ mcp = FastMCP(
 
 - **module-level `@mcp.tool()` 데코레이터** — 함수가 `ctx: Context` 를 첫 인자로 받음
 - `tools/__init__.py` 가 모든 collection 모듈을 side-effect import → 등록 트리거
+- **파라미터 / 반환을 Pydantic 모델로 직접 사용** (§1.3.1 참조)
 
 ```python
 # tools/<entity>.py
 from mcp.server.fastmcp import Context
 from <name>_mcp.mcp_instance import AppContext, mcp
+from <name>_mcp.schemas.<entity> import <Entity>Create, <Entity>Read
 
 def _ctx(ctx: Context) -> AppContext:
     return ctx.request_context.lifespan_context  # type: ignore[return-value]
 
 @mcp.tool(name="<entity>.upsert", description="...")
-async def upsert(ctx: Context, doc: dict[str, Any]) -> dict[str, Any]:
-    repo = _ctx(ctx).<entity>
-    return (await repo.create(<Entity>Create.model_validate(doc))).model_dump(mode="json")
+async def upsert(ctx: Context, doc: <Entity>Create) -> <Entity>Read:
+    return await _ctx(ctx).<entity>.create(doc)
+```
+
+### 1.3.1. Pydantic 파라미터 / 반환 — 표준 (필수)
+
+**도구 함수의 파라미터 / 반환은 Pydantic 모델 직접 사용.** FastMCP 가 경계에서 자동 검증 + JSON schema 생성. `model_validate` / `model_dump` 의 수동 호출 금지.
+
+| 측면 | 권장 ✅ | 비권장 ❌ |
+|---|---|---|
+| 파라미터 | `doc: <Entity>Create` | `doc: dict[str, Any]` + 함수 안 `model_validate` |
+| 반환 | `<Entity>Read` / `list[<Entity>Read>]` / `<Entity>Read \| None` | `dict[str, Any]` + `model_dump(mode="json")` |
+| 검증 실패 | FastMCP 가 자동으로 ValidationError → MCP 표준 에러 매핑 | 함수 안 try/except 로 수동 변환 |
+| 도구 schema (`list_tools()`) | 필드별 타입 / 제약 정밀 노출 — LLM 클라이언트가 의미 파악 | `object` 로 노출 — 불투명 |
+
+#### `dict[str, Any]` 가 정당한 경우
+
+오직 **명시적 free-form** 데이터:
+- `metadata` JSONB 컬럼 (스키마리스가 의도)
+- `external_refs` (어댑터별 임의 구조)
+- `structured` (page_type 마다 다른 형태)
+
+이 필드들은 *Pydantic 모델 안에서 `dict[str, Any]` 타입으로* 두지, 도구 파라미터 자체를 dict 로 두지 말 것.
+
+#### Optional / Update 패턴
+
+`Update` 모델은 모든 필드를 `Optional` 로 두고 `model_dump(exclude_unset=True)` 로 patch (repository 안에서 처리). 도구 시그니처에는 `Update` 모델 그대로:
+
+```python
+@mcp.tool(name="<entity>.update")
+async def update(ctx: Context, id: str, patch: <Entity>Update) -> <Entity>Read | None:
+    return await _ctx(ctx).<entity>.update(UUID(id), patch)
+```
+
+#### 예외 — 동적 query 파라미터
+
+`list` 도구의 `where` filter 같은 자유로운 등호 매칭은 `dict[str, Any]` 가 자연스러움 (모든 컬럼이 매칭 대상). 다만 **함수 안에서 화이트리스트 / SQL injection 방어 필수** (repository 가 처리).
+
+```python
+@mcp.tool(name="<entity>.list")
+async def list_(
+    ctx: Context,
+    where: dict[str, Any] | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    order_by: str = "created_at DESC",
+) -> list[<Entity>Read]:
+    flt = ListFilter(where=where, limit=limit, offset=offset, order_by=order_by)
+    return await _ctx(ctx).<entity>.list(flt)
 ```
 
 ```python
@@ -106,21 +154,24 @@ if __name__ == "__main__":
     main()
 ```
 
-### 1.5. 5 op 표준 도구 면
+### 1.5. 표준 도구 면 — 6 op (create + update 분리)
 
-CRUD-able entity 마다 동일한 5 op:
+CRUD-able entity 마다 동일한 6 op. **create / update 는 분리** (Pydantic 타입이 서로 달라 — Create 는 required 필드, Update 는 all-optional patch). 단순한 upsert 로 합치면 typed schema 가 모호해져 §1.3.1 의 정신과 맞지 않음.
 
-| 도구 | 시그니처 |
+| 도구 | 시그니처 (Pydantic 직접) |
 |---|---|
-| `<entity>.upsert` | `(doc, id?, expected_version?) → dict` |
-| `<entity>.get` | `(id) → dict \| null` |
-| `<entity>.list` | `(where?, limit, offset, order_by) → list[dict]` |
-| `<entity>.delete` | `(id) → bool` |
-| `<entity>.count` | `(where?) → int` |
+| `<entity>.create` | `(doc: <Entity>Create) → <Entity>Read` |
+| `<entity>.update` | `(id: str, patch: <Entity>Update, expected_version?: int) → <Entity>Read \| None` |
+| `<entity>.get` | `(id: str) → <Entity>Read \| None` |
+| `<entity>.list` | `(where?: dict, limit, offset, order_by) → list[<Entity>Read]` |
+| `<entity>.delete` | `(id: str) → bool` |
+| `<entity>.count` | `(where?: dict) → int` |
 
-추가 query 가 필요하면 collection 별 특수 도구 (예: `wiki_page.get_by_slug`) — 항상 5 op 위에 누적.
+추가 query 가 필요하면 collection 별 특수 도구 (예: `wiki_page.get_by_slug`) — 항상 6 op 위에 누적.
 
-Immutable entity (audit log 류) 는 update / upsert 미노출.
+**Immutable entity** (audit log 류 — 예: `agent_items`) 는 `update` 미노출 → 5 op (create / get / list / delete / count).
+
+`expected_version` 은 `version` 컬럼이 있는 entity 한정 (optimistic locking 필요한 경우).
 
 ---
 
