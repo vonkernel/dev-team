@@ -22,6 +22,10 @@ dependencies = [
   # Config / 검증
   "pydantic>=2.13.3",
   "pyyaml>=6.0.3",
+  # Valkey / Redis client — event_bus publish + CHR consumer 가 사용
+  "redis>=7.4.0",
+  # MCP 클라이언트 — shared/mcp_client 가 streamable HTTP wrapper. CHR / L 등 공유.
+  "mcp>=1.27.0",
 ]
 
 [project.optional-dependencies]
