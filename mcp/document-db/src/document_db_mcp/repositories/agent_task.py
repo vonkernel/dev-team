@@ -8,7 +8,7 @@ from uuid import UUID
 import asyncpg
 
 from document_db_mcp.repositories.base import AbstractRepository
-from document_db_mcp.schemas.agent_task import (
+from dev_team_shared.document_db.schemas.agent_task import (
     AgentTaskCreate,
     AgentTaskRead,
     AgentTaskUpdate,

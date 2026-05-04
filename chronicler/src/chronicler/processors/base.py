@@ -2,16 +2,18 @@
 
 새 type 추가 시 본 ABC 를 상속한 concrete 를 작성하고 `processors/__init__.py`
 의 `ALL_PROCESSORS` 에 등록만 하면 됨. handler.py / consumer.py 본문 수정 불필요.
+
+Processor 는 typed `DocumentDbClient` 만 의존. wire-level (도구명 / dict / JSON
+parse) 은 client 안에 격리되어 본 ABC 외부로 새지 않음.
 """
 
 from __future__ import annotations
 
-import json
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar
+from typing import ClassVar
 
+from dev_team_shared.document_db import DocumentDbClient
 from dev_team_shared.event_bus.events import A2AEvent
-from dev_team_shared.mcp_client import StreamableMCPClient
 
 
 class EventProcessor(ABC):
@@ -24,31 +26,11 @@ class EventProcessor(ABC):
     event_type: ClassVar[type[A2AEvent]]
 
     @abstractmethod
-    async def process(self, event: A2AEvent, mcp: StreamableMCPClient) -> None:
-        """이벤트 1건을 MCP 호출로 영속화.
+    async def process(self, event: A2AEvent, db: DocumentDbClient) -> None:
+        """이벤트 1건을 typed Document DB client 호출로 영속화.
 
         실패 시 raise — consumer 가 PEL 에 남겨 재시도 처리.
         """
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  공용 헬퍼 — 모든 processor 가 사용
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-async def call_tool(mcp: StreamableMCPClient, name: str, args: dict[str, Any]) -> Any:
-    """MCP 도구 호출 + 응답 JSON parse.
-
-    FastMCP 의 응답 — content[0].text 가 JSON 직렬. None / scalar 도 JSON 가능.
-    """
-    result = await mcp.call_tool(name, args)
-    if not result.content:
-        return None
-    text = result.content[0].text
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        return text
-
-
-__all__ = ["EventProcessor", "call_tool"]
+__all__ = ["EventProcessor"]

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import logging
 from typing import ClassVar
-from uuid import UUID
 
+from dev_team_shared.document_db import (
+    AgentSessionCreate,
+    AgentTaskCreate,
+    DocumentDbClient,
+)
 from dev_team_shared.event_bus.events import A2AEvent, SessionStartEvent
-from dev_team_shared.mcp_client import StreamableMCPClient
 
-from chronicler.processors.base import EventProcessor, call_tool
+from chronicler.processors.base import EventProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +22,12 @@ class SessionStartProcessor(EventProcessor):
 
     event_type: ClassVar[type[A2AEvent]] = SessionStartEvent
 
-    async def process(self, event: A2AEvent, mcp: StreamableMCPClient) -> None:
+    async def process(self, event: A2AEvent, db: DocumentDbClient) -> None:
         assert isinstance(event, SessionStartEvent)
+
         # 1) 기존 session 있으면 skip (idempotent)
-        existing = await call_tool(
-            mcp, "agent_session.find_by_context", {"context_id": event.context_id},
-        )
-        if existing:
+        existing = await db.agent_session_find_by_context(event.context_id)
+        if existing is not None:
             logger.debug(
                 "session.start skip — existing session for context_id=%s",
                 event.context_id,
@@ -36,35 +38,27 @@ class SessionStartProcessor(EventProcessor):
         agent_task_id = event.agent_task_id
         if agent_task_id is None:
             ts = event.timestamp.isoformat(timespec="seconds")
-            task = await call_tool(
-                mcp,
-                "agent_task.create",
-                {"doc": {
-                    "title": f"{event.initiator} ↔ {event.counterpart} @ {ts}",
-                    "owner_agent": event.counterpart,
-                    "metadata": {"created_by": "chronicler-fallback"},
-                }},
-            )
-            agent_task_id = UUID(task["id"])
+            task = await db.agent_task_create(AgentTaskCreate(
+                title=f"{event.initiator} ↔ {event.counterpart} @ {ts}",
+                owner_agent=event.counterpart,
+                metadata={"created_by": "chronicler-fallback"},
+            ))
+            agent_task_id = task.id
             logger.info(
                 "session.start fallback task created task_id=%s context_id=%s",
                 agent_task_id, event.context_id,
             )
 
         # 3) session 생성
-        await call_tool(
-            mcp,
-            "agent_session.create",
-            {"doc": {
-                "agent_task_id": str(agent_task_id),
-                "initiator": event.initiator,
-                "counterpart": event.counterpart,
-                "context_id": event.context_id,
-                "trace_id": event.trace_id,
-                "topic": event.topic,
-                "metadata": event.metadata,
-            }},
-        )
+        await db.agent_session_create(AgentSessionCreate(
+            agent_task_id=agent_task_id,
+            initiator=event.initiator,
+            counterpart=event.counterpart,
+            context_id=event.context_id,
+            trace_id=event.trace_id,
+            topic=event.topic,
+            metadata=event.metadata,
+        ))
 
 
 __all__ = ["SessionStartProcessor"]

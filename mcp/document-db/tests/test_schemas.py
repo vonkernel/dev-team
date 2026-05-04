@@ -7,7 +7,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from document_db_mcp.schemas import (
+from dev_team_shared.document_db.schemas import (
     AgentItemCreate,
     AgentSessionCreate,
     AgentTaskCreate,

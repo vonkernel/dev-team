@@ -5,25 +5,26 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from dev_team_shared.document_db.schemas.issue import IssueCreate, IssueRead, IssueUpdate
+from dev_team_shared.document_db.tool_names import IssueTools
 from mcp.server.fastmcp import Context
 
 from document_db_mcp.mcp_instance import AppContext, mcp
 from document_db_mcp.repositories.base import ListFilter
 from document_db_mcp.repositories.issue import IssueOptimisticLockError
-from document_db_mcp.schemas.issue import IssueCreate, IssueRead, IssueUpdate
 
 
 def _ctx(ctx: Context) -> AppContext:
     return ctx.request_context.lifespan_context  # type: ignore[return-value]
 
 
-@mcp.tool(name="issue.create", description="Create a new issue.")
+@mcp.tool(name=IssueTools.CREATE, description="Create a new issue.")
 async def create(ctx: Context, doc: IssueCreate) -> IssueRead:
     return await _ctx(ctx).issue.create(doc)
 
 
 @mcp.tool(
-    name="issue.update",
+    name=IssueTools.UPDATE,
     description="Patch update an issue. expected_version for optimistic locking.",
 )
 async def update(
@@ -40,12 +41,12 @@ async def update(
         raise RuntimeError(str(e)) from e
 
 
-@mcp.tool(name="issue.get")
+@mcp.tool(name=IssueTools.GET)
 async def get(ctx: Context, id: str) -> IssueRead | None:
     return await _ctx(ctx).issue.get(UUID(id))
 
 
-@mcp.tool(name="issue.list")
+@mcp.tool(name=IssueTools.LIST)
 async def list_(
     ctx: Context,
     where: dict[str, Any] | None = None,
@@ -57,11 +58,11 @@ async def list_(
     return await _ctx(ctx).issue.list(flt)
 
 
-@mcp.tool(name="issue.delete")
+@mcp.tool(name=IssueTools.DELETE)
 async def delete(ctx: Context, id: str) -> bool:
     return await _ctx(ctx).issue.delete(UUID(id))
 
 
-@mcp.tool(name="issue.count")
+@mcp.tool(name=IssueTools.COUNT)
 async def count(ctx: Context, where: dict[str, Any] | None = None) -> int:
     return await _ctx(ctx).issue.count(where)

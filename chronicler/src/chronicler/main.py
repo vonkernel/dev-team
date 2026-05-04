@@ -11,6 +11,7 @@ import logging
 import signal
 
 import redis.asyncio as redis
+from dev_team_shared.document_db import DocumentDbClient
 from dev_team_shared.mcp_client import StreamableMCPClient
 
 from chronicler.config import Settings
@@ -46,9 +47,10 @@ async def _amain() -> None:
     # Consumer Group 보장
     await ensure_consumer_group(valkey, group=settings.consumer_group)
 
-    # Document DB MCP 클라이언트 + EventHandler (processors 주입)
+    # Document DB MCP 클라이언트 → DocumentDbClient (typed) → EventHandler 주입
     mcp = await StreamableMCPClient.connect(settings.document_db_mcp_url)
-    handler = EventHandler(ALL_PROCESSORS, mcp)
+    db = DocumentDbClient(mcp)
+    handler = EventHandler(ALL_PROCESSORS, db)
 
     # graceful shutdown
     stop = asyncio.Event()

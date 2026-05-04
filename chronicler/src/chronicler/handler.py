@@ -12,8 +12,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 
+from dev_team_shared.document_db import DocumentDbClient
 from dev_team_shared.event_bus.events import A2AEvent
-from dev_team_shared.mcp_client import StreamableMCPClient
 
 from chronicler.processors.base import EventProcessor
 
@@ -29,9 +29,9 @@ class EventHandler:
     def __init__(
         self,
         processors: Iterable[EventProcessor],
-        mcp: StreamableMCPClient,
+        db: DocumentDbClient,
     ) -> None:
-        self._mcp = mcp
+        self._db = db
         self._registry: dict[type[A2AEvent], EventProcessor] = {}
         for p in processors:
             if p.event_type in self._registry:
@@ -55,7 +55,7 @@ class EventHandler:
                 type(event).__name__,
             )
             return
-        await processor.process(event, self._mcp)
+        await processor.process(event, self._db)
 
 
 __all__ = ["EventHandler"]

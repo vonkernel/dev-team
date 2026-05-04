@@ -5,39 +5,40 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from mcp.server.fastmcp import Context
-
-from document_db_mcp.mcp_instance import AppContext, mcp
-from document_db_mcp.repositories.base import ListFilter
-from document_db_mcp.schemas.agent_session import (
+from dev_team_shared.document_db.schemas.agent_session import (
     AgentSessionCreate,
     AgentSessionRead,
     AgentSessionUpdate,
 )
+from dev_team_shared.document_db.tool_names import AgentSessionTools
+from mcp.server.fastmcp import Context
+
+from document_db_mcp.mcp_instance import AppContext, mcp
+from document_db_mcp.repositories.base import ListFilter
 
 
 def _ctx(ctx: Context) -> AppContext:
     return ctx.request_context.lifespan_context  # type: ignore[return-value]
 
 
-@mcp.tool(name="agent_session.create")
+@mcp.tool(name=AgentSessionTools.CREATE)
 async def create(ctx: Context, doc: AgentSessionCreate) -> AgentSessionRead:
     return await _ctx(ctx).agent_session.create(doc)
 
 
-@mcp.tool(name="agent_session.update")
+@mcp.tool(name=AgentSessionTools.UPDATE)
 async def update(
     ctx: Context, id: str, patch: AgentSessionUpdate,
 ) -> AgentSessionRead | None:
     return await _ctx(ctx).agent_session.update(UUID(id), patch)
 
 
-@mcp.tool(name="agent_session.get")
+@mcp.tool(name=AgentSessionTools.GET)
 async def get(ctx: Context, id: str) -> AgentSessionRead | None:
     return await _ctx(ctx).agent_session.get(UUID(id))
 
 
-@mcp.tool(name="agent_session.list")
+@mcp.tool(name=AgentSessionTools.LIST)
 async def list_(
     ctx: Context,
     where: dict[str, Any] | None = None,
@@ -49,21 +50,18 @@ async def list_(
     return await _ctx(ctx).agent_session.list(flt)
 
 
-@mcp.tool(name="agent_session.delete")
+@mcp.tool(name=AgentSessionTools.DELETE)
 async def delete(ctx: Context, id: str) -> bool:
     return await _ctx(ctx).agent_session.delete(UUID(id))
 
 
-@mcp.tool(name="agent_session.count")
+@mcp.tool(name=AgentSessionTools.COUNT)
 async def count(ctx: Context, where: dict[str, Any] | None = None) -> int:
     return await _ctx(ctx).agent_session.count(where)
 
 
-# ---- 특수 도구 ----
-
-
 @mcp.tool(
-    name="agent_session.list_by_task",
+    name=AgentSessionTools.LIST_BY_TASK,
     description="List sessions in a given agent_task, ordered by started_at.",
 )
 async def list_by_task(ctx: Context, agent_task_id: str) -> list[AgentSessionRead]:
@@ -71,7 +69,7 @@ async def list_by_task(ctx: Context, agent_task_id: str) -> list[AgentSessionRea
 
 
 @mcp.tool(
-    name="agent_session.find_by_context",
+    name=AgentSessionTools.FIND_BY_CONTEXT,
     description="Find the most recent session by A2A context_id.",
 )
 async def find_by_context(ctx: Context, context_id: str) -> AgentSessionRead | None:

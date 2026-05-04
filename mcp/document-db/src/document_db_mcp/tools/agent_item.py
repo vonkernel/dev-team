@@ -5,28 +5,29 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from dev_team_shared.document_db.schemas.agent_item import AgentItemCreate, AgentItemRead
+from dev_team_shared.document_db.tool_names import AgentItemTools
 from mcp.server.fastmcp import Context
 
 from document_db_mcp.mcp_instance import AppContext, mcp
 from document_db_mcp.repositories.base import ListFilter
-from document_db_mcp.schemas.agent_item import AgentItemCreate, AgentItemRead
 
 
 def _ctx(ctx: Context) -> AppContext:
     return ctx.request_context.lifespan_context  # type: ignore[return-value]
 
 
-@mcp.tool(name="agent_item.create", description="Append an item (immutable).")
+@mcp.tool(name=AgentItemTools.CREATE, description="Append an item (immutable).")
 async def create(ctx: Context, doc: AgentItemCreate) -> AgentItemRead:
     return await _ctx(ctx).agent_item.create(doc)
 
 
-@mcp.tool(name="agent_item.get")
+@mcp.tool(name=AgentItemTools.GET)
 async def get(ctx: Context, id: str) -> AgentItemRead | None:
     return await _ctx(ctx).agent_item.get(UUID(id))
 
 
-@mcp.tool(name="agent_item.list")
+@mcp.tool(name=AgentItemTools.LIST)
 async def list_(
     ctx: Context,
     where: dict[str, Any] | None = None,
@@ -38,18 +39,18 @@ async def list_(
     return await _ctx(ctx).agent_item.list(flt)
 
 
-@mcp.tool(name="agent_item.delete")
+@mcp.tool(name=AgentItemTools.DELETE)
 async def delete(ctx: Context, id: str) -> bool:
     return await _ctx(ctx).agent_item.delete(UUID(id))
 
 
-@mcp.tool(name="agent_item.count")
+@mcp.tool(name=AgentItemTools.COUNT)
 async def count(ctx: Context, where: dict[str, Any] | None = None) -> int:
     return await _ctx(ctx).agent_item.count(where)
 
 
 @mcp.tool(
-    name="agent_item.list_by_session",
+    name=AgentItemTools.LIST_BY_SESSION,
     description="List items in a session, ordered by created_at.",
 )
 async def list_by_session(ctx: Context, agent_session_id: str) -> list[AgentItemRead]:

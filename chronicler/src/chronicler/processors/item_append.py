@@ -5,10 +5,13 @@ from __future__ import annotations
 import logging
 from typing import ClassVar
 
+from dev_team_shared.document_db import (
+    AgentItemCreate,
+    DocumentDbClient,
+)
 from dev_team_shared.event_bus.events import A2AEvent, ItemAppendEvent, SessionStartEvent
-from dev_team_shared.mcp_client import StreamableMCPClient
 
-from chronicler.processors.base import EventProcessor, call_tool
+from chronicler.processors.base import EventProcessor
 from chronicler.processors.session_start import SessionStartProcessor
 
 logger = logging.getLogger(__name__)
@@ -19,12 +22,10 @@ class ItemAppendProcessor(EventProcessor):
 
     event_type: ClassVar[type[A2AEvent]] = ItemAppendEvent
 
-    async def process(self, event: A2AEvent, mcp: StreamableMCPClient) -> None:
+    async def process(self, event: A2AEvent, db: DocumentDbClient) -> None:
         assert isinstance(event, ItemAppendEvent)
 
-        session = await call_tool(
-            mcp, "agent_session.find_by_context", {"context_id": event.context_id},
-        )
+        session = await db.agent_session_find_by_context(event.context_id)
         if session is None:
             # session.start 누락 — 비정상이지만 데이터 보존 위해 synthesize
             logger.warning(
@@ -40,11 +41,9 @@ class ItemAppendProcessor(EventProcessor):
                     counterpart=event.counterpart,
                     agent_task_id=event.agent_task_id,
                 ),
-                mcp,
+                db,
             )
-            session = await call_tool(
-                mcp, "agent_session.find_by_context", {"context_id": event.context_id},
-            )
+            session = await db.agent_session_find_by_context(event.context_id)
 
         if session is None:
             logger.error(
@@ -55,13 +54,12 @@ class ItemAppendProcessor(EventProcessor):
 
         # message_id 기반 중복 검사 (best effort idempotency)
         if event.message_id:
-            existing = await call_tool(
-                mcp,
-                "agent_item.list",
-                {"where": {
-                    "agent_session_id": session["id"],
+            existing = await db.agent_item_list(
+                where={
+                    "agent_session_id": str(session.id),
                     "message_id": event.message_id,
-                }},
+                },
+                limit=1,
             )
             if existing:
                 logger.debug(
@@ -69,19 +67,15 @@ class ItemAppendProcessor(EventProcessor):
                 )
                 return
 
-        await call_tool(
-            mcp,
-            "agent_item.create",
-            {"doc": {
-                "agent_session_id": session["id"],
-                "prev_item_id": str(event.prev_item_id) if event.prev_item_id else None,
-                "role": event.role,
-                "sender": event.sender,
-                "content": event.content,
-                "message_id": event.message_id,
-                "metadata": event.metadata,
-            }},
-        )
+        await db.agent_item_create(AgentItemCreate(
+            agent_session_id=session.id,
+            prev_item_id=event.prev_item_id,
+            role=event.role,
+            sender=event.sender,
+            content=event.content,
+            message_id=event.message_id,
+            metadata=event.metadata,
+        ))
 
 
 __all__ = ["ItemAppendProcessor"]
