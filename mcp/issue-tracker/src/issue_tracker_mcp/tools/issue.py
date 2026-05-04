@@ -1,0 +1,63 @@
+"""issue.* 도구 — CRUD + transition + close.
+
+mcp/CLAUDE.md §1.3.1 — Pydantic 파라미터 / 반환 직접 사용.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from mcp.server.fastmcp import Context
+
+from issue_tracker_mcp.mcp_instance import AppContext, mcp
+from dev_team_shared.issue_tracker.schemas.issue import IssueCreate, IssueRead, IssueUpdate
+
+
+def _ctx(ctx: Context) -> AppContext:
+    return ctx.request_context.lifespan_context  # type: ignore[return-value]
+
+
+@mcp.tool(name="issue.create", description="이슈 생성 (Project board 자동 등록)")
+async def create_(ctx: Context, doc: IssueCreate) -> IssueRead:
+    return await _ctx(ctx).tracker.create(doc)
+
+
+@mcp.tool(name="issue.update", description="이슈 갱신 (title / body / type)")
+async def update(ctx: Context, ref: str, patch: IssueUpdate) -> IssueRead | None:
+    return await _ctx(ctx).tracker.update(ref, patch)
+
+
+@mcp.tool(name="issue.get", description="이슈 단건 조회")
+async def get(ctx: Context, ref: str) -> IssueRead | None:
+    return await _ctx(ctx).tracker.get(ref)
+
+
+@mcp.tool(name="issue.list", description="이슈 목록 (where 단순 equality 필터)")
+async def list_(
+    ctx: Context,
+    where: dict[str, Any] | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    order_by: str = "created_at desc",
+) -> list[IssueRead]:
+    return await _ctx(ctx).tracker.list(where, limit, offset, order_by)
+
+
+@mcp.tool(name="issue.close", description="이슈 close (lifecycle 종료)")
+async def close(ctx: Context, ref: str) -> bool:
+    return await _ctx(ctx).tracker.close(ref)
+
+
+@mcp.tool(name="issue.count", description="이슈 개수 (where 필터 적용)")
+async def count(ctx: Context, where: dict[str, Any] | None = None) -> int:
+    return await _ctx(ctx).tracker.count(where)
+
+
+@mcp.tool(
+    name="issue.transition",
+    description=(
+        "이슈의 status 전이. status_id 는 status.list 결과의 StatusRef.id."
+    ),
+)
+async def transition(ctx: Context, ref: str, status_id: str) -> None:
+    await _ctx(ctx).tracker.transition(ref, status_id)
