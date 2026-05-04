@@ -26,3 +26,13 @@ async def list_(ctx: Context) -> list[TypeRef]:
 )
 async def create_(ctx: Context, name: str) -> TypeRef:
     return await _ctx(ctx).tracker.create_type(name)
+
+
+@mcp.tool(
+    name="type.delete",
+    description=(
+        "Project board 의 type option 삭제. type_id 미존재 시 False."
+    ),
+)
+async def delete(ctx: Context, type_id: str) -> bool:
+    return await _ctx(ctx).tracker.delete_type(type_id)

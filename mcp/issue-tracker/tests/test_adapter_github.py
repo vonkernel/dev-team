@@ -289,6 +289,96 @@ async def test_list_statuses_raises_when_field_missing(
 
 
 @respx.mock
+async def test_delete_status_removes_option(
+    adapter: GitHubIssueTrackerAdapter,
+) -> None:
+    calls: list[str] = []
+    route = respx.post("https://api.github.com/graphql")
+
+    def _resp(request: httpx.Request) -> httpx.Response:
+        body = request.read().decode()
+        kind = _classify_query(body)
+        calls.append(kind)
+        if kind == "project_id":
+            return httpx.Response(200, json=_project_id_response())
+        if kind == "list_all_fields":
+            return httpx.Response(200, json=_all_fields_response())
+        if kind == "field_options":
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "node": {
+                            "options": [
+                                {"id": BACKLOG_ID, "name": "Backlog"},
+                                {"id": READY_ID, "name": "Ready"},
+                            ],
+                        },
+                    },
+                },
+            )
+        if kind == "update_field_options":
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "updateProjectV2Field": {
+                            "projectV2Field": {"id": STATUS_FIELD_ID},
+                        },
+                    },
+                },
+            )
+        raise AssertionError(f"unexpected: {kind}")
+
+    route.side_effect = _resp
+    assert await adapter.delete_status(BACKLOG_ID) is True
+    assert "update_field_options" in calls
+
+
+@respx.mock
+async def test_delete_status_returns_false_when_unknown(
+    adapter: GitHubIssueTrackerAdapter,
+) -> None:
+    route = respx.post("https://api.github.com/graphql")
+
+    def _resp(request: httpx.Request) -> httpx.Response:
+        body = request.read().decode()
+        kind = _classify_query(body)
+        if kind == "project_id":
+            return httpx.Response(200, json=_project_id_response())
+        if kind == "list_all_fields":
+            return httpx.Response(200, json=_all_fields_response())
+        if kind == "field_options":
+            return httpx.Response(
+                200,
+                json={"data": {"node": {"options": [{"id": BACKLOG_ID, "name": "Backlog"}]}}},
+            )
+        raise AssertionError(f"unexpected: {kind}")
+
+    route.side_effect = _resp
+    assert await adapter.delete_status("nope") is False
+
+
+@respx.mock
+async def test_delete_field_calls_graphql_mutation(
+    adapter: GitHubIssueTrackerAdapter,
+) -> None:
+    respx.post("https://api.github.com/graphql").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": {
+                    "deleteProjectV2Field": {
+                        "projectV2Field": {"id": "removed"},
+                    },
+                },
+            },
+        ),
+    )
+    assert await adapter.delete_field("anyid") is True
+
+
+@respx.mock
 async def test_create_status_idempotent_on_existing_name(
     adapter: GitHubIssueTrackerAdapter,
 ) -> None:
@@ -355,6 +445,55 @@ async def test_close_returns_false_on_404(
         "https://api.github.com/repos/acme/repo/issues/999",
     ).mock(return_value=httpx.Response(404, json={"message": "not found"}))
     assert await adapter.close("999") is False
+
+
+@respx.mock
+async def test_delete_issue_uses_graphql_mutation(
+    adapter: GitHubIssueTrackerAdapter,
+) -> None:
+    # 1. REST GET 으로 node_id 조회
+    respx.get(
+        "https://api.github.com/repos/acme/repo/issues/42",
+    ).mock(return_value=httpx.Response(200, json=_rest_issue()))
+    # 2. GraphQL deleteIssue mutation
+    respx.post("https://api.github.com/graphql").mock(
+        return_value=httpx.Response(
+            200,
+            json={"data": {"deleteIssue": {"repository": {"id": "R_x"}}}},
+        ),
+    )
+    assert await adapter.delete("42") is True
+
+
+@respx.mock
+async def test_delete_issue_returns_false_on_404(
+    adapter: GitHubIssueTrackerAdapter,
+) -> None:
+    respx.get(
+        "https://api.github.com/repos/acme/repo/issues/999",
+    ).mock(return_value=httpx.Response(404, json={"message": "not found"}))
+    assert await adapter.delete("999") is False
+
+
+@respx.mock
+async def test_delete_issue_translates_permission_error(
+    adapter: GitHubIssueTrackerAdapter,
+) -> None:
+    """admin 권한 부족 시 helpful RuntimeError."""
+    respx.get(
+        "https://api.github.com/repos/acme/repo/issues/42",
+    ).mock(return_value=httpx.Response(200, json=_rest_issue()))
+    respx.post("https://api.github.com/graphql").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": None,
+                "errors": [{"message": "viewer does not have permission to delete this issue"}],
+            },
+        ),
+    )
+    with pytest.raises(RuntimeError, match="repo admin permission"):
+        await adapter.delete("42")
 
 
 @respx.mock

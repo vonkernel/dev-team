@@ -36,3 +36,14 @@ async def list_(ctx: Context) -> list[FieldRef]:
 )
 async def create_(ctx: Context, name: str, kind: str = "single_select") -> FieldRef:
     return await _ctx(ctx).tracker.create_field(name, kind)
+
+
+@mcp.tool(
+    name="field.delete",
+    description=(
+        "Project board 의 field 영구 삭제. board default field (Title 등) 는 "
+        "GitHub 이 거부할 수 있음. 미존재 시 False."
+    ),
+)
+async def delete(ctx: Context, field_id: str) -> bool:
+    return await _ctx(ctx).tracker.delete_field(field_id)

@@ -67,12 +67,14 @@ PRD 분해 후:
 다른 에이전트 (A / ENG / QA) 도 P 의 단독 창구를 통해 transition 요청 — A 가
 "X 작업 시작" 라고 P 에게 보고하면 P 가 transition 호출.
 
-## 4. 도구 카탈로그 (13 op)
+## 4. 도구 카탈로그 (17 op)
+
+### 운영 (일상)
 
 | 도구 | 용도 | 호출 시점 |
 |---|---|---|
-| `field.list` | board 의 field 구조 (Status / Type 등) | 프로젝트 시작 시 1회 |
-| `field.create` | board 에 field 추가 (Status / Type 부재 시) | 프로젝트 첫 setup |
+| `field.list` | board 의 field 구조 | 프로젝트 시작 시 1회 |
+| `field.create` | board 에 field 추가 | 프로젝트 첫 setup |
 | `status.list` | board 의 현재 status 옵션 | 세션 시작 / 변경 의심 시 |
 | `status.create` | board 에 status 추가 | 부족할 때 |
 | `type.list` | 사용 가능 type 옵션 | 세션 시작 / 변경 의심 시 |
@@ -82,8 +84,21 @@ PRD 분해 후:
 | `issue.get` | 단건 조회 | 상태 확인 |
 | `issue.list` | 목록 조회 | 진행 상황 점검 |
 | `issue.transition` | status 전이 | lifecycle 진행 |
-| `issue.close` | 완료 처리 | Done 후 |
+| `issue.close` | 가벼운 lifecycle 종료 | Done 후 |
 | `issue.count` | 개수 조회 | 페이지네이션 / 통계 |
+
+### 정리 / 회복 (드물게)
+
+| 도구 | 용도 | 주의 |
+|---|---|---|
+| `field.delete` | board field 영구 삭제 | board default field 는 GitHub 이 거부 |
+| `status.delete` | status option 제거 | 사용 중 옵션 삭제 시 issue 의 status 가 unset |
+| `type.delete` | type option 제거 | 사용 중 옵션 삭제 시 issue 의 type 이 unset |
+| `issue.delete` | 이슈 영구 삭제 | **repo admin 권한 필수**. 일반 종료엔 `issue.close` |
+
+`close` vs `delete` 선택:
+- 일반 lifecycle 종료 (작업 완료, 취소된 작업 등) → `issue.close`
+- 잘못 만든 이슈 / 테스트용 더미 정리 → `issue.delete` (admin 권한 있을 때만)
 
 ## 5. id 안정성 — list 후 사용
 

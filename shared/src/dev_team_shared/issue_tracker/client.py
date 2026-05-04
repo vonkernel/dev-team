@@ -56,6 +56,9 @@ class IssueTrackerClient:
             FieldTools.CREATE, {"name": name, "kind": kind}, FieldRef,
         )
 
+    async def field_delete(self, field_id: str) -> bool:
+        return await self._call_scalar(FieldTools.DELETE, {"field_id": field_id})
+
     # ──────────────────────────────────────────────────────────────────
     # status — 도구 메타데이터 discover + manage
     # ──────────────────────────────────────────────────────────────────
@@ -66,6 +69,11 @@ class IssueTrackerClient:
     async def status_create(self, name: str) -> StatusRef:
         return await self._call(StatusTools.CREATE, {"name": name}, StatusRef)
 
+    async def status_delete(self, status_id: str) -> bool:
+        return await self._call_scalar(
+            StatusTools.DELETE, {"status_id": status_id},
+        )
+
     # ──────────────────────────────────────────────────────────────────
     # type
     # ──────────────────────────────────────────────────────────────────
@@ -75,6 +83,9 @@ class IssueTrackerClient:
 
     async def type_create(self, name: str) -> TypeRef:
         return await self._call(TypeTools.CREATE, {"name": name}, TypeRef)
+
+    async def type_delete(self, type_id: str) -> bool:
+        return await self._call_scalar(TypeTools.DELETE, {"type_id": type_id})
 
     # ──────────────────────────────────────────────────────────────────
     # issue CRUD + transition + close (7 op)
@@ -119,6 +130,9 @@ class IssueTrackerClient:
 
     async def issue_close(self, ref: str) -> bool:
         return await self._call_scalar(IssueTools.CLOSE, {"ref": ref})
+
+    async def issue_delete(self, ref: str) -> bool:
+        return await self._call_scalar(IssueTools.DELETE, {"ref": ref})
 
     async def issue_count(self, *, where: dict[str, Any] | None = None) -> int:
         args: dict[str, Any] = {} if where is None else {"where": where}

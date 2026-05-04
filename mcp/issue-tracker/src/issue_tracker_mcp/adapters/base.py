@@ -18,7 +18,12 @@ from dev_team_shared.issue_tracker.schemas.refs import FieldRef, StatusRef, Type
 
 
 class IssueTracker(ABC):
-    """외부 이슈 트래커 어댑터 추상 (13 op)."""
+    """외부 이슈 트래커 어댑터 추상 (17 op).
+
+    `close` 와 `delete` 의 의미 차이:
+    - `close(ref)` — 이슈 상태를 closed 로 (보존, 가벼운 종료. lifecycle 정상 진행)
+    - `delete*` — 영구 삭제 (테스트 정리 / 잘못 만든 항목 제거. 일부는 admin 권한 필요)
+    """
 
     # ---- issue CRUD (6 op, mcp/CLAUDE.md §1.5) ----
 
@@ -49,6 +54,11 @@ class IssueTracker(ABC):
         """이슈 close (lifecycle 종료). ref 미존재 시 False."""
 
     @abstractmethod
+    async def delete(self, ref: str) -> bool:
+        """이슈 영구 삭제 (테스트 정리 / 실수 회복). admin 권한 필요할 수 있음.
+        ref 미존재 시 False. 권한 부족이면 RuntimeError."""
+
+    @abstractmethod
     async def count(self, where: dict[str, Any] | None) -> int:
         """개수 조회 (페이지네이션 / 통계)."""
 
@@ -61,6 +71,11 @@ class IssueTracker(ABC):
     @abstractmethod
     async def create_status(self, name: str) -> StatusRef:
         """도구 안에 새 status 추가. 이름 중복 시 기존 항목 반환 (idempotent)."""
+
+    @abstractmethod
+    async def delete_status(self, status_id: str) -> bool:
+        """status option 삭제. 주의: 사용 중인 option 삭제 시 GitHub 동작은 도구에 위임
+        (보통 해당 issue 들의 status 가 unset 으로 변경). 미존재 시 False."""
 
     @abstractmethod
     async def transition(self, ref: str, status_id: str) -> None:
@@ -76,6 +91,10 @@ class IssueTracker(ABC):
     async def create_type(self, name: str) -> TypeRef:
         """도구 안에 새 type 추가. 이름 중복 시 기존 항목 반환 (idempotent)."""
 
+    @abstractmethod
+    async def delete_type(self, type_id: str) -> bool:
+        """type option 삭제. 미존재 시 False."""
+
     # ---- field — board setup 도구 (PM 워크플로우 자율화) ----
 
     @abstractmethod
@@ -90,6 +109,11 @@ class IssueTracker(ABC):
         single_select 만 의미 있음. 다른 dataType (text / number / date / iteration)
         도 어댑터별로 지원 가능.
         """
+
+    @abstractmethod
+    async def delete_field(self, field_id: str) -> bool:
+        """board field 영구 삭제. board 의 default field (Status / Title 등) 는
+        도구가 거부할 수 있음. 미존재 시 False."""
 
 
 __all__ = ["IssueTracker"]

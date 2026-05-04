@@ -21,7 +21,7 @@
 
 ---
 
-## 2. 도구 면 (13 op)
+## 2. 도구 면 (17 op)
 
 | 도구 | 시그니처 | 비고 |
 |---|---|---|
@@ -29,17 +29,25 @@
 | `issue.update` | `(ref, patch: IssueUpdate) → IssueRead \| None` | title / body / type_id |
 | `issue.get` | `(ref) → IssueRead \| None` | |
 | `issue.list` | `(where?, limit, offset, order_by) → list[IssueRead]` | repo 의 issue (PR 제외) |
-| `issue.close` | `(ref) → bool` | state=closed |
+| `issue.close` | `(ref) → bool` | state=closed (보존) |
+| `issue.delete` | `(ref) → bool` | 영구 삭제. **repo admin 권한 필요** (없으면 RuntimeError) |
 | `issue.count` | `(where?) → int` | search API |
 | `issue.transition` | `(ref, status_id: str) → None` | Project board 의 Status field 갱신 |
 | `status.list` | `() → list[StatusRef]` | board 의 Status field options |
 | `status.create` | `(name: str) → StatusRef` | options 추가 (이름 중복 시 기존) |
-| `type.list` | `() → list[TypeRef]` | board 의 Type field options |
+| `status.delete` | `(status_id: str) → bool` | option 제거 (사용 중 옵션은 issue 의 status unset) |
+| `type.list` | `() → list[TypeRef]` | board 의 Issue Type field options |
 | `type.create` | `(name: str) → TypeRef` | options 추가 |
-| `field.list` | `() → list[FieldRef]` | board 의 모든 field (Status / Type / Priority 등) |
-| `field.create` | `(name, kind="single_select") → FieldRef` | board 에 field 추가 (PM 워크플로우 setup) |
+| `type.delete` | `(type_id: str) → bool` | option 제거 |
+| `field.list` | `() → list[FieldRef]` | board 의 모든 field |
+| `field.create` | `(name, kind="single_select") → FieldRef` | board 에 field 추가 |
+| `field.delete` | `(field_id: str) → bool` | board field 영구 삭제 (default field 는 도구가 거부) |
 
 `StatusRef` / `TypeRef` / `FieldRef` 는 `{id, name, ...}` — `id` 가 후속 호출 식별자.
+
+`close` vs `delete*`:
+- `close(ref)` — 가벼운 lifecycle 종료. 이슈 보존.
+- `delete*` — 영구 삭제 (테스트 정리 / 실수 회복용). issue.delete 만 admin 권한 필요.
 
 ---
 

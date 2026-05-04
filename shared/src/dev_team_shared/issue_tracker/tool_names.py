@@ -13,40 +13,47 @@ from typing import Final
 
 
 class IssueTools:
-    """이슈 CRUD + transition + close (7 op)."""
+    """이슈 CRUD + lifecycle (8 op).
+
+    `close` 는 가벼운 종료 (보존), `delete` 는 영구 삭제 (admin 권한 필요).
+    """
 
     CREATE: Final = "issue.create"
     UPDATE: Final = "issue.update"
     GET: Final = "issue.get"
     LIST: Final = "issue.list"
     CLOSE: Final = "issue.close"
+    DELETE: Final = "issue.delete"
     COUNT: Final = "issue.count"
     TRANSITION: Final = "issue.transition"
 
 
 class StatusTools:
-    """status field discover + manage (2 op)."""
+    """status field discover + manage (3 op)."""
 
     LIST: Final = "status.list"
     CREATE: Final = "status.create"
+    DELETE: Final = "status.delete"
 
 
 class TypeTools:
-    """type field discover + manage (2 op)."""
+    """type field discover + manage (3 op)."""
 
     LIST: Final = "type.list"
     CREATE: Final = "type.create"
+    DELETE: Final = "type.delete"
 
 
 class FieldTools:
-    """board field discover + manage (2 op).
+    """board field discover + manage (3 op).
 
-    P 가 board 에 어떤 field 가 있는지 조회 + 부족하면 직접 추가. PM 워크플
-    로우의 setup 단계 (사람이 board UI 에서 사전 셋업 안 해도 됨).
+    P 가 board 에 어떤 field 가 있는지 조회 + 부족하면 직접 추가 / 정리.
+    PM 워크플로우의 setup 단계.
     """
 
     LIST: Final = "field.list"
     CREATE: Final = "field.create"
+    DELETE: Final = "field.delete"
 
 
 __all__ = ["FieldTools", "IssueTools", "StatusTools", "TypeTools"]

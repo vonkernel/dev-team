@@ -120,8 +120,18 @@ async def main() -> int:
         ok = await client.issue_close(issue.ref)
         print(f"    close ok={ok}")
 
+        # 9. issue.delete (cleanup) — admin 권한 있으면 영구 삭제, 없으면 close 유지.
+        print("\n[9] issue.delete (cleanup, admin only)")
+        try:
+            deleted = await client.issue_delete(issue.ref)
+            print(f"    delete ok={deleted}")
+            cleanup_state = "deleted"
+        except RuntimeError as e:
+            print(f"    skipped (no admin perm): {e}")
+            cleanup_state = "closed"
+
         print("\nALL PASS ✅")
-        print(f"verification issue ref={issue.ref} (closed)")
+        print(f"verification issue ref={issue.ref} ({cleanup_state})")
         return 0
 
 

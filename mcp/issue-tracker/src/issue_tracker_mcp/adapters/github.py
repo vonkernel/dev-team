@@ -210,6 +210,36 @@ class GitHubIssueTrackerAdapter(IssueTracker):
                 return opt
         raise RuntimeError(f"option {name!r} not found after add")
 
+    async def _remove_field_option(self, field_id: str, option_id: str) -> bool:
+        """Single-select field 의 option 삭제. options 배열에서 제외 후 update.
+        option 미존재 시 False, 정상 삭제 시 True."""
+        existing = await self._fetch_field_options(field_id)
+        remaining = [opt for opt in existing if opt.get("id") != option_id]
+        if len(remaining) == len(existing):
+            return False  # option_id 매칭 없음
+
+        new_options = [
+            {"name": opt["name"], "color": _DEFAULT_OPTION_COLOR, "description": ""}
+            for opt in remaining
+        ]
+        # GitHub 이 SINGLE_SELECT 의 빈 options 거부 — 마지막 1개 삭제 시도면 placeholder
+        if not new_options:
+            new_options = [
+                {"name": "_", "color": _DEFAULT_OPTION_COLOR, "description": ""},
+            ]
+
+        mutation = """
+        mutation($field_id: ID!, $options: [ProjectV2SingleSelectFieldOptionInput!]!) {
+          updateProjectV2Field(input: {fieldId: $field_id, singleSelectOptions: $options}) {
+            projectV2Field { ... on ProjectV2SingleSelectField { id } }
+          }
+        }
+        """
+        await graphql(
+            self._http, mutation, {"field_id": field_id, "options": new_options},
+        )
+        return True
+
     # ------------------------------------------------------------------
     # status — list / create / transition
     # ------------------------------------------------------------------
@@ -223,6 +253,10 @@ class GitHubIssueTrackerAdapter(IssueTracker):
         field_id = await self._require_field_id("Status")
         opt = await self._add_field_option(field_id, name)
         return StatusRef(id=opt["id"], name=opt["name"])
+
+    async def delete_status(self, status_id: str) -> bool:
+        field_id = await self._require_field_id("Status")
+        return await self._remove_field_option(field_id, status_id)
 
     async def transition(self, ref: str, status_id: str) -> None:
         project_id = await self._ensure_project_id()
@@ -246,6 +280,10 @@ class GitHubIssueTrackerAdapter(IssueTracker):
         opt = await self._add_field_option(field_id, name)
         return TypeRef(id=opt["id"], name=opt["name"])
 
+    async def delete_type(self, type_id: str) -> bool:
+        field_id = await self._require_field_id("Issue Type")
+        return await self._remove_field_option(field_id, type_id)
+
     # ------------------------------------------------------------------
     # field — board 구조 자체 discover + manage (PM 워크플로우 자율화)
     # ------------------------------------------------------------------
@@ -258,6 +296,25 @@ class GitHubIssueTrackerAdapter(IssueTracker):
             kind = _DATATYPE_TO_KIND.get(datatype, datatype.lower())
             result.append(FieldRef(id=str(n["id"]), name=str(n.get("name") or ""), kind=kind))
         return result
+
+    async def delete_field(self, field_id: str) -> bool:
+        mutation = """
+        mutation($field_id: ID!) {
+          deleteProjectV2Field(input: {fieldId: $field_id}) { projectV2Field {
+            ... on ProjectV2Field { id }
+            ... on ProjectV2SingleSelectField { id }
+            ... on ProjectV2IterationField { id }
+          } }
+        }
+        """
+        try:
+            await graphql(self._http, mutation, {"field_id": field_id})
+        except GitHubGraphQLError as e:
+            msg = " ".join((err.get("message") or "") for err in e.errors).lower()
+            if "not found" in msg or "could not resolve" in msg:
+                return False
+            raise
+        return True
 
     async def create_field(self, name: str, kind: str = "single_select") -> FieldRef:
         datatype = _KIND_TO_DATATYPE.get(kind)
@@ -472,6 +529,39 @@ class GitHubIssueTrackerAdapter(IssueTracker):
         except GitHubAPIError as e:
             if e.status_code == 404:
                 return False
+            raise
+        return True
+
+    async def delete(self, ref: str) -> bool:
+        # GitHub REST 에 issue 삭제 없음 — GraphQL deleteIssue 사용 (admin 권한 필요).
+        # 먼저 REST 로 issue node id 조회.
+        try:
+            issue = await rest_request(
+                self._http,
+                "GET",
+                f"/repos/{self._owner}/{self._repo}/issues/{ref}",
+            )
+        except GitHubAPIError as e:
+            if e.status_code == 404:
+                return False
+            raise
+        node_id = issue.get("node_id")
+        if not node_id:
+            return False
+        mutation = """
+        mutation($issue_id: ID!) {
+          deleteIssue(input: {issueId: $issue_id}) { repository { id } }
+        }
+        """
+        try:
+            await graphql(self._http, mutation, {"issue_id": node_id})
+        except GitHubGraphQLError as e:
+            msg = " ".join((err.get("message") or "") for err in e.errors).lower()
+            if "does not have permission" in msg or "forbidden" in msg:
+                raise RuntimeError(
+                    "issue.delete requires repo admin permission "
+                    "(use issue.close as alternative)",
+                ) from e
             raise
         return True
 

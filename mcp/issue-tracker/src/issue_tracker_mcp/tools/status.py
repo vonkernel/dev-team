@@ -29,3 +29,14 @@ async def list_(ctx: Context) -> list[StatusRef]:
 )
 async def create_(ctx: Context, name: str) -> StatusRef:
     return await _ctx(ctx).tracker.create_status(name)
+
+
+@mcp.tool(
+    name="status.delete",
+    description=(
+        "Project board 의 status option 삭제. status_id 미존재 시 False. "
+        "사용 중인 option 삭제 시 GitHub 동작 (해당 issue 들의 status 가 unset)."
+    ),
+)
+async def delete(ctx: Context, status_id: str) -> bool:
+    return await _ctx(ctx).tracker.delete_status(status_id)

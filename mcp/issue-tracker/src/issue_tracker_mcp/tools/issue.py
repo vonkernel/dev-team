@@ -43,9 +43,21 @@ async def list_(
     return await _ctx(ctx).tracker.list(where, limit, offset, order_by)
 
 
-@mcp.tool(name="issue.close", description="이슈 close (lifecycle 종료)")
+@mcp.tool(name="issue.close", description="이슈 close (lifecycle 종료, 보존)")
 async def close(ctx: Context, ref: str) -> bool:
     return await _ctx(ctx).tracker.close(ref)
+
+
+@mcp.tool(
+    name="issue.delete",
+    description=(
+        "이슈 영구 삭제 (테스트 정리 / 실수 회복용). "
+        "GitHub 의 경우 repo admin 권한 필요 — 권한 없으면 에러. "
+        "일반 lifecycle 종료엔 issue.close 사용."
+    ),
+)
+async def delete(ctx: Context, ref: str) -> bool:
+    return await _ctx(ctx).tracker.delete(ref)
 
 
 @mcp.tool(name="issue.count", description="이슈 개수 (where 필터 적용)")
