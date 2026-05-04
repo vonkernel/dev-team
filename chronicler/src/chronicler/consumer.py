@@ -1,7 +1,10 @@
 """Valkey Streams Consumer 루프.
 
 XREADGROUP → 이벤트 파싱 → 핸들러 호출 → XACK (성공 시).
-실패 시 XACK 안 함 → PEL 의 미처리 메시지로 남아 재시작 시 재처리.
+
+wire `event_type` 문자열 → Python 이벤트 클래스 매핑은 EventHandler 의
+`registered_event_types` 에서 동적 도출 (각 이벤트 클래스의 Literal default 값
+이 wire 표기). 새 이벤트 type 추가 시 본 파일 수정 불필요 (OCP).
 """
 
 from __future__ import annotations
@@ -14,21 +17,36 @@ import redis.asyncio as redis
 from pydantic import ValidationError
 
 from dev_team_shared.event_bus.bus import A2A_EVENTS_STREAM
-from dev_team_shared.event_bus.events import (
-    ItemAppendEvent,
-    SessionEndEvent,
-    SessionStartEvent,
-)
+from dev_team_shared.event_bus.events import A2AEvent
+
 from chronicler.handler import EventHandler
 
 logger = logging.getLogger(__name__)
 
 
-_EVENT_TYPE_MAP = {
-    "session.start": SessionStartEvent,
-    "item.append": ItemAppendEvent,
-    "session.end": SessionEndEvent,
-}
+def _build_event_type_map(
+    event_classes: tuple[type[A2AEvent], ...],
+) -> dict[str, type[A2AEvent]]:
+    """wire `event_type` (Literal default) → Python class.
+
+    각 이벤트 클래스가 `event_type: Literal["..."] = "..."` 필드를 가짐.
+    Pydantic 의 model_fields 에서 default 추출.
+    """
+    out: dict[str, type[A2AEvent]] = {}
+    for cls in event_classes:
+        field = cls.model_fields.get("event_type")
+        if field is None:
+            raise RuntimeError(
+                f"event class {cls.__name__} missing `event_type` field",
+            )
+        wire = field.default
+        if not isinstance(wire, str):
+            raise RuntimeError(
+                f"event class {cls.__name__} `event_type` default is not str: "
+                f"{wire!r}",
+            )
+        out[wire] = cls
+    return out
 
 
 async def ensure_consumer_group(
@@ -60,10 +78,11 @@ async def run_consumer(
 ) -> None:
     """Consumer 루프 — block_ms 단위로 stream poll. stop_event set 되면 종료.
 
-    재시작 시 PEL 처리를 위해 처음에는 ID="0" 으로 (미처리 backlog), 그 후 ">"
-    (새 메시지) 로 전환.
+    재시작 시 PEL 처리를 위해 처음에는 ID="0" (미처리 backlog), 그 후 ">" (새
+    메시지) 로 전환.
     """
-    last_id_for_pel = "0"  # PEL 처리 모드
+    event_type_map = _build_event_type_map(handler.registered_event_types)
+    last_id_for_pel = "0"
     pel_drained = False
 
     while True:
@@ -71,7 +90,6 @@ async def run_consumer(
             logger.info("stop_event set — consumer exiting")
             return
 
-        # PEL 먼저 비운 뒤 신규 메시지로 전환
         read_id = ">" if pel_drained else last_id_for_pel
         try:
             response = await client.xreadgroup(
@@ -87,25 +105,25 @@ async def run_consumer(
             continue
 
         if not response:
-            # PEL 비웠는데 더 이상 응답 없으면 신규 모드로 전환
             if not pel_drained:
                 pel_drained = True
                 logger.info("PEL drained — switching to new-message mode (>)")
             continue
 
-        # response 는 [(stream, [(msg_id, fields), ...])] 형식
         for _stream, messages in response:
             if not messages and not pel_drained:
-                # PEL 비움
                 pel_drained = True
                 continue
             for msg_id, fields in messages:
-                await _process_one(client, handler, msg_id, fields, group=group)
+                await _process_one(
+                    client, handler, event_type_map, msg_id, fields, group=group,
+                )
 
 
 async def _process_one(
     client: redis.Redis,
     handler: EventHandler,
+    event_type_map: dict[str, type[A2AEvent]],
     msg_id: bytes,
     fields: dict[bytes, bytes],
     *,
@@ -113,9 +131,8 @@ async def _process_one(
 ) -> None:
     """메시지 1건 — parse → handle → XACK.
 
-    parse 단계 실패 (필드 누락 / 알 수 없는 type / payload validation) 는 본
-    consumer 가 처리할 수 없는 데이터 → ack-and-skip (PEL 영구 적체 방지).
-    handle 단계 실패만 PEL 에 남겨 재시도.
+    parse 실패 (필드 누락 / unknown type / payload validation) 는 ack-and-skip
+    (PEL 영구 적체 방지). handle 실패만 PEL 에 남겨 재시도.
     """
     # ── parse ────────────────────────────────────────────────────────
     try:
@@ -130,7 +147,7 @@ async def _process_one(
             return
         event_type = event_type_raw.decode("utf-8")
         payload = payload_raw.decode("utf-8")
-        cls = _EVENT_TYPE_MAP.get(event_type)
+        cls = event_type_map.get(event_type)
         if cls is None:
             logger.warning(
                 "unknown event_type=%r msg_id=%s — ack-and-skip",
@@ -139,7 +156,7 @@ async def _process_one(
             await client.xack(A2A_EVENTS_STREAM, group, msg_id)
             return
         try:
-            event = cls.model_validate(json.loads(payload))
+            event: A2AEvent = cls.model_validate(json.loads(payload))
         except (ValidationError, json.JSONDecodeError):
             logger.exception(
                 "invalid event payload msg_id=%s — ack-and-skip", msg_id,

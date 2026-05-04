@@ -16,6 +16,7 @@ from dev_team_shared.mcp_client import StreamableMCPClient
 from chronicler.config import Settings
 from chronicler.consumer import ensure_consumer_group, run_consumer
 from chronicler.handler import EventHandler
+from chronicler.processors import ALL_PROCESSORS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,9 +46,9 @@ async def _amain() -> None:
     # Consumer Group 보장
     await ensure_consumer_group(valkey, group=settings.consumer_group)
 
-    # Document DB MCP 클라이언트
+    # Document DB MCP 클라이언트 + EventHandler (processors 주입)
     mcp = await StreamableMCPClient.connect(settings.document_db_mcp_url)
-    handler = EventHandler(mcp)
+    handler = EventHandler(ALL_PROCESSORS, mcp)
 
     # graceful shutdown
     stop = asyncio.Event()

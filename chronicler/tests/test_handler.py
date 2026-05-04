@@ -1,4 +1,4 @@
-"""EventHandler 단위 테스트 — Document DB MCP 클라이언트 mock."""
+"""EventHandler + Processors 단위 테스트."""
 
 from __future__ import annotations
 
@@ -10,11 +10,17 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from chronicler.handler import EventHandler
+from chronicler.processors import ALL_PROCESSORS, EventProcessor
+from chronicler.processors.session_start import SessionStartProcessor
+from chronicler.processors.item_append import ItemAppendProcessor
+from chronicler.processors.session_end import SessionEndProcessor
 from dev_team_shared.event_bus.events import (
+    A2AEvent,
     ItemAppendEvent,
     SessionEndEvent,
     SessionStartEvent,
 )
+from dev_team_shared.mcp_client import StreamableMCPClient
 
 
 def _mcp_response(payload: Any) -> MagicMock:
@@ -27,23 +33,63 @@ def _mcp_response(payload: Any) -> MagicMock:
     return mock
 
 
-class TestSessionStart:
+def _make_handler(mcp_mock: MagicMock) -> EventHandler:
+    return EventHandler(ALL_PROCESSORS, mcp_mock)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Registry / dispatch (handler.py 자체)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestEventHandlerRegistry:
+    def test_registers_all_default_processors(self) -> None:
+        h = _make_handler(MagicMock())
+        types = h.registered_event_types
+        assert SessionStartEvent in types
+        assert ItemAppendEvent in types
+        assert SessionEndEvent in types
+
+    def test_duplicate_registration_raises(self) -> None:
+        class DupeProc(EventProcessor):
+            event_type = SessionStartEvent
+            async def process(self, event, mcp) -> None: ...
+
+        with pytest.raises(ValueError, match="duplicate"):
+            EventHandler(
+                [SessionStartProcessor(), DupeProc()], MagicMock(),
+            )
+
+    @pytest.mark.asyncio
+    async def test_unknown_event_type_skip(self) -> None:
+        # SessionStartProcessor 만 등록 → SessionEndEvent 는 unknown
+        # handle 은 raise 없이 warn 만
+        h = EventHandler([SessionStartProcessor()], MagicMock())
+        ev = SessionEndEvent(
+            context_id="c", initiator="user", counterpart="primary",
+            reason="completed",
+        )
+        await h.handle(ev)  # 예외 없이 끝나야 함
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  SessionStartProcessor
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestSessionStartProcessor:
     @pytest.mark.asyncio
     async def test_creates_fallback_task_when_missing(self) -> None:
         mcp = MagicMock()
-        # 호출 순서: find_by_context (None) → agent_task.create (task) → agent_session.create (session)
-        responses = [
-            _mcp_response(None),  # find_by_context
-            _mcp_response({"id": str(uuid.uuid4())}),  # agent_task.create
-            _mcp_response({"id": str(uuid.uuid4())}),  # agent_session.create
-        ]
-        mcp.call_tool = AsyncMock(side_effect=responses)
-        handler = EventHandler(mcp)
+        mcp.call_tool = AsyncMock(side_effect=[
+            _mcp_response(None),                           # find_by_context
+            _mcp_response({"id": str(uuid.uuid4())}),      # agent_task.create
+            _mcp_response({"id": str(uuid.uuid4())}),      # agent_session.create
+        ])
+        handler = _make_handler(mcp)
         await handler.handle(SessionStartEvent(
             context_id="ctx-1", initiator="user", counterpart="primary",
         ))
-        # 3 calls: find / task.create / session.create
-        assert mcp.call_tool.call_count == 3
         names = [c.args[0] for c in mcp.call_tool.call_args_list]
         assert names == [
             "agent_session.find_by_context",
@@ -57,11 +103,10 @@ class TestSessionStart:
         mcp.call_tool = AsyncMock(return_value=_mcp_response(
             {"id": str(uuid.uuid4()), "context_id": "ctx-1"},
         ))
-        handler = EventHandler(mcp)
+        handler = _make_handler(mcp)
         await handler.handle(SessionStartEvent(
             context_id="ctx-1", initiator="user", counterpart="primary",
         ))
-        # find_by_context 만 호출되고 끝
         assert mcp.call_tool.call_count == 1
         assert mcp.call_tool.call_args.args[0] == "agent_session.find_by_context"
 
@@ -70,36 +115,39 @@ class TestSessionStart:
         task_id = uuid.uuid4()
         mcp = MagicMock()
         mcp.call_tool = AsyncMock(side_effect=[
-            _mcp_response(None),  # find_by_context
-            _mcp_response({"id": str(uuid.uuid4())}),  # session.create
+            _mcp_response(None),
+            _mcp_response({"id": str(uuid.uuid4())}),
         ])
-        handler = EventHandler(mcp)
+        handler = _make_handler(mcp)
         await handler.handle(SessionStartEvent(
             context_id="ctx-1",
             initiator="user", counterpart="primary",
             agent_task_id=task_id,
         ))
-        # task.create 가 안 불려야 함 (provided id 사용)
         names = [c.args[0] for c in mcp.call_tool.call_args_list]
         assert names == [
             "agent_session.find_by_context",
             "agent_session.create",
         ]
-        # session.create 의 doc.agent_task_id 가 우리가 준 task_id
         session_args = mcp.call_tool.call_args_list[1].args[1]
         assert session_args["doc"]["agent_task_id"] == str(task_id)
 
 
-class TestItemAppend:
+# ─────────────────────────────────────────────────────────────────────────────
+#  ItemAppendProcessor
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestItemAppendProcessor:
     @pytest.mark.asyncio
     async def test_skip_duplicate_message_id(self) -> None:
         sid = str(uuid.uuid4())
         mcp = MagicMock()
         mcp.call_tool = AsyncMock(side_effect=[
-            _mcp_response({"id": sid, "context_id": "c"}),    # find_by_context
+            _mcp_response({"id": sid, "context_id": "c"}),  # find_by_context
             _mcp_response([{"id": str(uuid.uuid4()), "message_id": "m1"}]),  # list — 이미 있음
         ])
-        handler = EventHandler(mcp)
+        handler = _make_handler(mcp)
         await handler.handle(ItemAppendEvent(
             context_id="c", initiator="user", counterpart="primary",
             role="user", sender="user",
@@ -109,21 +157,25 @@ class TestItemAppend:
         assert "agent_item.create" not in names
 
 
-class TestSessionEnd:
+# ─────────────────────────────────────────────────────────────────────────────
+#  SessionEndProcessor
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TestSessionEndProcessor:
     @pytest.mark.asyncio
     async def test_updates_ended_at(self) -> None:
         sid = str(uuid.uuid4())
         mcp = MagicMock()
         mcp.call_tool = AsyncMock(side_effect=[
             _mcp_response({"id": sid, "context_id": "c", "metadata": {}}),
-            _mcp_response({"id": sid}),  # update
+            _mcp_response({"id": sid}),
         ])
-        handler = EventHandler(mcp)
+        handler = _make_handler(mcp)
         await handler.handle(SessionEndEvent(
             context_id="c", initiator="user", counterpart="primary",
             reason="completed", duration_ms=42,
         ))
-        # 두 번째 호출이 agent_session.update
         update_call = mcp.call_tool.call_args_list[1]
         assert update_call.args[0] == "agent_session.update"
         patch = update_call.args[1]["patch"]
