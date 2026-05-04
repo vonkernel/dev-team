@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from typing import ClassVar
 
-from dev_team_shared.document_db import (
+from dev_team_shared.doc_store import (
     AgentItemCreate,
-    DocumentDbClient,
+    DocStoreClient,
 )
 from dev_team_shared.event_bus.events import A2AEvent, ItemAppendEvent, SessionStartEvent
 
@@ -22,7 +22,7 @@ class ItemAppendProcessor(EventProcessor):
 
     event_type: ClassVar[type[A2AEvent]] = ItemAppendEvent
 
-    async def process(self, event: A2AEvent, db: DocumentDbClient) -> None:
+    async def process(self, event: A2AEvent, db: DocStoreClient) -> None:
         assert isinstance(event, ItemAppendEvent)
 
         session = await db.agent_session_find_by_context(event.context_id)

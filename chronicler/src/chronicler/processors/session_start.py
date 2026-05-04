@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 from typing import ClassVar
 
-from dev_team_shared.document_db import (
+from dev_team_shared.doc_store import (
     AgentSessionCreate,
     AgentTaskCreate,
-    DocumentDbClient,
+    DocStoreClient,
 )
 from dev_team_shared.event_bus.events import A2AEvent, SessionStartEvent
 
@@ -22,7 +22,7 @@ class SessionStartProcessor(EventProcessor):
 
     event_type: ClassVar[type[A2AEvent]] = SessionStartEvent
 
-    async def process(self, event: A2AEvent, db: DocumentDbClient) -> None:
+    async def process(self, event: A2AEvent, db: DocStoreClient) -> None:
         assert isinstance(event, SessionStartEvent)
 
         # 1) 기존 session 있으면 skip (idempotent)

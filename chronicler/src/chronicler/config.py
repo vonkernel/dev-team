@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # 인프라 endpoint
     valkey_url: str = "redis://valkey:6379"
-    document_db_mcp_url: str = "http://document-db-mcp:8000/mcp"
+    doc_store_mcp_url: str = "http://doc-store-mcp:8000/mcp"
 
     # Consumer Group / Name (proposal §2.6)
     consumer_group: str = Field(default="chronicler", alias="CHRONICLER_CONSUMER_GROUP")

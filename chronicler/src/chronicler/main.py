@@ -11,7 +11,7 @@ import logging
 import signal
 
 import redis.asyncio as redis
-from dev_team_shared.document_db import DocumentDbClient
+from dev_team_shared.doc_store import DocStoreClient
 from dev_team_shared.mcp_client import StreamableMCPClient
 
 from chronicler.config import Settings
@@ -31,7 +31,7 @@ async def _amain() -> None:
     logger.info(
         "chronicler starting — valkey=%s mcp=%s group=%s consumer=%s",
         settings.valkey_url,
-        settings.document_db_mcp_url,
+        settings.doc_store_mcp_url,
         settings.consumer_group,
         settings.consumer_name,
     )
@@ -47,9 +47,9 @@ async def _amain() -> None:
     # Consumer Group 보장
     await ensure_consumer_group(valkey, group=settings.consumer_group)
 
-    # Document DB MCP 클라이언트 → DocumentDbClient (typed) → EventHandler 주입
-    mcp = await StreamableMCPClient.connect(settings.document_db_mcp_url)
-    db = DocumentDbClient(mcp)
+    # Document DB MCP 클라이언트 → DocStoreClient (typed) → EventHandler 주입
+    mcp = await StreamableMCPClient.connect(settings.doc_store_mcp_url)
+    db = DocStoreClient(mcp)
     handler = EventHandler(ALL_PROCESSORS, db)
 
     # graceful shutdown
