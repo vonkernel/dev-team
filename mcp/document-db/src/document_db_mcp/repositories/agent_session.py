@@ -7,7 +7,7 @@ from uuid import UUID
 
 import asyncpg
 
-from document_db_mcp.repositories.base import AbstractRepository
+from document_db_mcp.repositories.base import PostgresRepositoryBase
 from dev_team_shared.document_db.schemas.agent_session import (
     AgentSessionCreate,
     AgentSessionRead,
@@ -16,13 +16,13 @@ from dev_team_shared.document_db.schemas.agent_session import (
 
 
 class AgentSessionRepository(
-    AbstractRepository[AgentSessionCreate, AgentSessionUpdate, AgentSessionRead],
+    PostgresRepositoryBase[AgentSessionCreate, AgentSessionUpdate, AgentSessionRead],
 ):
     @property
-    def table_name(self) -> str:
+    def collection_name(self) -> str:
         return "agent_sessions"
 
-    def _row_to_read(self, row: asyncpg.Record) -> AgentSessionRead:
+    def _to_read(self, row: asyncpg.Record) -> AgentSessionRead:
         d = dict(row)
         if isinstance(d.get("metadata"), str):
             d["metadata"] = json.loads(d["metadata"])
@@ -46,7 +46,7 @@ class AgentSessionRepository(
             self._to_jsonb(doc.metadata),
         )
         assert row is not None
-        return self._row_to_read(row)
+        return self._to_read(row)
 
     async def update(self, id: UUID, patch: AgentSessionUpdate) -> AgentSessionRead | None:
         fields = patch.model_dump(exclude_unset=True)
@@ -67,7 +67,7 @@ class AgentSessionRepository(
         )
         params.append(id)
         row = await self._pool.fetchrow(sql, *params)
-        return self._row_to_read(row) if row else None
+        return self._to_read(row) if row else None
 
     # ---- 특수 쿼리 ----
 
@@ -76,7 +76,7 @@ class AgentSessionRepository(
             "SELECT * FROM agent_sessions WHERE agent_task_id = $1 ORDER BY started_at",
             agent_task_id,
         )
-        return [self._row_to_read(r) for r in rows]
+        return [self._to_read(r) for r in rows]
 
     async def find_by_context(self, context_id: str) -> AgentSessionRead | None:
         """가장 최근 session 1건 (같은 contextId 가 여러 turn 에 걸칠 수 있음)."""
@@ -85,7 +85,7 @@ class AgentSessionRepository(
             "ORDER BY started_at DESC LIMIT 1",
             context_id,
         )
-        return self._row_to_read(row) if row else None
+        return self._to_read(row) if row else None
 
 
 __all__ = ["AgentSessionRepository"]

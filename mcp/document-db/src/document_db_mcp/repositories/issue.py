@@ -7,7 +7,7 @@ from uuid import UUID
 
 import asyncpg
 
-from document_db_mcp.repositories.base import AbstractRepository
+from document_db_mcp.repositories.base import PostgresRepositoryBase
 from dev_team_shared.document_db.schemas.issue import IssueCreate, IssueRead, IssueUpdate
 
 
@@ -15,12 +15,12 @@ class IssueOptimisticLockError(RuntimeError):
     """version mismatch — concurrent update 감지 시."""
 
 
-class IssueRepository(AbstractRepository[IssueCreate, IssueUpdate, IssueRead]):
+class IssueRepository(PostgresRepositoryBase[IssueCreate, IssueUpdate, IssueRead]):
     @property
-    def table_name(self) -> str:
+    def collection_name(self) -> str:
         return "issues"
 
-    def _row_to_read(self, row: asyncpg.Record) -> IssueRead:
+    def _to_read(self, row: asyncpg.Record) -> IssueRead:
         d = dict(row)
         for col in ("external_refs", "metadata"):
             if isinstance(d.get(col), str):
@@ -48,7 +48,7 @@ class IssueRepository(AbstractRepository[IssueCreate, IssueUpdate, IssueRead]):
             self._to_jsonb(doc.metadata),
         )
         assert row is not None
-        return self._row_to_read(row)
+        return self._to_read(row)
 
     async def update(self, id: UUID, patch: IssueUpdate) -> IssueRead | None:
         return await self.update_with_version(id, patch, expected_version=None)
@@ -96,7 +96,7 @@ class IssueRepository(AbstractRepository[IssueCreate, IssueUpdate, IssueRead]):
                         f"(expected={expected_version})",
                     )
                 return None
-            return self._row_to_read(row)
+            return self._to_read(row)
 
         sql = (
             f"UPDATE issues SET {', '.join(set_clauses)} "
@@ -104,7 +104,7 @@ class IssueRepository(AbstractRepository[IssueCreate, IssueUpdate, IssueRead]):
         )
         params.append(id)
         row = await self._pool.fetchrow(sql, *params)
-        return self._row_to_read(row) if row else None
+        return self._to_read(row) if row else None
 
 
 __all__ = ["IssueRepository", "IssueOptimisticLockError"]

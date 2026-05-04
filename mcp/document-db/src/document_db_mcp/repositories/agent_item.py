@@ -8,7 +8,7 @@ from uuid import UUID
 
 import asyncpg
 
-from document_db_mcp.repositories.base import AbstractRepository
+from document_db_mcp.repositories.base import PostgresRepositoryBase
 from dev_team_shared.document_db.schemas.agent_item import AgentItemCreate, AgentItemRead
 
 
@@ -17,7 +17,7 @@ class _ImmutableUpdate:  # placeholder type for ABC contract
 
 
 class AgentItemRepository(
-    AbstractRepository[AgentItemCreate, _ImmutableUpdate, AgentItemRead],
+    PostgresRepositoryBase[AgentItemCreate, _ImmutableUpdate, AgentItemRead],
 ):
     """대화 메시지 1건. 한 번 쓰면 변경 X (audit / Chronicler 의 영속성).
 
@@ -25,10 +25,10 @@ class AgentItemRepository(
     """
 
     @property
-    def table_name(self) -> str:
+    def collection_name(self) -> str:
         return "agent_items"
 
-    def _row_to_read(self, row: asyncpg.Record) -> AgentItemRead:
+    def _to_read(self, row: asyncpg.Record) -> AgentItemRead:
         d = dict(row)
         for col in ("content", "metadata"):
             if isinstance(d.get(col), str):
@@ -53,7 +53,7 @@ class AgentItemRepository(
             self._to_jsonb(doc.metadata),
         )
         assert row is not None
-        return self._row_to_read(row)
+        return self._to_read(row)
 
     async def update(self, id: UUID, patch: _ImmutableUpdate) -> NoReturn:  # type: ignore[override]
         raise RuntimeError(
@@ -71,7 +71,7 @@ class AgentItemRepository(
             "SELECT * FROM agent_items WHERE agent_session_id = $1 ORDER BY created_at",
             agent_session_id,
         )
-        return [self._row_to_read(r) for r in rows]
+        return [self._to_read(r) for r in rows]
 
 
 __all__ = ["AgentItemRepository"]

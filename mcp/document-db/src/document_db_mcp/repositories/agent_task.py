@@ -7,7 +7,7 @@ from uuid import UUID
 
 import asyncpg
 
-from document_db_mcp.repositories.base import AbstractRepository
+from document_db_mcp.repositories.base import PostgresRepositoryBase
 from dev_team_shared.document_db.schemas.agent_task import (
     AgentTaskCreate,
     AgentTaskRead,
@@ -16,13 +16,13 @@ from dev_team_shared.document_db.schemas.agent_task import (
 
 
 class AgentTaskRepository(
-    AbstractRepository[AgentTaskCreate, AgentTaskUpdate, AgentTaskRead],
+    PostgresRepositoryBase[AgentTaskCreate, AgentTaskUpdate, AgentTaskRead],
 ):
     @property
-    def table_name(self) -> str:
+    def collection_name(self) -> str:
         return "agent_tasks"
 
-    def _row_to_read(self, row: asyncpg.Record) -> AgentTaskRead:
+    def _to_read(self, row: asyncpg.Record) -> AgentTaskRead:
         d = dict(row)
         # asyncpg 가 jsonb 를 str 로 반환하는 경우 (driver 버전 / type codec 미설정)
         if isinstance(d.get("metadata"), str):
@@ -45,7 +45,7 @@ class AgentTaskRepository(
             self._to_jsonb(doc.metadata),
         )
         assert row is not None
-        return self._row_to_read(row)
+        return self._to_read(row)
 
     async def update(self, id: UUID, patch: AgentTaskUpdate) -> AgentTaskRead | None:
         # 명시된 필드만 patch
@@ -68,7 +68,7 @@ class AgentTaskRepository(
         )
         params.append(id)
         row = await self._pool.fetchrow(sql, *params)
-        return self._row_to_read(row) if row else None
+        return self._to_read(row) if row else None
 
 
 __all__ = ["AgentTaskRepository"]
