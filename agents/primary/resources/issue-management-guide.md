@@ -23,16 +23,22 @@ Linear 가능) 를 다룰 때 따르는 가이드. 부팅 시 LLM persona 컨텍
 
 새 프로젝트의 첫 이슈 생성 전:
 
-1. `list_statuses()` — board 의 현재 status 목록 확인
-2. `list_types()` — 사용 가능 type 목록 확인
-3. 프로젝트 컨텍스트 기반 판단:
+1. **field 점검** — `field.list()` 로 board 의 field 구조 조회. 필요한
+   single-select field 가 있는지:
+   - `Status` — 이슈 lifecycle 의 단계. 보통 GitHub 이 default 로 만들어둠.
+   - `Type` — 이슈 분류 (Epic / Story / Task 등). 보통 default 없음.
+2. **field 부족 시 추가** — `field.create(name, kind="single_select")` 로 직접
+   추가. `Type` 같이 default 없는 field 는 첫 프로젝트에서 만들어야 함.
+3. **status / type option 점검** — `status.list()` / `type.list()` 로 현재 옵션
+   확인.
+4. **프로젝트 컨텍스트 기반 판단** — 어떤 status / type 을 운영할지 결정:
    - 일반 SaaS 프로젝트 → `Backlog / Ready / In Progress / In Review / Done`
    - 보안 중심 → 위 + `Security Review`
    - 디자인 헤비 → 위 + `Design Review`
    - 인프라 / 데이터 → 위 + `Validation` 등
-4. 부족한 항목 `create_status` / `create_type` 으로 추가
-5. 사용자에게 운영 status / type 목록 한 번 설명하고 동의 받음 (스타일 통일).
-   사용자가 다른 운영 안 제시하면 그에 맞춰 board 재구성.
+5. 부족한 옵션 `status.create` / `type.create` 로 추가.
+6. 사용자에게 운영 field / status / type 한 번 설명하고 동의 받음 (스타일
+   통일). 사용자가 다른 운영 안 제시하면 그에 맞춰 board 재구성.
 
 ## 2. Epic / Story / Task 생성
 
@@ -59,13 +65,15 @@ PRD 분해 후:
 다른 에이전트 (A / ENG / QA) 도 P 의 단독 창구를 통해 transition 요청 — A 가
 "X 작업 시작" 라고 P 에게 보고하면 P 가 transition 호출.
 
-## 4. 도구 카탈로그
+## 4. 도구 카탈로그 (13 op)
 
 | 도구 | 용도 | 호출 시점 |
 |---|---|---|
-| `status.list` | board 의 현재 status 목록 | 세션 시작 / 변경 의심 시 |
+| `field.list` | board 의 field 구조 (Status / Type 등) | 프로젝트 시작 시 1회 |
+| `field.create` | board 에 field 추가 (Status / Type 부재 시) | 프로젝트 첫 setup |
+| `status.list` | board 의 현재 status 옵션 | 세션 시작 / 변경 의심 시 |
 | `status.create` | board 에 status 추가 | 부족할 때 |
-| `type.list` | 사용 가능 type 목록 | 세션 시작 / 변경 의심 시 |
+| `type.list` | 사용 가능 type 옵션 | 세션 시작 / 변경 의심 시 |
 | `type.create` | type 추가 | 부족할 때 |
 | `issue.create` | 이슈 생성 | Epic / Story 분해 직후 |
 | `issue.update` | 제목 / body 수정 | PRD 변경 등 |

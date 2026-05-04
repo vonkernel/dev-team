@@ -5,9 +5,14 @@ from dev_team_shared.issue_tracker.schemas.issue import (
     IssueRead,
     IssueUpdate,
 )
-from dev_team_shared.issue_tracker.schemas.refs import StatusRef, TypeRef
+from dev_team_shared.issue_tracker.schemas.refs import (
+    FieldRef,
+    StatusRef,
+    TypeRef,
+)
 
 __all__ = [
+    "FieldRef",
     "IssueCreate",
     "IssueRead",
     "IssueUpdate",

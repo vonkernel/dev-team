@@ -7,6 +7,7 @@ IssueTrackerClient 안에 격리되어 외부로 새지 않음.
 
 from dev_team_shared.issue_tracker.client import IssueTrackerClient
 from dev_team_shared.issue_tracker.schemas import (
+    FieldRef,
     IssueCreate,
     IssueRead,
     IssueUpdate,
@@ -14,12 +15,15 @@ from dev_team_shared.issue_tracker.schemas import (
     TypeRef,
 )
 from dev_team_shared.issue_tracker.tool_names import (
+    FieldTools,
     IssueTools,
     StatusTools,
     TypeTools,
 )
 
 __all__ = [
+    "FieldRef",
+    "FieldTools",
     "IssueCreate",
     "IssueRead",
     "IssueTools",

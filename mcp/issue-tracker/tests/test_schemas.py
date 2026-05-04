@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from dev_team_shared.issue_tracker.schemas import (
+    FieldRef,
     IssueCreate,
     IssueRead,
     IssueUpdate,
@@ -90,3 +91,11 @@ class TestRefs:
     def test_type_ref_round_trip(self) -> None:
         ref = TypeRef(id="t1", name="Epic")
         assert TypeRef.model_validate(ref.model_dump()) == ref
+
+    def test_field_ref_kind_required(self) -> None:
+        with pytest.raises(ValidationError):
+            FieldRef(id="f", name="Status")  # type: ignore[call-arg]
+
+    def test_field_ref_round_trip(self) -> None:
+        ref = FieldRef(id="f1", name="Status", kind="single_select")
+        assert FieldRef.model_validate(ref.model_dump()) == ref

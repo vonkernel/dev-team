@@ -21,7 +21,7 @@
 
 ---
 
-## 2. 도구 면 (11 op)
+## 2. 도구 면 (13 op)
 
 | 도구 | 시그니처 | 비고 |
 |---|---|---|
@@ -36,8 +36,10 @@
 | `status.create` | `(name: str) → StatusRef` | options 추가 (이름 중복 시 기존) |
 | `type.list` | `() → list[TypeRef]` | board 의 Type field options |
 | `type.create` | `(name: str) → TypeRef` | options 추가 |
+| `field.list` | `() → list[FieldRef]` | board 의 모든 field (Status / Type / Priority 등) |
+| `field.create` | `(name, kind="single_select") → FieldRef` | board 에 field 추가 (PM 워크플로우 setup) |
 
-`StatusRef` / `TypeRef` 는 `{id, name}` — `id` 가 후속 호출 식별자.
+`StatusRef` / `TypeRef` / `FieldRef` 는 `{id, name, ...}` — `id` 가 후속 호출 식별자.
 
 ---
 
@@ -67,15 +69,17 @@ src/issue_tracker_mcp/
 
 본 어댑터는 다음을 **전제**:
 
-1. 대상 Project v2 board 가 owner-level (user 또는 organization) 에 존재
-2. board 에 single-select 필드 **`Status`** 와 **`Type`** 두 개 모두 존재
+1. 대상 Project v2 board 가 owner-level (user 또는 organization) 에 존재 +
+   `GITHUB_PROJECT_NUMBER` 일치
 
-전제 위반 시 lifespan 에서 fail-fast (helpful 에러 메시지). board UI 또는 별
-setup 으로 추가 후 재기동. 어댑터가 자동 생성하지 않는 이유 — board 의 권위
-적 구조에 자동 변경 가하면 thin bridge 원칙 위반.
+board 의 field 구조 (Status / Type 같은 single-select 필드의 존재 여부) 는
+어댑터가 강제하지 않는다 — P (LLM 에이전트) 가 `field.list` 로 현황 조회 후
+`field.create` 로 자율 추가 (PM 워크플로우). 어댑터가 자동으로 lazy 생성하지
+않는 이유: thin bridge 원칙 — 호출자가 명시적 도구 호출로 결정.
 
-field 의 option (특정 status / type 값) 추가는 `*.create` 도구로 호출자(P)가
-명시적 결정.
+`status.list` / `type.list` / `transition` 같은 도구는 호출 시 해당 field 가
+없으면 helpful 에러 ("call `field.create('Status')` first"). `issue.get` /
+`issue.list` 같은 read 도구는 field 없어도 동작 (해당 필드를 None 으로 둠).
 
 ---
 

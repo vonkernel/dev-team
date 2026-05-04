@@ -38,4 +38,15 @@ class TypeTools:
     CREATE: Final = "type.create"
 
 
-__all__ = ["IssueTools", "StatusTools", "TypeTools"]
+class FieldTools:
+    """board field discover + manage (2 op).
+
+    P 가 board 에 어떤 field 가 있는지 조회 + 부족하면 직접 추가. PM 워크플
+    로우의 setup 단계 (사람이 board UI 에서 사전 셋업 안 해도 됨).
+    """
+
+    LIST: Final = "field.list"
+    CREATE: Final = "field.create"
+
+
+__all__ = ["FieldTools", "IssueTools", "StatusTools", "TypeTools"]

@@ -34,4 +34,23 @@ class TypeRef(BaseModel):
     name: str
 
 
-__all__ = ["StatusRef", "TypeRef"]
+class FieldRef(BaseModel):
+    """Project board 의 field 1개 (Status / Type / Priority 등 어떤 field 든).
+
+    P 가 board 에 어떤 field 가 있는지 조회하고 (`field.list`), 부족하면
+    `field.create` 로 직접 추가하기 위함. board setup 자체를 PM 워크플로우로
+    내재화 — 사람이 board UI 에서 사전 setup 하지 않아도 됨.
+
+    `kind` 는 GitHub 의 dataType 을 lowercase + underscore 로 정규화한 값
+    (예: "single_select", "text", "number", "date", "iteration"). 우리 시스템
+    의 status / type 도구는 `single_select` 만 의미 있음.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str
+    kind: str
+
+
+__all__ = ["FieldRef", "StatusRef", "TypeRef"]

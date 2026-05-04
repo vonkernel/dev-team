@@ -12,10 +12,7 @@ import httpx
 import pytest
 import respx
 
-from dev_team_shared.issue_tracker.schemas import (
-    IssueCreate,
-    IssueUpdate,
-)
+from dev_team_shared.issue_tracker.schemas import IssueCreate, IssueUpdate
 from issue_tracker_mcp.adapters.github import GitHubIssueTrackerAdapter
 
 PROJECT_ID = "PVT_TEST"
@@ -24,28 +21,49 @@ TYPE_FIELD_ID = "PVTSSF_TYPE"
 
 BACKLOG_ID = "opt_backlog"
 READY_ID = "opt_ready"
-EPIC_ID = "opt_epic"
 
 
-def _meta_response() -> dict[str, Any]:
-    """`_ensure_meta` 의 GraphQL 응답."""
-    return {
-        "data": {
-            "organization": {
-                "projectV2": {
-                    "id": PROJECT_ID,
-                    "fields": {
-                        "nodes": [
-                            {"id": STATUS_FIELD_ID, "name": "Status"},
-                            {"id": TYPE_FIELD_ID, "name": "Type"},
-                            {"id": "other", "name": "Priority"},
-                        ],
-                    },
-                },
-            },
-            "user": None,
-        },
-    }
+def _project_id_response(*, location: str = "organization") -> dict[str, Any]:
+    """`_ensure_project_id` 의 GraphQL 응답."""
+    payload = {"data": {"organization": None, "user": None}}
+    payload["data"][location] = {"projectV2": {"id": PROJECT_ID}}
+    return payload
+
+
+def _all_fields_response(
+    *, with_status: bool = True, with_type: bool = True,
+) -> dict[str, Any]:
+    """`_list_all_fields` 의 GraphQL 응답."""
+    nodes: list[dict[str, Any]] = []
+    if with_status:
+        nodes.append({"id": STATUS_FIELD_ID, "name": "Status", "dataType": "SINGLE_SELECT"})
+    if with_type:
+        nodes.append({"id": TYPE_FIELD_ID, "name": "Type", "dataType": "SINGLE_SELECT"})
+    nodes.append({"id": "f_priority", "name": "Priority", "dataType": "SINGLE_SELECT"})
+    return {"data": {"node": {"fields": {"nodes": nodes}}}}
+
+
+def _classify_query(body: str) -> str:
+    """GraphQL body 의 의도 분류 — fixture _resp dispatcher 용."""
+    if "$login" in body or "projectV2(number" in body:
+        return "project_id"
+    if "fields(first:" in body and "options" not in body:
+        return "list_all_fields"
+    if "options { id name }" in body and "mutation" not in body:
+        return "field_options"
+    if "createProjectV2Field" in body:
+        return "create_field"
+    if "updateProjectV2Field(input:" in body:
+        return "update_field_options"
+    if "addProjectV2ItemById" in body:
+        return "add_item"
+    if "updateProjectV2ItemFieldValue" in body:
+        return "set_field_value"
+    if "items(first:" in body:
+        return "list_items"
+    if "fieldValues(first:" in body:
+        return "item_field_values"
+    return "unknown"
 
 
 @pytest.fixture
@@ -63,76 +81,148 @@ def adapter(http: httpx.AsyncClient) -> GitHubIssueTrackerAdapter:
 
 
 # ----------------------------------------------------------------------
-# _ensure_meta
+# project_id resolution
 # ----------------------------------------------------------------------
 
 
 @respx.mock
-async def test_ensure_meta_organization_path(
+async def test_ensure_project_id_organization_path(
     adapter: GitHubIssueTrackerAdapter,
 ) -> None:
     respx.post("https://api.github.com/graphql").mock(
-        return_value=httpx.Response(200, json=_meta_response()),
+        return_value=httpx.Response(200, json=_project_id_response()),
     )
-    meta = await adapter._ensure_meta()
-    assert meta.project_id == PROJECT_ID
-    assert meta.status_field_id == STATUS_FIELD_ID
-    assert meta.type_field_id == TYPE_FIELD_ID
+    pid = await adapter._ensure_project_id()
+    assert pid == PROJECT_ID
+    # 두 번째 호출은 cache hit (네트워크 호출 안 함)
+    pid2 = await adapter._ensure_project_id()
+    assert pid2 == PROJECT_ID
 
 
 @respx.mock
-async def test_ensure_meta_user_fallback(
+async def test_ensure_project_id_user_fallback(
     adapter: GitHubIssueTrackerAdapter,
 ) -> None:
-    user_payload = {
-        "data": {
-            "organization": None,
-            "user": _meta_response()["data"]["organization"],
-        },
-    }
     respx.post("https://api.github.com/graphql").mock(
-        return_value=httpx.Response(200, json=user_payload),
+        return_value=httpx.Response(200, json=_project_id_response(location="user")),
     )
-    meta = await adapter._ensure_meta()
-    assert meta.project_id == PROJECT_ID
+    assert await adapter._ensure_project_id() == PROJECT_ID
 
 
 @respx.mock
-async def test_ensure_meta_missing_field_fails(
-    adapter: GitHubIssueTrackerAdapter,
-) -> None:
-    payload = {
-        "data": {
-            "organization": {
-                "projectV2": {
-                    "id": PROJECT_ID,
-                    "fields": {
-                        "nodes": [{"id": STATUS_FIELD_ID, "name": "Status"}],  # Type 누락
-                    },
-                },
-            },
-            "user": None,
-        },
-    }
-    respx.post("https://api.github.com/graphql").mock(
-        return_value=httpx.Response(200, json=payload),
-    )
-    with pytest.raises(RuntimeError, match="missing required single-select fields"):
-        await adapter._ensure_meta()
-
-
-@respx.mock
-async def test_ensure_meta_project_not_found(
+async def test_ensure_project_id_not_found(
     adapter: GitHubIssueTrackerAdapter,
 ) -> None:
     respx.post("https://api.github.com/graphql").mock(
         return_value=httpx.Response(
-            200,
-            json={"data": {"organization": None, "user": None}},
+            200, json={"data": {"organization": None, "user": None}},
         ),
     )
     with pytest.raises(RuntimeError, match="Project v2 not found"):
-        await adapter._ensure_meta()
+        await adapter._ensure_project_id()
+
+
+# ----------------------------------------------------------------------
+# field — list / create
+# ----------------------------------------------------------------------
+
+
+@respx.mock
+async def test_list_fields_returns_all_with_kind(
+    adapter: GitHubIssueTrackerAdapter,
+) -> None:
+    route = respx.post("https://api.github.com/graphql")
+
+    def _resp(request: httpx.Request) -> httpx.Response:
+        body = request.read().decode()
+        kind = _classify_query(body)
+        if kind == "project_id":
+            return httpx.Response(200, json=_project_id_response())
+        if kind == "list_all_fields":
+            return httpx.Response(200, json=_all_fields_response())
+        raise AssertionError(f"unexpected: {kind}")
+
+    route.side_effect = _resp
+    fields = await adapter.list_fields()
+    names_kinds = [(f.name, f.kind) for f in fields]
+    assert ("Status", "single_select") in names_kinds
+    assert ("Type", "single_select") in names_kinds
+    assert ("Priority", "single_select") in names_kinds
+
+
+@respx.mock
+async def test_create_field_idempotent_when_exists(
+    adapter: GitHubIssueTrackerAdapter,
+) -> None:
+    """Type field 가 이미 있으면 createProjectV2Field 호출 안 함."""
+    calls: list[str] = []
+    route = respx.post("https://api.github.com/graphql")
+
+    def _resp(request: httpx.Request) -> httpx.Response:
+        body = request.read().decode()
+        calls.append(_classify_query(body))
+        kind = _classify_query(body)
+        if kind == "project_id":
+            return httpx.Response(200, json=_project_id_response())
+        if kind == "list_all_fields":
+            return httpx.Response(200, json=_all_fields_response())
+        raise AssertionError(f"unexpected: {kind}")
+
+    route.side_effect = _resp
+    field = await adapter.create_field("Type", "single_select")
+    assert field.name == "Type"
+    assert field.id == TYPE_FIELD_ID
+    assert "create_field" not in calls
+
+
+@respx.mock
+async def test_create_field_creates_when_missing(
+    adapter: GitHubIssueTrackerAdapter,
+) -> None:
+    route = respx.post("https://api.github.com/graphql")
+
+    def _resp(request: httpx.Request) -> httpx.Response:
+        body = request.read().decode()
+        kind = _classify_query(body)
+        if kind == "project_id":
+            return httpx.Response(200, json=_project_id_response())
+        if kind == "list_all_fields":
+            return httpx.Response(
+                200,
+                json=_all_fields_response(with_type=False),
+            )
+        if kind == "create_field":
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "createProjectV2Field": {
+                            "projectV2Field": {
+                                "id": "F_NEW",
+                                "name": "Type",
+                                "dataType": "SINGLE_SELECT",
+                            },
+                        },
+                    },
+                },
+            )
+        raise AssertionError(f"unexpected: {kind}")
+
+    route.side_effect = _resp
+    field = await adapter.create_field("Type")
+    assert field.id == "F_NEW"
+    assert field.name == "Type"
+    assert field.kind == "single_select"
+
+
+def test_create_field_rejects_unknown_kind() -> None:
+    adapter = GitHubIssueTrackerAdapter(
+        httpx.AsyncClient(),
+        owner="acme", repo="repo", project_number=1,
+    )
+    import asyncio
+    with pytest.raises(ValueError, match="unsupported kind"):
+        asyncio.run(adapter.create_field("X", kind="bogus"))
 
 
 # ----------------------------------------------------------------------
@@ -148,66 +238,90 @@ async def test_list_statuses_returns_options_raw(
 
     def _resp(request: httpx.Request) -> httpx.Response:
         body = request.read().decode()
-        if "projectV2(number" in body:
-            return httpx.Response(200, json=_meta_response())
-        # _fetch_field_options
-        return httpx.Response(
-            200,
-            json={
-                "data": {
-                    "node": {
-                        "options": [
-                            {"id": BACKLOG_ID, "name": "Backlog"},
-                            {"id": READY_ID, "name": "Ready"},
-                        ],
+        kind = _classify_query(body)
+        if kind == "project_id":
+            return httpx.Response(200, json=_project_id_response())
+        if kind == "list_all_fields":
+            return httpx.Response(200, json=_all_fields_response())
+        if kind == "field_options":
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "node": {
+                            "options": [
+                                {"id": BACKLOG_ID, "name": "Backlog"},
+                                {"id": READY_ID, "name": "Ready"},
+                            ],
+                        },
                     },
                 },
-            },
-        )
+            )
+        raise AssertionError(f"unexpected: {kind}")
 
     route.side_effect = _resp
     statuses = await adapter.list_statuses()
-    names = [s.name for s in statuses]
-    assert names == ["Backlog", "Ready"]
+    assert [s.name for s in statuses] == ["Backlog", "Ready"]
     assert statuses[0].id == BACKLOG_ID
+
+
+@respx.mock
+async def test_list_statuses_raises_when_field_missing(
+    adapter: GitHubIssueTrackerAdapter,
+) -> None:
+    """Status field 가 board 에 없으면 helpful 에러 (P 가 field.create 하라는 메시지)."""
+    route = respx.post("https://api.github.com/graphql")
+
+    def _resp(request: httpx.Request) -> httpx.Response:
+        body = request.read().decode()
+        kind = _classify_query(body)
+        if kind == "project_id":
+            return httpx.Response(200, json=_project_id_response())
+        if kind == "list_all_fields":
+            return httpx.Response(
+                200, json=_all_fields_response(with_status=False),
+            )
+        raise AssertionError(f"unexpected: {kind}")
+
+    route.side_effect = _resp
+    with pytest.raises(RuntimeError, match="no field named 'Status'"):
+        await adapter.list_statuses()
 
 
 @respx.mock
 async def test_create_status_idempotent_on_existing_name(
     adapter: GitHubIssueTrackerAdapter,
 ) -> None:
-    """이름이 이미 있으면 update mutation 호출 X, 기존 id 반환."""
     calls: list[str] = []
     route = respx.post("https://api.github.com/graphql")
 
     def _resp(request: httpx.Request) -> httpx.Response:
         body = request.read().decode()
-        calls.append(body)
-        if "projectV2(number" in body:
-            return httpx.Response(200, json=_meta_response())
-        if "options { id name }" in body and "mutation" not in body:
+        kind = _classify_query(body)
+        calls.append(kind)
+        if kind == "project_id":
+            return httpx.Response(200, json=_project_id_response())
+        if kind == "list_all_fields":
+            return httpx.Response(200, json=_all_fields_response())
+        if kind == "field_options":
             return httpx.Response(
                 200,
                 json={
                     "data": {
-                        "node": {
-                            "options": [{"id": BACKLOG_ID, "name": "Backlog"}],
-                        },
+                        "node": {"options": [{"id": BACKLOG_ID, "name": "Backlog"}]},
                     },
                 },
             )
-        # update mutation 안 와야 함
-        raise AssertionError(f"unexpected mutation call: {body[:200]}")
+        raise AssertionError(f"unexpected mutation: {kind}")
 
     route.side_effect = _resp
     ref = await adapter.create_status("Backlog")
     assert ref.id == BACKLOG_ID
-    # mutation 으로 update 호출 안 됨 (idempotent)
-    assert all("updateProjectV2Field" not in c for c in calls)
+    assert "update_field_options" not in calls  # update mutation 호출 X
 
 
 # ----------------------------------------------------------------------
-# issue CRUD
+# issue CRUD — REST 경로 및 404 처리
 # ----------------------------------------------------------------------
 
 
@@ -262,7 +376,6 @@ async def test_count_uses_search_api(
     )
     n = await adapter.count(where={"state": "open"})
     assert n == 17
-    # 호출 query 검증
     assert route.called
     sent = route.calls[0].request
     assert "is:issue" in sent.url.params["q"]
@@ -281,7 +394,7 @@ async def test_update_returns_none_on_404(
 
 
 # ----------------------------------------------------------------------
-# IssueCreate doc 직렬화 (id 필드 raw 통신 검증)
+# IssueCreate doc 직렬화 — raw id 통신 검증
 # ----------------------------------------------------------------------
 
 
@@ -293,4 +406,3 @@ def test_issue_create_doc_carries_raw_ids() -> None:
     dumped = doc.model_dump(mode="json")
     assert dumped["status_id"] == "opt_xxx"
     assert dumped["type_id"] == "opt_yyy"
-    # 정규화 / 매핑 X — 호출자 가 보낸 그대로 유지

@@ -14,11 +14,11 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from dev_team_shared.issue_tracker.schemas.issue import IssueCreate, IssueRead, IssueUpdate
-from dev_team_shared.issue_tracker.schemas.refs import StatusRef, TypeRef
+from dev_team_shared.issue_tracker.schemas.refs import FieldRef, StatusRef, TypeRef
 
 
 class IssueTracker(ABC):
-    """외부 이슈 트래커 어댑터 추상 (11 op)."""
+    """외부 이슈 트래커 어댑터 추상 (13 op)."""
 
     # ---- issue CRUD (6 op, mcp/CLAUDE.md §1.5) ----
 
@@ -75,6 +75,21 @@ class IssueTracker(ABC):
     @abstractmethod
     async def create_type(self, name: str) -> TypeRef:
         """도구 안에 새 type 추가. 이름 중복 시 기존 항목 반환 (idempotent)."""
+
+    # ---- field — board setup 도구 (PM 워크플로우 자율화) ----
+
+    @abstractmethod
+    async def list_fields(self) -> list[FieldRef]:
+        """board 의 모든 field 목록. P 가 board 에 어떤 구조가 있는지 점검."""
+
+    @abstractmethod
+    async def create_field(self, name: str, kind: str = "single_select") -> FieldRef:
+        """board 에 field 추가. 이름 중복 시 기존 항목 반환 (idempotent).
+
+        지원 kind: `single_select` (기본). 우리 시스템의 status / type 도구는
+        single_select 만 의미 있음. 다른 dataType (text / number / date / iteration)
+        도 어댑터별로 지원 가능.
+        """
 
 
 __all__ = ["IssueTracker"]

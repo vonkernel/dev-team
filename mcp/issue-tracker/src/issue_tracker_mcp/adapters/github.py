@@ -31,30 +31,30 @@ from issue_tracker_mcp.adapters._github_http import (
 )
 from issue_tracker_mcp.adapters.base import IssueTracker
 from dev_team_shared.issue_tracker.schemas.issue import IssueCreate, IssueRead, IssueUpdate
-from dev_team_shared.issue_tracker.schemas.refs import StatusRef, TypeRef
+from dev_team_shared.issue_tracker.schemas.refs import FieldRef, StatusRef, TypeRef
 
 logger = logging.getLogger(__name__)
 
 
 _DEFAULT_OPTION_COLOR = "GRAY"
 
-
-class _ProjectMeta:
-    """부팅 시 1회 fetch 후 캐싱되는 Project 메타데이터."""
-
-    def __init__(
-        self,
-        project_id: str,
-        status_field_id: str,
-        type_field_id: str,
-    ) -> None:
-        self.project_id = project_id
-        self.status_field_id = status_field_id
-        self.type_field_id = type_field_id
+# GitHub GraphQL ProjectV2CustomFieldType — kind 정규화에 사용
+_KIND_TO_DATATYPE = {
+    "single_select": "SINGLE_SELECT",
+    "text": "TEXT",
+    "number": "NUMBER",
+    "date": "DATE",
+    "iteration": "ITERATION",
+}
+_DATATYPE_TO_KIND = {v: k for k, v in _KIND_TO_DATATYPE.items()}
 
 
 class GitHubIssueTrackerAdapter(IssueTracker):
-    """GitHub Issues + Projects v2 어댑터."""
+    """GitHub Issues + Projects v2 어댑터.
+
+    project_id 만 캐싱. field id 들은 매번 GraphQL fetch (P 가 `field.create`
+    로 board 구조를 바꿀 수 있어 캐시가 stale 가능 — 단순화 선택).
+    """
 
     def __init__(
         self,
@@ -68,50 +68,33 @@ class GitHubIssueTrackerAdapter(IssueTracker):
         self._owner = owner
         self._repo = repo
         self._project_number = project_number
-        self._meta: _ProjectMeta | None = None
+        self._project_id: str | None = None
 
     # ------------------------------------------------------------------
-    # 메타데이터 부트스트랩
+    # project_id resolution (board 자체는 안 바뀌므로 영구 캐시)
     # ------------------------------------------------------------------
 
-    async def _ensure_meta(self) -> _ProjectMeta:
-        if self._meta is not None:
-            return self._meta
+    async def _ensure_project_id(self) -> str:
+        if self._project_id is not None:
+            return self._project_id
 
-        # owner 가 user 인지 organization 인지 알 수 없으므로 두 path 시도.
+        # owner 가 user 인지 organization 인지 미상 → 두 path 시도.
         query = """
         query($login: String!, $number: Int!) {
           organization(login: $login) {
-            projectV2(number: $number) {
-              id
-              fields(first: 50) {
-                nodes {
-                  ... on ProjectV2SingleSelectField { id name }
-                }
-              }
-            }
+            projectV2(number: $number) { id }
           }
           user(login: $login) {
-            projectV2(number: $number) {
-              id
-              fields(first: 50) {
-                nodes {
-                  ... on ProjectV2SingleSelectField { id name }
-                }
-              }
-            }
+            projectV2(number: $number) { id }
           }
         }
         """
         try:
             data = await graphql(
-                self._http,
-                query,
+                self._http, query,
                 {"login": self._owner, "number": self._project_number},
             )
         except GitHubGraphQLError as e:
-            # 둘 중 한쪽 (organization or user) 만 매칭되어 다른 쪽이 errors 로
-            # 올 수도. partial data 가 있으면 사용.
             data = e.errors[0].get("data") if e.errors else None
             if data is None:
                 raise
@@ -123,31 +106,46 @@ class GitHubIssueTrackerAdapter(IssueTracker):
             raise RuntimeError(
                 f"Project v2 not found: owner={self._owner} number={self._project_number}",
             )
+        self._project_id = str(project["id"])
+        return self._project_id
 
-        fields_by_name = {
-            (n.get("name") or ""): n.get("id")
-            for n in (project.get("fields") or {}).get("nodes") or []
-            if n.get("id") is not None
+    async def _list_all_fields(self) -> list[dict[str, Any]]:
+        """board 의 모든 field (모든 dataType) 매번 fetch — caching X."""
+        project_id = await self._ensure_project_id()
+        query = """
+        query($project_id: ID!) {
+          node(id: $project_id) {
+            ... on ProjectV2 {
+              fields(first: 50) {
+                nodes {
+                  ... on ProjectV2Field { id name dataType }
+                  ... on ProjectV2SingleSelectField { id name dataType }
+                  ... on ProjectV2IterationField { id name dataType }
+                }
+              }
+            }
+          }
         }
-        status_field_id = fields_by_name.get("Status")
-        type_field_id = fields_by_name.get("Type")
-        missing = [
-            name
-            for name, fid in (("Status", status_field_id), ("Type", type_field_id))
-            if fid is None
-        ]
-        if missing:
-            raise RuntimeError(
-                f"Project v2 board missing required single-select fields: {missing}. "
-                "Add them in the board UI or via separate setup.",
-            )
+        """
+        data = await graphql(self._http, query, {"project_id": project_id})
+        nodes = (((data.get("node") or {}).get("fields")) or {}).get("nodes") or []
+        return [n for n in nodes if n.get("id")]
 
-        self._meta = _ProjectMeta(
-            project_id=project["id"],
-            status_field_id=status_field_id,  # type: ignore[arg-type]
-            type_field_id=type_field_id,  # type: ignore[arg-type]
-        )
-        return self._meta
+    async def _resolve_field_id(self, name: str) -> str | None:
+        """field name → id. 미존재 시 None."""
+        for n in await self._list_all_fields():
+            if n.get("name") == name:
+                return str(n["id"])
+        return None
+
+    async def _require_field_id(self, name: str) -> str:
+        fid = await self._resolve_field_id(name)
+        if fid is None:
+            raise RuntimeError(
+                f"Project v2 board has no field named {name!r}. "
+                f"Call `field.create` to add it before using {name.lower()}.* tools.",
+            )
+        return fid
 
     async def _fetch_field_options(self, field_id: str) -> list[dict[str, Any]]:
         query = """
@@ -211,37 +209,115 @@ class GitHubIssueTrackerAdapter(IssueTracker):
     # ------------------------------------------------------------------
 
     async def list_statuses(self) -> list[StatusRef]:
-        meta = await self._ensure_meta()
-        opts = await self._fetch_field_options(meta.status_field_id)
+        field_id = await self._require_field_id("Status")
+        opts = await self._fetch_field_options(field_id)
         return [StatusRef(id=o["id"], name=o["name"]) for o in opts]
 
     async def create_status(self, name: str) -> StatusRef:
-        meta = await self._ensure_meta()
-        opt = await self._add_field_option(meta.status_field_id, name)
+        field_id = await self._require_field_id("Status")
+        opt = await self._add_field_option(field_id, name)
         return StatusRef(id=opt["id"], name=opt["name"])
 
     async def transition(self, ref: str, status_id: str) -> None:
-        meta = await self._ensure_meta()
-        item_id = await self._project_item_id_by_issue_number(int(ref), meta.project_id)
+        project_id = await self._ensure_project_id()
+        field_id = await self._require_field_id("Status")
+        item_id = await self._project_item_id_by_issue_number(int(ref), project_id)
         if item_id is None:
             raise RuntimeError(f"issue #{ref} not on project board")
-        await self._set_single_select_value(
-            meta.project_id, item_id, meta.status_field_id, status_id,
-        )
+        await self._set_single_select_value(project_id, item_id, field_id, status_id)
 
     # ------------------------------------------------------------------
     # type — list / create
     # ------------------------------------------------------------------
 
     async def list_types(self) -> list[TypeRef]:
-        meta = await self._ensure_meta()
-        opts = await self._fetch_field_options(meta.type_field_id)
+        field_id = await self._require_field_id("Type")
+        opts = await self._fetch_field_options(field_id)
         return [TypeRef(id=o["id"], name=o["name"]) for o in opts]
 
     async def create_type(self, name: str) -> TypeRef:
-        meta = await self._ensure_meta()
-        opt = await self._add_field_option(meta.type_field_id, name)
+        field_id = await self._require_field_id("Type")
+        opt = await self._add_field_option(field_id, name)
         return TypeRef(id=opt["id"], name=opt["name"])
+
+    # ------------------------------------------------------------------
+    # field — board 구조 자체 discover + manage (PM 워크플로우 자율화)
+    # ------------------------------------------------------------------
+
+    async def list_fields(self) -> list[FieldRef]:
+        nodes = await self._list_all_fields()
+        result: list[FieldRef] = []
+        for n in nodes:
+            datatype = n.get("dataType") or ""
+            kind = _DATATYPE_TO_KIND.get(datatype, datatype.lower())
+            result.append(FieldRef(id=str(n["id"]), name=str(n.get("name") or ""), kind=kind))
+        return result
+
+    async def create_field(self, name: str, kind: str = "single_select") -> FieldRef:
+        datatype = _KIND_TO_DATATYPE.get(kind)
+        if datatype is None:
+            raise ValueError(
+                f"unsupported kind={kind!r} (supported: {list(_KIND_TO_DATATYPE)})",
+            )
+        # idempotent — 이미 있으면 그대로 반환 (kind 일치 검증까진 안 함, 호출자 책임)
+        for f in await self.list_fields():
+            if f.name == name:
+                return f
+
+        project_id = await self._ensure_project_id()
+        # SINGLE_SELECT 는 options 필수 일 수 있음 — 빈 list 시도, 실패 시 default 1개
+        variables: dict[str, Any] = {
+            "project_id": project_id,
+            "name": name,
+            "datatype": datatype,
+        }
+        if datatype == "SINGLE_SELECT":
+            variables["options"] = []
+
+        mutation = """
+        mutation(
+          $project_id: ID!,
+          $name: String!,
+          $datatype: ProjectV2CustomFieldType!,
+          $options: [ProjectV2SingleSelectFieldOptionInput!]
+        ) {
+          createProjectV2Field(input: {
+            projectId: $project_id,
+            name: $name,
+            dataType: $datatype,
+            singleSelectOptions: $options
+          }) {
+            projectV2Field {
+              ... on ProjectV2Field { id name dataType }
+              ... on ProjectV2SingleSelectField { id name dataType }
+              ... on ProjectV2IterationField { id name dataType }
+            }
+          }
+        }
+        """
+        try:
+            data = await graphql(self._http, mutation, variables)
+        except GitHubGraphQLError as e:
+            # SINGLE_SELECT 가 빈 options 거부하는 GitHub 버전 대응
+            if datatype == "SINGLE_SELECT" and any(
+                "option" in (err.get("message") or "").lower() for err in e.errors
+            ):
+                variables["options"] = [
+                    {"name": "_", "color": _DEFAULT_OPTION_COLOR, "description": ""},
+                ]
+                data = await graphql(self._http, mutation, variables)
+            else:
+                raise
+
+        node = ((data.get("createProjectV2Field") or {}).get("projectV2Field")) or {}
+        if not node.get("id"):
+            raise RuntimeError(f"createProjectV2Field returned no id (name={name!r})")
+        result_kind = _DATATYPE_TO_KIND.get(node.get("dataType") or "", kind)
+        return FieldRef(
+            id=str(node["id"]),
+            name=str(node.get("name") or name),
+            kind=result_kind,
+        )
 
     # ------------------------------------------------------------------
     # issue CRUD
@@ -262,17 +338,19 @@ class GitHubIssueTrackerAdapter(IssueTracker):
         issue_number = created["number"]
 
         # 2. Project board 에 등록
-        meta = await self._ensure_meta()
-        item_id = await self._add_to_project(meta.project_id, issue_node_id)
+        project_id = await self._ensure_project_id()
+        item_id = await self._add_to_project(project_id, issue_node_id)
 
-        # 3. type / status 지정 (있으면)
+        # 3. type / status 지정 (있으면) — 호출자가 raw id 보냄
         if doc.type_id:
+            type_field_id = await self._require_field_id("Type")
             await self._set_single_select_value(
-                meta.project_id, item_id, meta.type_field_id, doc.type_id,
+                project_id, item_id, type_field_id, doc.type_id,
             )
         if doc.status_id:
+            status_field_id = await self._require_field_id("Status")
             await self._set_single_select_value(
-                meta.project_id, item_id, meta.status_field_id, doc.status_id,
+                project_id, item_id, status_field_id, doc.status_id,
             )
 
         # 4. 최종 상태 fetch (status / type 반영된 모습)
@@ -302,12 +380,13 @@ class GitHubIssueTrackerAdapter(IssueTracker):
             raise
 
         if patch.type_id is not None:
-            meta = await self._ensure_meta()
-            item_id = await self._project_item_id_by_issue_number(int(ref), meta.project_id)
+            project_id = await self._ensure_project_id()
+            type_field_id = await self._require_field_id("Type")
+            item_id = await self._project_item_id_by_issue_number(int(ref), project_id)
             if item_id is None:
                 raise RuntimeError(f"issue #{ref} not on project board")
             await self._set_single_select_value(
-                meta.project_id, item_id, meta.type_field_id, patch.type_id,
+                project_id, item_id, type_field_id, patch.type_id,
             )
 
         return await self.get(ref)
@@ -501,17 +580,24 @@ class GitHubIssueTrackerAdapter(IssueTracker):
             cursor = page.get("endCursor")
 
     async def _enrich_with_project_fields(self, rest_issue: dict[str, Any]) -> IssueRead:
-        """REST issue 응답 + Project board 의 status / type 를 합쳐 IssueRead."""
+        """REST issue 응답 + Project board 의 status / type 를 합쳐 IssueRead.
+
+        Status / Type field 가 board 에 없으면 해당 필드는 None 으로 둠
+        (fail-fast 안 함 — read 도구는 board setup 미완 상태에서도 호출 가능).
+        """
         ref = str(rest_issue["number"])
-        meta = await self._ensure_meta()
+        project_id = await self._ensure_project_id()
+        status_field_id = await self._resolve_field_id("Status")
+        type_field_id = await self._resolve_field_id("Type")
         status: StatusRef | None = None
         type_: TypeRef | None = None
 
-        item_id = await self._project_item_id_by_issue_number(int(ref), meta.project_id)
-        if item_id is not None:
-            status, type_ = await self._fetch_item_field_values(
-                item_id, meta.status_field_id, meta.type_field_id,
-            )
+        if status_field_id or type_field_id:
+            item_id = await self._project_item_id_by_issue_number(int(ref), project_id)
+            if item_id is not None:
+                status, type_ = await self._fetch_item_field_values(
+                    item_id, status_field_id, type_field_id,
+                )
 
         return IssueRead(
             ref=ref,
@@ -527,8 +613,8 @@ class GitHubIssueTrackerAdapter(IssueTracker):
     async def _fetch_item_field_values(
         self,
         item_id: str,
-        status_field_id: str,
-        type_field_id: str,
+        status_field_id: str | None,
+        type_field_id: str | None,
     ) -> tuple[StatusRef | None, TypeRef | None]:
         query = """
         query($item_id: ID!) {

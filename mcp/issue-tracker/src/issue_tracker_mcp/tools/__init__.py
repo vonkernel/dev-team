@@ -5,6 +5,7 @@
 """
 
 from issue_tracker_mcp.tools import (  # noqa: F401  side-effect imports
+    field,
     issue,
     status,
     type,

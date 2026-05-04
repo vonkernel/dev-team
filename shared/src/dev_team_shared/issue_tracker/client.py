@@ -20,6 +20,7 @@ from typing import Any, TypeVar
 from pydantic import BaseModel
 
 from dev_team_shared.issue_tracker.schemas import (
+    FieldRef,
     IssueCreate,
     IssueRead,
     IssueUpdate,
@@ -27,6 +28,7 @@ from dev_team_shared.issue_tracker.schemas import (
     TypeRef,
 )
 from dev_team_shared.issue_tracker.tool_names import (
+    FieldTools,
     IssueTools,
     StatusTools,
     TypeTools,
@@ -41,6 +43,18 @@ class IssueTrackerClient:
 
     def __init__(self, mcp: StreamableMCPClient) -> None:
         self._mcp = mcp
+
+    # ──────────────────────────────────────────────────────────────────
+    # field — board 구조 discover + manage (PM 워크플로우 setup 단계)
+    # ──────────────────────────────────────────────────────────────────
+
+    async def field_list(self) -> list[FieldRef]:
+        return await self._call_list(FieldTools.LIST, {}, FieldRef)
+
+    async def field_create(self, name: str, kind: str = "single_select") -> FieldRef:
+        return await self._call(
+            FieldTools.CREATE, {"name": name, "kind": kind}, FieldRef,
+        )
 
     # ──────────────────────────────────────────────────────────────────
     # status — 도구 메타데이터 discover + manage
