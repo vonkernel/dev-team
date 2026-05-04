@@ -1,5 +1,5 @@
 [project]
-name = "document-db-mcp"
+name = "doc-store-mcp"
 version = "0.1.0"
 description = "Document DB MCP — PostgreSQL JSONB CRUD over streamable HTTP for dev-team agents"
 requires-python = ">=3.13,<3.14"
@@ -10,7 +10,7 @@ dependencies = [
   "dev-team-shared",
   # MCP SDK — streamable HTTP transport (spec 2025-06-18)
   "mcp>=1.27.0",
-  # PostgreSQL async driver (ORM 도입 금지 — root CLAUDE.md / mcp/document-db/CLAUDE.md §8)
+  # PostgreSQL async driver (ORM 도입 금지 — root CLAUDE.md / mcp/doc-store/CLAUDE.md §8)
   "asyncpg>=0.31.0",
   # Schema validation
   "pydantic>=2.13.3",

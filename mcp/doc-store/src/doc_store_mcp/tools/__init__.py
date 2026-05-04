@@ -5,7 +5,7 @@
 """
 
 # noqa: F401  # imports below are for side-effect (decorator registration)
-from document_db_mcp.tools import (
+from doc_store_mcp.tools import (
     agent_item,
     agent_session,
     agent_task,

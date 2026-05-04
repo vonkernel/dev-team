@@ -5,13 +5,13 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from dev_team_shared.document_db.schemas.issue import IssueCreate, IssueRead, IssueUpdate
-from dev_team_shared.document_db.tool_names import IssueTools
+from dev_team_shared.doc_store.schemas.issue import IssueCreate, IssueRead, IssueUpdate
+from dev_team_shared.doc_store.tool_names import IssueTools
 from mcp.server.fastmcp import Context
 
-from document_db_mcp.mcp_instance import AppContext, mcp
-from document_db_mcp.repositories.base import ListFilter
-from document_db_mcp.repositories.issue import IssueOptimisticLockError
+from doc_store_mcp.mcp_instance import AppContext, mcp
+from doc_store_mcp.repositories.base import ListFilter
+from doc_store_mcp.repositories.issue import IssueOptimisticLockError
 
 
 def _ctx(ctx: Context) -> AppContext:

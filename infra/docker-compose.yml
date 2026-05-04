@@ -151,13 +151,13 @@ services:
   # MCP 서버군 (profile: mcp 또는 agents).
   # 모든 MCP 는 streamable HTTP transport (MCP spec 2025-06-18). 컨테이너 내부 8000.
 
-  document-db-mcp:
+  doc-store-mcp:
     profiles: ["mcp", "agents"]
     build:
       context: ..
-      dockerfile: mcp/document-db/Dockerfile
-    image: dev-team/document-db-mcp:latest
-    container_name: dev-team-document-db-mcp
+      dockerfile: mcp/doc-store/Dockerfile
+    image: dev-team/doc-store-mcp:latest
+    container_name: dev-team-doc-store-mcp
     restart: unless-stopped
     environment:
       # dev_team DB DSN (langgraph DB 와 분리, 이슈 #20)
@@ -184,13 +184,13 @@ services:
     restart: unless-stopped
     environment:
       VALKEY_URL: "redis://valkey:6379"
-      DOCUMENT_DB_MCP_URL: "http://document-db-mcp:8000/mcp"
+      DOC_STORE_MCP_URL: "http://doc-store-mcp:8000/mcp"
       CHRONICLER_CONSUMER_GROUP: "chronicler"
       CHRONICLER_CONSUMER_NAME: "chr-1"
     depends_on:
       valkey:
         condition: service_started
-      document-db-mcp:
+      doc-store-mcp:
         condition: service_started
 
   user-gateway:

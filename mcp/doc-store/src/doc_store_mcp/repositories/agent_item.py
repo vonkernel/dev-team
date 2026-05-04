@@ -8,8 +8,8 @@ from uuid import UUID
 
 import asyncpg
 
-from document_db_mcp.repositories.base import PostgresRepositoryBase
-from dev_team_shared.document_db.schemas.agent_item import AgentItemCreate, AgentItemRead
+from doc_store_mcp.repositories.base import PostgresRepositoryBase
+from dev_team_shared.doc_store.schemas.agent_item import AgentItemCreate, AgentItemRead
 
 
 class _ImmutableUpdate:  # placeholder type for ABC contract

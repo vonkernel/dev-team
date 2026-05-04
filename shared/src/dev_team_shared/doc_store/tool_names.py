@@ -1,7 +1,7 @@
 """Document DB MCP 도구명 상수 — server / client 공유 source of truth.
 
-서버 (mcp/document-db/tools/) 의 `@mcp.tool(name=...)` 등록과
-클라이언트 (DocumentDbClient) 의 호출 모두 본 상수 사용.
+서버 (mcp/doc-store/tools/) 의 `@mcp.tool(name=...)` 등록과
+클라이언트 (DocStoreClient) 의 호출 모두 본 상수 사용.
 하드코딩된 문자열 사용 금지 — 변경 / 오타 방지 + IDE 자동완성.
 """
 

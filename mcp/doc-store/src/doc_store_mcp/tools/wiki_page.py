@@ -5,17 +5,17 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from dev_team_shared.document_db.schemas.wiki_page import (
+from dev_team_shared.doc_store.schemas.wiki_page import (
     WikiPageCreate,
     WikiPageRead,
     WikiPageUpdate,
 )
-from dev_team_shared.document_db.tool_names import WikiPageTools
+from dev_team_shared.doc_store.tool_names import WikiPageTools
 from mcp.server.fastmcp import Context
 
-from document_db_mcp.mcp_instance import AppContext, mcp
-from document_db_mcp.repositories.base import ListFilter
-from document_db_mcp.repositories.wiki_page import WikiPageOptimisticLockError
+from doc_store_mcp.mcp_instance import AppContext, mcp
+from doc_store_mcp.repositories.base import ListFilter
+from doc_store_mcp.repositories.wiki_page import WikiPageOptimisticLockError
 
 
 def _ctx(ctx: Context) -> AppContext:

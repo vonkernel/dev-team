@@ -1,6 +1,6 @@
 """EventHandler + Processors 단위 테스트.
 
-DocumentDbClient 를 mock 으로 주입 — wire-level (도구명 / dict / JSON parse) 은
+DocStoreClient 를 mock 으로 주입 — wire-level (도구명 / dict / JSON parse) 은
 client 안에 격리되어 본 테스트는 typed 메서드만 검증.
 """
 
@@ -15,7 +15,7 @@ import pytest
 from chronicler.handler import EventHandler
 from chronicler.processors import ALL_PROCESSORS, EventProcessor
 from chronicler.processors.session_start import SessionStartProcessor
-from dev_team_shared.document_db import (
+from dev_team_shared.doc_store import (
     AgentSessionRead,
     AgentTaskRead,
 )

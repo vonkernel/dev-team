@@ -16,9 +16,9 @@ from dataclasses import dataclass
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
-from document_db_mcp.config import Settings
-from document_db_mcp.db import apply_migrations, pool_lifespan
-from document_db_mcp.repositories import (
+from doc_store_mcp.config import Settings
+from doc_store_mcp.db import apply_migrations, pool_lifespan
+from doc_store_mcp.repositories import (
     AgentItemRepository,
     AgentSessionRepository,
     AgentTaskRepository,
@@ -60,7 +60,7 @@ async def _app_lifespan(_server: FastMCP) -> AsyncIterator[AppContext]:
             issue=IssueRepository(pool),
             wiki_page=WikiPageRepository(pool),
         )
-        logger.info("document-db-mcp ready (5 collections)")
+        logger.info("doc-store-mcp ready (5 collections)")
         yield ctx
 
 
@@ -72,7 +72,7 @@ async def _app_lifespan(_server: FastMCP) -> AsyncIterator[AppContext]:
 # docker network 의 다른 호스트명에서 차단됨.
 _settings_boot = Settings()
 mcp = FastMCP(
-    "document-db",
+    "doc-store",
     lifespan=_app_lifespan,
     host="0.0.0.0",  # noqa: S104 — 컨테이너 내부 binding, 노출 제어는 compose port mapping 으로
     port=_settings_boot.http_port,

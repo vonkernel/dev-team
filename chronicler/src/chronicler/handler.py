@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 
-from dev_team_shared.document_db import DocumentDbClient
+from dev_team_shared.doc_store import DocStoreClient
 from dev_team_shared.event_bus.events import A2AEvent
 
 from chronicler.processors.base import EventProcessor
@@ -29,7 +29,7 @@ class EventHandler:
     def __init__(
         self,
         processors: Iterable[EventProcessor],
-        db: DocumentDbClient,
+        db: DocStoreClient,
     ) -> None:
         self._db = db
         self._registry: dict[type[A2AEvent], EventProcessor] = {}

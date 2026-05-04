@@ -7,7 +7,7 @@
 # DB: 단일 Postgres 인스턴스의 dev_team DB (langgraph DB 와 분리, 이슈 #20).
 #
 # 빌드 (레포 루트에서):
-#   docker build -f mcp/document-db/Dockerfile -t dev-team/document-db-mcp:latest .
+#   docker build -f mcp/doc-store/Dockerfile -t dev-team/doc-store-mcp:latest .
 #
 # 런타임 변수:
 #   DATABASE_URI         dev_team DB DSN (compose 가 주입)
@@ -26,15 +26,15 @@ ENV PIP_NO_CACHE_DIR=1 \
 
 WORKDIR /app
 
-# shared 먼저 (dev-team-shared 의존 해소 — schemas + tool_names + DocumentDbClient)
+# shared 먼저 (dev-team-shared 의존 해소 — schemas + tool_names + DocStoreClient)
 COPY shared /app/shared
 RUN pip install -e /app/shared
 
-COPY mcp/document-db /app/document-db
-RUN sed -i '/^\[tool\.uv\.sources\]/,/^$/d' /app/document-db/pyproject.toml \
- && pip install -e /app/document-db
+COPY mcp/doc-store /app/doc-store
+RUN sed -i '/^\[tool\.uv\.sources\]/,/^$/d' /app/doc-store/pyproject.toml \
+ && pip install -e /app/doc-store
 
-WORKDIR /app/document-db
+WORKDIR /app/doc-store
 EXPOSE 8000
 
-CMD ["python", "-m", "document_db_mcp.server"]
+CMD ["python", "-m", "doc_store_mcp.server"]

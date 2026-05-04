@@ -7,8 +7,8 @@ from uuid import UUID
 
 import asyncpg
 
-from document_db_mcp.repositories.base import PostgresRepositoryBase
-from dev_team_shared.document_db.schemas.agent_task import (
+from doc_store_mcp.repositories.base import PostgresRepositoryBase
+from dev_team_shared.doc_store.schemas.agent_task import (
     AgentTaskCreate,
     AgentTaskRead,
     AgentTaskUpdate,

@@ -1,4 +1,4 @@
-"""DocumentDbClient — Document DB MCP 의 typed 클라이언트.
+"""DocStoreClient — Document DB MCP 의 typed 클라이언트.
 
 호출자는 Pydantic 모델 입출력만 다룸. wire-level 디테일 (도구명 / dict 래핑 /
 JSON parse) 모두 본 클래스 안에 격리.
@@ -6,7 +6,7 @@ JSON parse) 모두 본 클래스 안에 격리.
 사용:
 
     async with StreamableMCPClient.connect(url) as mcp:
-        db = DocumentDbClient(mcp)
+        db = DocStoreClient(mcp)
         item = await db.agent_item_create(AgentItemCreate(...))   # → AgentItemRead
 """
 
@@ -17,7 +17,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from dev_team_shared.document_db.schemas import (
+from dev_team_shared.doc_store.schemas import (
     AgentItemCreate,
     AgentItemRead,
     AgentSessionCreate,
@@ -33,7 +33,7 @@ from dev_team_shared.document_db.schemas import (
     WikiPageRead,
     WikiPageUpdate,
 )
-from dev_team_shared.document_db.tool_names import (
+from dev_team_shared.doc_store.tool_names import (
     AgentItemTools,
     AgentSessionTools,
     AgentTaskTools,
@@ -45,7 +45,7 @@ from dev_team_shared.mcp_client import StreamableMCPClient
 T = TypeVar("T", bound=BaseModel)
 
 
-class DocumentDbClient:
+class DocStoreClient:
     """Typed wrapper around `StreamableMCPClient` for Document DB MCP 도구.
 
     각 collection × op 마다 1 메서드. 모든 입력은 Pydantic 모델, 모든 반환은
@@ -377,4 +377,4 @@ def _where_args(where: dict[str, Any] | None) -> dict[str, Any]:
     return {} if where is None else {"where": where}
 
 
-__all__ = ["DocumentDbClient"]
+__all__ = ["DocStoreClient"]

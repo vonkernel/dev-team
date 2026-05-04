@@ -16,14 +16,14 @@ import asyncpg
 import pytest
 import pytest_asyncio
 
-from document_db_mcp.repositories import (
+from doc_store_mcp.repositories import (
     AgentItemRepository,
     AgentSessionRepository,
     AgentTaskRepository,
     IssueRepository,
     WikiPageRepository,
 )
-from dev_team_shared.document_db.schemas import (
+from dev_team_shared.doc_store.schemas import (
     AgentItemCreate,
     AgentSessionCreate,
     AgentTaskCreate,

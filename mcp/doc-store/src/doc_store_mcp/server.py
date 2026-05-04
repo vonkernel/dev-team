@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import logging
 
-from document_db_mcp import tools as _tools  # noqa: F401  (registers tools)
-from document_db_mcp.mcp_instance import mcp
+from doc_store_mcp import tools as _tools  # noqa: F401  (registers tools)
+from doc_store_mcp.mcp_instance import mcp
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 def main() -> None:
     """uvicorn 위에서 streamable HTTP 서버 기동."""
-    logger.info("starting document-db-mcp (streamable HTTP)")
+    logger.info("starting doc-store-mcp (streamable HTTP)")
     mcp.run(transport="streamable-http")
 
 
