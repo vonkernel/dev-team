@@ -117,6 +117,22 @@
 
 원칙: **REST 와 MCP 양쪽을 평행 노출 금지**. 도구 / 데이터 서비스는 MCP 한 채널. 사용자 facing 만 REST. LLM 이 아닌 클라이언트 (CHR 등) 도 MCP 사용 — 일관성 우선.
 
+## 에이전트 명명 약어
+
+docs / commit / 이슈 본문 / 채팅에서 일관 사용. 새 에이전트 추가 시 본 표에 등록.
+
+| 에이전트 | 약어 | 도입 |
+|---|---|---|
+| Primary | **P** | M2 (구현됨) |
+| User Gateway | **UG** | M2 (구현됨) |
+| Librarian | **L** | M3 (#38) |
+| Chronicler | **CHR** | M3 (#34) |
+| Architect | **A** | M4 (#45) |
+| Engineer | **ENG** | M5+ |
+| QA | **QA** | M5+ |
+
+긴 이름 (`primary` / `chronicler` 등) 도 코드 / 식별자에선 여전히 사용. 약어는 자유 산문 (docs / commit / 이슈 본문 / 채팅) 한정.
+
 ## 포트 컨벤션
 
 호스트 노출 포트의 의미적 대역. 새 컨테이너 추가 시 따른다.
