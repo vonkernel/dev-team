@@ -7,8 +7,12 @@ mcp/CLAUDE.md §0 (thin bridge) 준수:
 
 전제 조건:
 - 대상 Project v2 board 가 owner-level (user / organization) 에 존재
-- Project 에 single-select 필드 "Status" / "Type" 둘 다 존재
-  (없으면 부팅 시 fail-fast — P 가 board UI 또는 별 setup 으로 추가)
+
+board 의 field 구조 (`Status` / `Issue Type` single-select 등) 는 호출자 (P) 가
+`field.list / field.create` 도구로 자율 운영. 본 모듈은 다음 컨벤션 사용:
+- status 도구는 board 의 **`Status`** 필드를 봄 (GitHub default 명)
+- type 도구는 board 의 **`Issue Type`** 필드를 봄 (GitHub 의 reserved word
+  `Type` 회피 — `Type` 은 native issue types 신기능과 충돌해 create 차단됨)
 
 issue 식별자:
 - 외부 노출 ref: issue number (str). REST 호출 / 사용자 표시용.
@@ -95,8 +99,10 @@ class GitHubIssueTrackerAdapter(IssueTracker):
                 {"login": self._owner, "number": self._project_number},
             )
         except GitHubGraphQLError as e:
-            data = e.errors[0].get("data") if e.errors else None
-            if data is None:
+            # organization / user 한 쪽이 NOT_FOUND 인 게 정상 — partial data 사용.
+            if e.data:
+                data = e.data
+            else:
                 raise
 
         project = (data.get("organization") or {}).get("projectV2") or (
@@ -231,12 +237,12 @@ class GitHubIssueTrackerAdapter(IssueTracker):
     # ------------------------------------------------------------------
 
     async def list_types(self) -> list[TypeRef]:
-        field_id = await self._require_field_id("Type")
+        field_id = await self._require_field_id("Issue Type")
         opts = await self._fetch_field_options(field_id)
         return [TypeRef(id=o["id"], name=o["name"]) for o in opts]
 
     async def create_type(self, name: str) -> TypeRef:
-        field_id = await self._require_field_id("Type")
+        field_id = await self._require_field_id("Issue Type")
         opt = await self._add_field_option(field_id, name)
         return TypeRef(id=opt["id"], name=opt["name"])
 
@@ -343,7 +349,7 @@ class GitHubIssueTrackerAdapter(IssueTracker):
 
         # 3. type / status 지정 (있으면) — 호출자가 raw id 보냄
         if doc.type_id:
-            type_field_id = await self._require_field_id("Type")
+            type_field_id = await self._require_field_id("Issue Type")
             await self._set_single_select_value(
                 project_id, item_id, type_field_id, doc.type_id,
             )
@@ -381,7 +387,7 @@ class GitHubIssueTrackerAdapter(IssueTracker):
 
         if patch.type_id is not None:
             project_id = await self._ensure_project_id()
-            type_field_id = await self._require_field_id("Type")
+            type_field_id = await self._require_field_id("Issue Type")
             item_id = await self._project_item_id_by_issue_number(int(ref), project_id)
             if item_id is None:
                 raise RuntimeError(f"issue #{ref} not on project board")
@@ -588,7 +594,7 @@ class GitHubIssueTrackerAdapter(IssueTracker):
         ref = str(rest_issue["number"])
         project_id = await self._ensure_project_id()
         status_field_id = await self._resolve_field_id("Status")
-        type_field_id = await self._resolve_field_id("Type")
+        type_field_id = await self._resolve_field_id("Issue Type")
         status: StatusRef | None = None
         type_: TypeRef | None = None
 

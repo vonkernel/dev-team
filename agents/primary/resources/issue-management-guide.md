@@ -26,9 +26,11 @@ Linear 가능) 를 다룰 때 따르는 가이드. 부팅 시 LLM persona 컨텍
 1. **field 점검** — `field.list()` 로 board 의 field 구조 조회. 필요한
    single-select field 가 있는지:
    - `Status` — 이슈 lifecycle 의 단계. 보통 GitHub 이 default 로 만들어둠.
-   - `Type` — 이슈 분류 (Epic / Story / Task 등). 보통 default 없음.
+   - `Issue Type` — 이슈 분류 (Epic / Story / Task 등). default 없음.
+     (이름 주의: GitHub 의 native issue types 신기능과 충돌 회피 위해
+     `Type` 이 아닌 **`Issue Type`** 사용)
 2. **field 부족 시 추가** — `field.create(name, kind="single_select")` 로 직접
-   추가. `Type` 같이 default 없는 field 는 첫 프로젝트에서 만들어야 함.
+   추가. `Issue Type` 같이 default 없는 field 는 첫 프로젝트에서 만들어야 함.
 3. **status / type option 점검** — `status.list()` / `type.list()` 로 현재 옵션
    확인.
 4. **프로젝트 컨텍스트 기반 판단** — 어떤 status / type 을 운영할지 결정:
@@ -83,7 +85,20 @@ PRD 분해 후:
 | `issue.close` | 완료 처리 | Done 후 |
 | `issue.count` | 개수 조회 | 페이지네이션 / 통계 |
 
-## 5. 안티 패턴 (하지 말 것)
+## 5. id 안정성 — list 후 사용
+
+**single-select option 의 `id` 는 도구 내부 변경 (`status.create` /
+`type.create`) 으로 reissued 가능**. 따라서 캐싱하지 말고, **이슈 작업 직전
+`status.list` / `type.list` 로 새로 받아 사용**.
+
+```
+# 안전 패턴
+statuses = await client.status_list()
+ready = next(s for s in statuses if s.name == "Ready")
+await client.issue_transition(ref, status_id=ready.id)
+```
+
+## 6. 안티 패턴 (하지 말 것)
 
 - ❌ 자기 머릿속 status enum 을 board 에 강제 (board 가 "Doing" 인데 "In Progress"
   로 transition 하려 하지 말 것 — board 의 사실 우선)

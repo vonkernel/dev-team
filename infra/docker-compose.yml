@@ -183,12 +183,10 @@ services:
     image: dev-team/issue-tracker-mcp:latest
     container_name: dev-team-issue-tracker-mcp
     restart: unless-stopped
+    env_file:
+      - ../.env                                     # GITHUB_TOKEN / OWNER / REPO / PROJECT_NUMBER 주입
     environment:
       ISSUE_TRACKER_TYPE: "${ISSUE_TRACKER_TYPE:-github}"
-      GITHUB_TOKEN: "${GITHUB_TOKEN}"
-      GITHUB_TARGET_OWNER: "${GITHUB_TARGET_OWNER}"
-      GITHUB_TARGET_REPO: "${GITHUB_TARGET_REPO}"
-      GITHUB_PROJECT_NUMBER: "${GITHUB_PROJECT_NUMBER}"
     ports:
       - "9101:8000"                                 # 호스트 9101 ← 컨테이너 8000
 

@@ -72,14 +72,25 @@ src/issue_tracker_mcp/
 1. 대상 Project v2 board 가 owner-level (user 또는 organization) 에 존재 +
    `GITHUB_PROJECT_NUMBER` 일치
 
-board 의 field 구조 (Status / Type 같은 single-select 필드의 존재 여부) 는
-어댑터가 강제하지 않는다 — P (LLM 에이전트) 가 `field.list` 로 현황 조회 후
+board 의 field 구조 (`Status` / `Issue Type` single-select 필드 등) 는 어댑터
+가 강제하지 않는다 — P (LLM 에이전트) 가 `field.list` 로 현황 조회 후
 `field.create` 로 자율 추가 (PM 워크플로우). 어댑터가 자동으로 lazy 생성하지
 않는 이유: thin bridge 원칙 — 호출자가 명시적 도구 호출로 결정.
 
 `status.list` / `type.list` / `transition` 같은 도구는 호출 시 해당 field 가
 없으면 helpful 에러 ("call `field.create('Status')` first"). `issue.get` /
 `issue.list` 같은 read 도구는 field 없어도 동작 (해당 필드를 None 으로 둠).
+
+본 어댑터의 field name 컨벤션:
+- status 도구는 board 의 **`Status`** 필드를 본다 (GitHub default)
+- type 도구는 board 의 **`Issue Type`** 필드를 본다 (GitHub 의 reserved word
+  `Type` 회피 — `Type` 은 native issue types 신기능과 충돌해 create 차단)
+
+### option id 안정성
+
+Single-select option 의 id 는 같은 field 에 다른 option 추가/삭제 (`updateProjectV2Field`
+mutation) 시 **reissued 가능**. 호출자는 캐싱 금지, 이슈 작업 직전 `status.list`
+/ `type.list` 로 fresh id 를 받아 사용해야 한다.
 
 ---
 

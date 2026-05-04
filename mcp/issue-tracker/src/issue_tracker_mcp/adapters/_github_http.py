@@ -24,11 +24,21 @@ class GitHubAPIError(RuntimeError):
 
 
 class GitHubGraphQLError(RuntimeError):
-    """GraphQL 응답에 errors 가 있는 경우."""
+    """GraphQL 응답에 errors 가 있는 경우.
 
-    def __init__(self, errors: list[dict[str, Any]]) -> None:
+    `data` 는 partial response 의 data 부분 (있을 수 있음). 호출자가 partial
+    수용 가능하면 `e.data` 로 접근 (예: organization / user 두 path 시도).
+    """
+
+    def __init__(
+        self,
+        errors: list[dict[str, Any]],
+        *,
+        data: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(f"GraphQL errors: {errors}")
         self.errors = errors
+        self.data = data
 
 
 def make_client(token: str, timeout: float = 30.0) -> httpx.AsyncClient:
@@ -69,14 +79,18 @@ async def graphql(
     query: str,
     variables: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """GraphQL 호출. errors 면 GitHubGraphQLError, 아니면 data dict 반환."""
+    """GraphQL 호출. errors 면 GitHubGraphQLError (data 도 첨부), 아니면 data dict 반환.
+
+    Partial response 가 정상인 시나리오 (organization / user 두 path 시도 등)
+    는 호출자가 `except GitHubGraphQLError as e: data = e.data` 로 수용.
+    """
     body = {"query": query, "variables": variables or {}}
     response = await http.post(GRAPHQL_URL, json=body)
     if response.status_code != 200:
         raise GitHubAPIError(response.status_code, response.text)
     payload = response.json()
     if payload.get("errors"):
-        raise GitHubGraphQLError(payload["errors"])
+        raise GitHubGraphQLError(payload["errors"], data=payload.get("data"))
     data = payload.get("data") or {}
     return data  # type: ignore[no-any-return]
 

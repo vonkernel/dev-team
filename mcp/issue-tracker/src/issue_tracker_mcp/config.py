@@ -16,7 +16,13 @@ class Settings(BaseSettings):
     는 도구(board) 자체.
     """
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+        # 빈 string env 는 unset 으로 취급 → default 값 사용. compose 가
+        # `${VAR}` 를 unset 변수에 빈 string 으로 expand 하는 케이스 방어.
+        env_ignore_empty=True,
+    )
 
     # 어댑터 선택 — factory.py 에서 사용
     issue_tracker_type: str = Field(
