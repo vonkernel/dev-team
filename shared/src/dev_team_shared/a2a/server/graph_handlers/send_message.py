@@ -26,6 +26,7 @@ from dev_team_shared.a2a.server.graph_handlers.parse import (
     extract_ai_reply_text,
     parse_request_or_error,
 )
+from dev_team_shared.a2a.server.graph_handlers.publish import publish_item_append
 from dev_team_shared.a2a.server.graph_handlers.session import ChatContext, log_session
 from dev_team_shared.a2a.server.handler import MethodHandler
 
@@ -54,6 +55,18 @@ class GraphSendMessageHandler(MethodHandler):
         )
 
         async with log_session(ctx):
+            # 사용자 메시지 publish (item.append role=user)
+            await publish_item_append(
+                request,
+                context_id=ctx.context_id,
+                trace_id=ctx.trace_id,
+                initiator="user",
+                counterpart=ctx.assistant,
+                role="user",
+                sender="user",
+                content=[p.model_dump(mode="json") for p in a2a_msg.parts],
+                message_id=a2a_msg.message_id,
+            )
             try:
                 with anyio.fail_after(AGENT_TOTAL_TIMEOUT_S):  # S4
                     result = await request.app.state.graph.ainvoke(
@@ -76,9 +89,21 @@ class GraphSendMessageHandler(MethodHandler):
                     ctx, make_failed_task(ctx, a2a_msg, error_detail(exc)),
                 )
 
+            ai_text = extract_ai_reply_text(result)
+            # 에이전트 응답 publish (item.append role=agent)
+            await publish_item_append(
+                request,
+                context_id=ctx.context_id,
+                trace_id=ctx.trace_id,
+                initiator="user",
+                counterpart=ctx.assistant,
+                role="agent",
+                sender=ctx.assistant,
+                content=[{"text": ai_text}],
+            )
             return json_response(
                 ctx,
-                make_completed_task(ctx, a2a_msg, extract_ai_reply_text(result)),
+                make_completed_task(ctx, a2a_msg, ai_text),
             )
 
 

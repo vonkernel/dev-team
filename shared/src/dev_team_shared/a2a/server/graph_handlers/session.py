@@ -76,16 +76,32 @@ class ChatContext:
 
 @asynccontextmanager
 async def log_session(ctx: ChatContext) -> AsyncIterator[None]:
-    """SSE / RPC 세션 lifecycle 로깅 스코프.
+    """SSE / RPC 세션 lifecycle 로깅 스코프 + Chronicler publish.
 
-    enter → start 로그. 정상 / 예외 종료 → end 로그 (reason · duration_ms ·
-    chunks). `asyncio.CancelledError` (Starlette 가 client disconnect 등으로
-    task 를 cancel) 발생 시 `reason` 을 `client_disconnect` 로 자동 갱신하고
-    cancel 로그를 추가 출력한 뒤 전파.
+    enter → start 로그 + `session.start` 이벤트 publish.
+    정상 / 예외 종료 → end 로그 + `session.end` 이벤트 publish (reason · duration).
+    `asyncio.CancelledError` (Starlette 가 client disconnect 등으로 task 를
+    cancel) 발생 시 `reason` 을 `client_disconnect` 로 자동 갱신.
+
+    publish 는 `request.app.state.event_bus` 가 있을 때만 (없으면 no-op).
     """
+    # 늦은 import — 순환 의존 회피 (graph_handlers.publish 가 event_bus 의존)
+    from dev_team_shared.a2a.server.graph_handlers.publish import (
+        publish_session_end,
+        publish_session_start,
+    )
+
     logger.info(
         "sse_session.start assistant=%s method=%s context_id=%s trace_id=%s",
         ctx.assistant, ctx.method, ctx.context_id, ctx.trace_id,
+    )
+    await publish_session_start(
+        ctx.request,
+        context_id=ctx.context_id,
+        trace_id=ctx.trace_id,
+        initiator="user",            # M3: UG → Primary 가 유일 — initiator 는 user
+        counterpart=ctx.assistant,
+        topic=ctx.method,
     )
     try:
         yield
@@ -104,6 +120,16 @@ async def log_session(ctx: ChatContext) -> AsyncIterator[None]:
             "trace_id=%s reason=%s duration_ms=%d chunks=%d",
             ctx.assistant, ctx.method, ctx.context_id,
             ctx.trace_id, ctx.reason, duration_ms, ctx.chunk_count,
+        )
+        await publish_session_end(
+            ctx.request,
+            context_id=ctx.context_id,
+            trace_id=ctx.trace_id,
+            initiator="user",
+            counterpart=ctx.assistant,
+            reason=ctx.reason,
+            duration_ms=duration_ms,
+            metadata={"chunks": ctx.chunk_count},
         )
 
 
