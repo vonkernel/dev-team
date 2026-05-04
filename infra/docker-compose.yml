@@ -171,6 +171,25 @@ services:
       postgres-init:
         condition: service_completed_successfully
 
+  # IssueTracker MCP — GitHub Issues + Projects v2 어댑터 (#36).
+  # mcp/CLAUDE.md §0 thin bridge — 호출자(P, LLM 에이전트)가 라이브 GitHub
+  # 도구의 사실을 조회/조작. 로컬 인프라 의존 없음.
+
+  issue-tracker-mcp:
+    profiles: ["mcp", "agents"]
+    build:
+      context: ..
+      dockerfile: mcp/issue-tracker/Dockerfile
+    image: dev-team/issue-tracker-mcp:latest
+    container_name: dev-team-issue-tracker-mcp
+    restart: unless-stopped
+    env_file:
+      - ../.env                                     # GITHUB_TOKEN / OWNER / REPO / PROJECT_NUMBER 주입
+    environment:
+      ISSUE_TRACKER_TYPE: "${ISSUE_TRACKER_TYPE:-github}"
+    ports:
+      - "9101:8000"                                 # 호스트 9101 ← 컨테이너 8000
+
   # Chronicler (CHR) — A2A 대화 이벤트 수집 (#34).
   # 단일 Python 스크립트. 에이전트 아님 (LangGraph / LLM 미사용).
 
