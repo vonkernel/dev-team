@@ -109,6 +109,19 @@ class GraphSendStreamingMessageHandler(MethodHandler):
                         make_failed_status_event(ctx, error_detail(exc)),
                     )
                     return
+                # 스트림 정상 종료 — 누적 응답 텍스트를 agent item.append 로 publish
+                accumulated = "".join(ctx.accumulated_response)
+                if accumulated:
+                    await publish_item_append(
+                        request,
+                        context_id=ctx.context_id,
+                        trace_id=ctx.trace_id,
+                        initiator="user",
+                        counterpart=ctx.assistant,
+                        role="agent",
+                        sender=ctx.assistant,
+                        content=[{"text": accumulated}],
+                    )
                 yield sse(ctx, make_completed_status_event(ctx))
 
         return sse_response(event_generator())

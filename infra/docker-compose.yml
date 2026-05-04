@@ -205,10 +205,14 @@ services:
       # Primary 의 A2A 엔드포인트 / AgentCard URL. compose 내부 DNS 기준.
       PRIMARY_A2A_URL: "http://primary:8000/a2a/primary"
       PRIMARY_CARD_URL: "http://primary:8000/.well-known/agent-card.json"
+      # A2A 대화 이벤트 publish (#34) — UG ↔ P 양쪽 publish, CHR consume.
+      VALKEY_URL: "redis://valkey:6379"
     ports:
       - "8080:8000"                                 # 호스트 8080 ← 컨테이너 8000 (브라우저 접속 경로)
     depends_on:
       primary:
+        condition: service_started
+      valkey:
         condition: service_started
 
 volumes:

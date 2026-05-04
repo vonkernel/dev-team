@@ -19,10 +19,12 @@ SSE 설계는 `user-gateway/docs/sse.md`.
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
+from dev_team_shared.event_bus import ValkeyEventBus
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -67,11 +69,26 @@ async def lifespan(app: FastAPI):
         sse_keepalive_s=_CONFIG.sse.keepalive_s,
     )
 
+    # event_bus — VALKEY_URL 가 있으면 publish 활성. 없거나 초기화 실패 시 None
+    # (routes 의 publish helper 가 no-op).
+    event_bus: ValkeyEventBus | None = None
+    valkey_url = os.environ.get("VALKEY_URL")
+    if valkey_url:
+        try:
+            event_bus = await ValkeyEventBus.create(valkey_url)
+            logger.info("event_bus ready (Valkey at %s)", valkey_url)
+        except Exception:
+            logger.exception(
+                "ValkeyEventBus 초기화 실패 (url=%s) — publish 비활성화",
+                valkey_url,
+            )
+
     # 라우트는 app.state 의 추상만 소비 (DIP).
     app.state.config = _CONFIG
     app.state.http = http
     app.state.upstream = upstream
     app.state.total_timeout_s = _CONFIG.upstream.total_timeout_s
+    app.state.event_bus = event_bus
 
     logger.info(
         "user-gateway ready (primary A2A: %s, total_timeout=%.0fs, "
@@ -85,6 +102,8 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await http.aclose()
+        if event_bus is not None:
+            await event_bus.aclose()
 
 
 app = FastAPI(

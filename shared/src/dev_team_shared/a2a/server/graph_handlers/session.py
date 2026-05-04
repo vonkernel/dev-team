@@ -47,6 +47,8 @@ class ChatContext:
     started: float = field(default_factory=time.monotonic)
     chunk_count: int = 0
     reason: str = "completed"
+    # 스트리밍 응답 누적 — send_streaming 이 stream 종료 후 단일 item.append publish
+    accumulated_response: list[str] = field(default_factory=list)
 
     @classmethod
     def create(
