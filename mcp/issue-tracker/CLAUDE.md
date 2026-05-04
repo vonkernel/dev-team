@@ -51,25 +51,40 @@
 
 ---
 
-## 3. 추상 + 구현 (mcp/CLAUDE.md §2.2)
+## 3. 추상 + 구현 (mcp/CLAUDE.md §2.2 + ISP)
+
+ABC 가 책임별로 분할 (ISP). 한 인터페이스 17 op 몰지 않고 4 좁은 ABC + 컴포지트:
 
 ```
-src/issue_tracker_mcp/
-├── adapters/
-│   ├── base.py         # IssueTracker ABC (11 op)
-│   ├── github.py       # GitHubIssueTrackerAdapter (REST + GraphQL)
-│   └── _github_http.py # httpx + GraphQL 헬퍼
-├── factory.py          # ISSUE_TRACKER_TYPE → 어댑터 선택 (OCP)
-├── schemas/
-│   ├── issue.py        # IssueCreate / IssueUpdate / IssueRead
-│   └── refs.py         # StatusRef / TypeRef
-└── tools/
-    ├── issue.py        # 7 op
-    ├── status.py       # 2 op
-    └── type.py         # 2 op
+adapters/
+├── base.py             # IssueOps / StatusOps / TypeOps / FieldOps
+│                       #   + IssueTracker (4 properties 컴포지트)
+└── github/             # 패키지 — 도메인별 모듈 분할
+    ├── __init__.py     # GitHubIssueTrackerAdapter export
+    ├── adapter.py      # GitHubIssueTrackerAdapter (composition)
+    ├── issue.py        # GitHubIssueOps   (8 op)
+    ├── status.py       # GitHubStatusOps  (3 op)
+    ├── type.py         # GitHubTypeOps    (3 op)
+    ├── field.py        # GitHubFieldOps   (3 op)
+    ├── _ctx.py         # 공유 _Ctx (http + repo + project_id 캐시)
+    ├── _http.py        # REST + GraphQL helper
+    ├── _field_resolver.py   # field name → id (도메인 ops 공유)
+    ├── _field_options.py    # single-select option 조작 (status/type 공유)
+    └── _project_items.py    # Project board item 조작 (issue 사용)
+
+factory.py              # ISSUE_TRACKER_TYPE → 어댑터 (OCP)
+tools/
+├── issue.py            # 8 도구 — `tracker.issues.*` delegate
+├── status.py           # 3 도구
+├── type.py             # 3 도구
+└── field.py            # 3 도구
 ```
 
-**OCP 추가**: 새 backend (Jira / Linear) = `adapters/<name>.py` + `factory._REGISTRY` 1줄 + 사용자 컨펌. 기존 코드 수정 0줄.
+**ISP**: 호출자가 좁은 ops 만 의존 가능. P 가 issue 작업만 할 때 `client.issues: IssueClient` 만 사용.
+
+**OCP**: 새 backend 추가 = `adapters/<name>/` 패키지 + `factory._REGISTRY` 1줄. ABC / 기존 어댑터 수정 0줄.
+
+**SRP (어댑터 측)**: 한 파일 = 한 도메인 (≤210줄). 공유 helper 는 `_*` prefix 모듈로 분리.
 
 ---
 

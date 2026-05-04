@@ -35,40 +35,40 @@ async def main() -> int:
 
         # 1. field.list
         print("\n[1] field.list")
-        fields = await client.field_list()
+        fields = await client.fields.list()
         for f in fields:
             print(f"    - {f.name} ({f.kind}) id={f.id}")
         names = {f.name: f for f in fields}
 
         # 2. ensure Type single-select
         print("\n[2] field.create('Type', 'single_select') - idempotent")
-        type_field = await client.field_create("Issue Type", "single_select")
+        type_field = await client.fields.create("Issue Type", "single_select")
         print(f"    Type field: id={type_field.id} kind={type_field.kind}")
         had_type = "Issue Type" in names
         print(f"    (existed before: {had_type})")
 
         # 3. type.list / create
         print("\n[3] type.list")
-        types = await client.type_list()
+        types = await client.types.list()
         for t in types:
             print(f"    - {t.name} id={t.id}")
         type_by_name = {t.name: t for t in types}
         for tname in ["Epic", "Story", "Task"]:
             if tname not in type_by_name:
-                created = await client.type_create(tname)
+                created = await client.types.create(tname)
                 print(f"    type.create({tname!r}) → id={created.id}")
                 type_by_name[tname] = created
         epic = type_by_name["Epic"]
 
         # 4. status.list / create
         print("\n[4] status.list")
-        statuses = await client.status_list()
+        statuses = await client.statuses.list()
         for s in statuses:
             print(f"    - {s.name} id={s.id}")
         status_by_name = {s.name: s for s in statuses}
         for sname in ["Backlog", "Ready"]:
             if sname not in status_by_name:
-                created_s = await client.status_create(sname)
+                created_s = await client.statuses.create(sname)
                 print(f"    status.create({sname!r}) → id={created_s.id}")
                 status_by_name[sname] = created_s
         backlog = status_by_name["Backlog"]
@@ -77,12 +77,12 @@ async def main() -> int:
         # 5. issue.create
         # 옵션 id 는 update 후 reissued 가능 — refresh 후 사용.
         print("\n[5] issue.create  (Epic + Backlog) — refresh ids first")
-        types_now = {t.name: t for t in await client.type_list()}
-        statuses_now = {s.name: s for s in await client.status_list()}
+        types_now = {t.name: t for t in await client.types.list()}
+        statuses_now = {s.name: s for s in await client.statuses.list()}
         epic = types_now["Epic"]
         backlog = statuses_now["Backlog"]
         ready = statuses_now["Ready"]
-        issue = await client.issue_create(
+        issue = await client.issues.create(
             IssueCreate(
                 title="[verify] sandbox issue (auto)",
                 body=(
@@ -98,12 +98,12 @@ async def main() -> int:
 
         # 6. issue.transition → Ready
         print("\n[6] issue.transition → Ready")
-        await client.issue_transition(issue.ref, status_id=ready.id)
+        await client.issues.transition(issue.ref, status_id=ready.id)
         print("    transition OK")
 
         # 7. issue.get
         print("\n[7] issue.get")
-        fetched = await client.issue_get(issue.ref)
+        fetched = await client.issues.get(issue.ref)
         if fetched is None:
             print("    !! issue.get returned None")
             return 1
@@ -117,13 +117,13 @@ async def main() -> int:
 
         # 8. issue.close
         print("\n[8] issue.close")
-        ok = await client.issue_close(issue.ref)
+        ok = await client.issues.close(issue.ref)
         print(f"    close ok={ok}")
 
         # 9. issue.delete (cleanup) — admin 권한 있으면 영구 삭제, 없으면 close 유지.
         print("\n[9] issue.delete (cleanup, admin only)")
         try:
-            deleted = await client.issue_delete(issue.ref)
+            deleted = await client.issues.delete(issue.ref)
             print(f"    delete ok={deleted}")
             cleanup_state = "deleted"
         except RuntimeError as e:

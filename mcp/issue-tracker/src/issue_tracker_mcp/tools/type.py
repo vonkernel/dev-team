@@ -17,7 +17,7 @@ def _ctx(ctx: Context) -> AppContext:
     description="Project board 의 현재 issue type 목록",
 )
 async def list_(ctx: Context) -> list[TypeRef]:
-    return await _ctx(ctx).tracker.list_types()
+    return await _ctx(ctx).tracker.types.list()
 
 
 @mcp.tool(
@@ -25,7 +25,7 @@ async def list_(ctx: Context) -> list[TypeRef]:
     description="Project board 에 type option 추가 (이름 중복 시 기존 항목 반환)",
 )
 async def create_(ctx: Context, name: str) -> TypeRef:
-    return await _ctx(ctx).tracker.create_type(name)
+    return await _ctx(ctx).tracker.types.create(name)
 
 
 @mcp.tool(
@@ -35,4 +35,4 @@ async def create_(ctx: Context, name: str) -> TypeRef:
     ),
 )
 async def delete(ctx: Context, type_id: str) -> bool:
-    return await _ctx(ctx).tracker.delete_type(type_id)
+    return await _ctx(ctx).tracker.types.delete(type_id)

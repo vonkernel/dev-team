@@ -5,6 +5,12 @@ server (mcp/issue-tracker) / client (P / 향후 다른 에이전트) 모두 본 
 IssueTrackerClient 안에 격리되어 외부로 새지 않음.
 """
 
+from dev_team_shared.issue_tracker._ops_client import (
+    FieldClient,
+    IssueClient,
+    StatusClient,
+    TypeClient,
+)
 from dev_team_shared.issue_tracker.client import IssueTrackerClient
 from dev_team_shared.issue_tracker.schemas import (
     FieldRef,
@@ -22,15 +28,19 @@ from dev_team_shared.issue_tracker.tool_names import (
 )
 
 __all__ = [
+    "FieldClient",
     "FieldRef",
     "FieldTools",
+    "IssueClient",
     "IssueCreate",
     "IssueRead",
     "IssueTools",
     "IssueTrackerClient",
     "IssueUpdate",
+    "StatusClient",
     "StatusRef",
     "StatusTools",
+    "TypeClient",
     "TypeRef",
     "TypeTools",
 ]

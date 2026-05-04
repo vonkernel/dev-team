@@ -19,17 +19,17 @@ def _ctx(ctx: Context) -> AppContext:
 
 @mcp.tool(name="issue.create", description="이슈 생성 (Project board 자동 등록)")
 async def create_(ctx: Context, doc: IssueCreate) -> IssueRead:
-    return await _ctx(ctx).tracker.create(doc)
+    return await _ctx(ctx).tracker.issues.create(doc)
 
 
 @mcp.tool(name="issue.update", description="이슈 갱신 (title / body / type)")
 async def update(ctx: Context, ref: str, patch: IssueUpdate) -> IssueRead | None:
-    return await _ctx(ctx).tracker.update(ref, patch)
+    return await _ctx(ctx).tracker.issues.update(ref, patch)
 
 
 @mcp.tool(name="issue.get", description="이슈 단건 조회")
 async def get(ctx: Context, ref: str) -> IssueRead | None:
-    return await _ctx(ctx).tracker.get(ref)
+    return await _ctx(ctx).tracker.issues.get(ref)
 
 
 @mcp.tool(name="issue.list", description="이슈 목록 (where 단순 equality 필터)")
@@ -40,12 +40,12 @@ async def list_(
     offset: int = 0,
     order_by: str = "created_at desc",
 ) -> list[IssueRead]:
-    return await _ctx(ctx).tracker.list(where, limit, offset, order_by)
+    return await _ctx(ctx).tracker.issues.list(where, limit, offset, order_by)
 
 
 @mcp.tool(name="issue.close", description="이슈 close (lifecycle 종료, 보존)")
 async def close(ctx: Context, ref: str) -> bool:
-    return await _ctx(ctx).tracker.close(ref)
+    return await _ctx(ctx).tracker.issues.close(ref)
 
 
 @mcp.tool(
@@ -57,12 +57,12 @@ async def close(ctx: Context, ref: str) -> bool:
     ),
 )
 async def delete(ctx: Context, ref: str) -> bool:
-    return await _ctx(ctx).tracker.delete(ref)
+    return await _ctx(ctx).tracker.issues.delete(ref)
 
 
 @mcp.tool(name="issue.count", description="이슈 개수 (where 필터 적용)")
 async def count(ctx: Context, where: dict[str, Any] | None = None) -> int:
-    return await _ctx(ctx).tracker.count(where)
+    return await _ctx(ctx).tracker.issues.count(where)
 
 
 @mcp.tool(
@@ -72,4 +72,4 @@ async def count(ctx: Context, where: dict[str, Any] | None = None) -> int:
     ),
 )
 async def transition(ctx: Context, ref: str, status_id: str) -> None:
-    await _ctx(ctx).tracker.transition(ref, status_id)
+    await _ctx(ctx).tracker.issues.transition(ref, status_id)

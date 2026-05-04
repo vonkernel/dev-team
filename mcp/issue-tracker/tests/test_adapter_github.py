@@ -14,6 +14,7 @@ import respx
 
 from dev_team_shared.issue_tracker.schemas import IssueCreate, IssueUpdate
 from issue_tracker_mcp.adapters.github import GitHubIssueTrackerAdapter
+from issue_tracker_mcp.adapters.github._ctx import _Ctx
 
 PROJECT_ID = "PVT_TEST"
 STATUS_FIELD_ID = "PVTSSF_STATUS"
@@ -85,41 +86,40 @@ def adapter(http: httpx.AsyncClient) -> GitHubIssueTrackerAdapter:
 # ----------------------------------------------------------------------
 
 
+@pytest.fixture
+def ctx(http: httpx.AsyncClient) -> _Ctx:
+    return _Ctx(http, owner="acme", repo="repo", project_number=7)
+
+
 @respx.mock
-async def test_ensure_project_id_organization_path(
-    adapter: GitHubIssueTrackerAdapter,
-) -> None:
+async def test_ctx_project_id_organization_path(ctx: _Ctx) -> None:
     respx.post("https://api.github.com/graphql").mock(
         return_value=httpx.Response(200, json=_project_id_response()),
     )
-    pid = await adapter._ensure_project_id()
+    pid = await ctx.project_id()
     assert pid == PROJECT_ID
-    # 두 번째 호출은 cache hit (네트워크 호출 안 함)
-    pid2 = await adapter._ensure_project_id()
+    # cache hit
+    pid2 = await ctx.project_id()
     assert pid2 == PROJECT_ID
 
 
 @respx.mock
-async def test_ensure_project_id_user_fallback(
-    adapter: GitHubIssueTrackerAdapter,
-) -> None:
+async def test_ctx_project_id_user_fallback(ctx: _Ctx) -> None:
     respx.post("https://api.github.com/graphql").mock(
         return_value=httpx.Response(200, json=_project_id_response(location="user")),
     )
-    assert await adapter._ensure_project_id() == PROJECT_ID
+    assert await ctx.project_id() == PROJECT_ID
 
 
 @respx.mock
-async def test_ensure_project_id_not_found(
-    adapter: GitHubIssueTrackerAdapter,
-) -> None:
+async def test_ctx_project_id_not_found(ctx: _Ctx) -> None:
     respx.post("https://api.github.com/graphql").mock(
         return_value=httpx.Response(
             200, json={"data": {"organization": None, "user": None}},
         ),
     )
     with pytest.raises(RuntimeError, match="Project v2 not found"):
-        await adapter._ensure_project_id()
+        await ctx.project_id()
 
 
 # ----------------------------------------------------------------------
@@ -143,7 +143,7 @@ async def test_list_fields_returns_all_with_kind(
         raise AssertionError(f"unexpected: {kind}")
 
     route.side_effect = _resp
-    fields = await adapter.list_fields()
+    fields = await adapter.fields.list()
     names_kinds = [(f.name, f.kind) for f in fields]
     assert ("Status", "single_select") in names_kinds
     assert ("Type", "single_select") in names_kinds
@@ -169,7 +169,7 @@ async def test_create_field_idempotent_when_exists(
         raise AssertionError(f"unexpected: {kind}")
 
     route.side_effect = _resp
-    field = await adapter.create_field("Type", "single_select")
+    field = await adapter.fields.create("Type", "single_select")
     assert field.name == "Type"
     assert field.id == TYPE_FIELD_ID
     assert "create_field" not in calls
@@ -209,7 +209,7 @@ async def test_create_field_creates_when_missing(
         raise AssertionError(f"unexpected: {kind}")
 
     route.side_effect = _resp
-    field = await adapter.create_field("Type")
+    field = await adapter.fields.create("Type")
     assert field.id == "F_NEW"
     assert field.name == "Type"
     assert field.kind == "single_select"
@@ -222,7 +222,7 @@ def test_create_field_rejects_unknown_kind() -> None:
     )
     import asyncio
     with pytest.raises(ValueError, match="unsupported kind"):
-        asyncio.run(adapter.create_field("X", kind="bogus"))
+        asyncio.run(adapter.fields.create("X", kind="bogus"))
 
 
 # ----------------------------------------------------------------------
@@ -260,7 +260,7 @@ async def test_list_statuses_returns_options_raw(
         raise AssertionError(f"unexpected: {kind}")
 
     route.side_effect = _resp
-    statuses = await adapter.list_statuses()
+    statuses = await adapter.statuses.list()
     assert [s.name for s in statuses] == ["Backlog", "Ready"]
     assert statuses[0].id == BACKLOG_ID
 
@@ -285,7 +285,7 @@ async def test_list_statuses_raises_when_field_missing(
 
     route.side_effect = _resp
     with pytest.raises(RuntimeError, match="no field named 'Status'"):
-        await adapter.list_statuses()
+        await adapter.statuses.list()
 
 
 @respx.mock
@@ -331,7 +331,7 @@ async def test_delete_status_removes_option(
         raise AssertionError(f"unexpected: {kind}")
 
     route.side_effect = _resp
-    assert await adapter.delete_status(BACKLOG_ID) is True
+    assert await adapter.statuses.delete(BACKLOG_ID) is True
     assert "update_field_options" in calls
 
 
@@ -356,7 +356,7 @@ async def test_delete_status_returns_false_when_unknown(
         raise AssertionError(f"unexpected: {kind}")
 
     route.side_effect = _resp
-    assert await adapter.delete_status("nope") is False
+    assert await adapter.statuses.delete("nope") is False
 
 
 @respx.mock
@@ -375,7 +375,7 @@ async def test_delete_field_calls_graphql_mutation(
             },
         ),
     )
-    assert await adapter.delete_field("anyid") is True
+    assert await adapter.fields.delete("anyid") is True
 
 
 @respx.mock
@@ -405,7 +405,7 @@ async def test_create_status_idempotent_on_existing_name(
         raise AssertionError(f"unexpected mutation: {kind}")
 
     route.side_effect = _resp
-    ref = await adapter.create_status("Backlog")
+    ref = await adapter.statuses.create("Backlog")
     assert ref.id == BACKLOG_ID
     assert "update_field_options" not in calls  # update mutation 호출 X
 
@@ -434,7 +434,7 @@ async def test_close_returns_true_on_success(
     respx.patch(
         "https://api.github.com/repos/acme/repo/issues/42",
     ).mock(return_value=httpx.Response(200, json=_rest_issue(closed=True)))
-    assert await adapter.close("42") is True
+    assert await adapter.issues.close("42") is True
 
 
 @respx.mock
@@ -444,7 +444,7 @@ async def test_close_returns_false_on_404(
     respx.patch(
         "https://api.github.com/repos/acme/repo/issues/999",
     ).mock(return_value=httpx.Response(404, json={"message": "not found"}))
-    assert await adapter.close("999") is False
+    assert await adapter.issues.close("999") is False
 
 
 @respx.mock
@@ -462,7 +462,7 @@ async def test_delete_issue_uses_graphql_mutation(
             json={"data": {"deleteIssue": {"repository": {"id": "R_x"}}}},
         ),
     )
-    assert await adapter.delete("42") is True
+    assert await adapter.issues.delete("42") is True
 
 
 @respx.mock
@@ -472,7 +472,7 @@ async def test_delete_issue_returns_false_on_404(
     respx.get(
         "https://api.github.com/repos/acme/repo/issues/999",
     ).mock(return_value=httpx.Response(404, json={"message": "not found"}))
-    assert await adapter.delete("999") is False
+    assert await adapter.issues.delete("999") is False
 
 
 @respx.mock
@@ -493,7 +493,7 @@ async def test_delete_issue_translates_permission_error(
         ),
     )
     with pytest.raises(RuntimeError, match="repo admin permission"):
-        await adapter.delete("42")
+        await adapter.issues.delete("42")
 
 
 @respx.mock
@@ -503,7 +503,7 @@ async def test_get_returns_none_on_404(
     respx.get(
         "https://api.github.com/repos/acme/repo/issues/999",
     ).mock(return_value=httpx.Response(404, json={"message": "not found"}))
-    assert await adapter.get("999") is None
+    assert await adapter.issues.get("999") is None
 
 
 @respx.mock
@@ -513,7 +513,7 @@ async def test_count_uses_search_api(
     route = respx.get("https://api.github.com/search/issues").mock(
         return_value=httpx.Response(200, json={"total_count": 17, "items": []}),
     )
-    n = await adapter.count(where={"state": "open"})
+    n = await adapter.issues.count(where={"state": "open"})
     assert n == 17
     assert route.called
     sent = route.calls[0].request
@@ -528,7 +528,7 @@ async def test_update_returns_none_on_404(
     respx.patch(
         "https://api.github.com/repos/acme/repo/issues/999",
     ).mock(return_value=httpx.Response(404, json={"message": "not found"}))
-    result = await adapter.update("999", IssueUpdate(title="x"))
+    result = await adapter.issues.update("999", IssueUpdate(title="x"))
     assert result is None
 
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from issue_tracker_mcp.adapters import GitHubIssueTrackerAdapter, IssueTracker
-from issue_tracker_mcp.adapters._github_http import make_client
+from issue_tracker_mcp.adapters.github._http import make_client
 from issue_tracker_mcp.config import Settings
 
 

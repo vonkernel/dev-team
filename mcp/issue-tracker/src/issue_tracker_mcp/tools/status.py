@@ -20,7 +20,7 @@ def _ctx(ctx: Context) -> AppContext:
     description="Project board 의 현재 status 목록 (StatusRef.id 가 후속 호출 식별자)",
 )
 async def list_(ctx: Context) -> list[StatusRef]:
-    return await _ctx(ctx).tracker.list_statuses()
+    return await _ctx(ctx).tracker.statuses.list()
 
 
 @mcp.tool(
@@ -28,7 +28,7 @@ async def list_(ctx: Context) -> list[StatusRef]:
     description="Project board 에 status option 추가 (이름 중복 시 기존 항목 반환)",
 )
 async def create_(ctx: Context, name: str) -> StatusRef:
-    return await _ctx(ctx).tracker.create_status(name)
+    return await _ctx(ctx).tracker.statuses.create(name)
 
 
 @mcp.tool(
@@ -39,4 +39,4 @@ async def create_(ctx: Context, name: str) -> StatusRef:
     ),
 )
 async def delete(ctx: Context, status_id: str) -> bool:
-    return await _ctx(ctx).tracker.delete_status(status_id)
+    return await _ctx(ctx).tracker.statuses.delete(status_id)

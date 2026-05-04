@@ -24,7 +24,7 @@ def _ctx(ctx: Context) -> AppContext:
     description="Project board 의 모든 field 목록 (Status / Type / Priority 등)",
 )
 async def list_(ctx: Context) -> list[FieldRef]:
-    return await _ctx(ctx).tracker.list_fields()
+    return await _ctx(ctx).tracker.fields.list()
 
 
 @mcp.tool(
@@ -35,7 +35,7 @@ async def list_(ctx: Context) -> list[FieldRef]:
     ),
 )
 async def create_(ctx: Context, name: str, kind: str = "single_select") -> FieldRef:
-    return await _ctx(ctx).tracker.create_field(name, kind)
+    return await _ctx(ctx).tracker.fields.create(name, kind)
 
 
 @mcp.tool(
@@ -46,4 +46,4 @@ async def create_(ctx: Context, name: str, kind: str = "single_select") -> Field
     ),
 )
 async def delete(ctx: Context, field_id: str) -> bool:
-    return await _ctx(ctx).tracker.delete_field(field_id)
+    return await _ctx(ctx).tracker.fields.delete(field_id)
