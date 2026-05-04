@@ -1,7 +1,7 @@
-# Document DB Schema (`dev_team` DB)
+# Doc Store Schema (`dev_team` DB)
 
 본 문서는 PostgreSQL `dev_team` DB 의 스키마를 정의한다. 실제 마이그레이션은
-`mcp/document-db/migrations/` 의 SQL 파일이며, 본 문서는 **결정 의도 + 컬럼별
+`mcp/doc-store/migrations/` 의 SQL 파일이며, 본 문서는 **결정 의도 + 컬럼별
 의미 + 인덱스 근거** 를 함께 기록한다.
 
 `langgraph` DB 와는 같은 인스턴스의 다른 DB 로 분리되어 있다 (이슈 #20).

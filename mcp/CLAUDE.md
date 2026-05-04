@@ -4,7 +4,7 @@
 새 MCP 서버 작성 / 수정 시 본 문서 + root `CLAUDE.md` + `mcp/<name>/CLAUDE.md`
 세 계층을 함께 따른다.
 
-**Reference 구현**: `mcp/document-db/` — 본 문서의 패턴이 처음 적용된 사례.
+**Reference 구현**: `mcp/doc-store/` — 본 문서의 패턴이 처음 적용된 사례.
 새 MCP 작성 시 디렉터리 구조 / 파일 명명을 그대로 본떠도 무방.
 
 ---
@@ -177,7 +177,7 @@ CRUD-able entity 마다 동일한 6 op. **create / update 는 분리** (Pydantic
 
 ## 2. Backend 변형
 
-### 2.1. DB-backed (Document DB / Graph DB)
+### 2.1. DB-backed (Doc Store / Atlas)
 
 ```
 src/<name>_mcp/
@@ -232,10 +232,10 @@ src/<name>_mcp/
 
 | 포트 | MCP |
 |---|---|
-| 9100 | document-db (#35) |
+| 9100 | doc-store (#35) |
 | 9101 | issue-tracker (#36, M3) |
 | 9102 | wiki (#37, M3) |
-| 9103 | graph-db (M4) |
+| 9103 | atlas (M4) |
 | 9104+ | 향후 |
 
 새 MCP 추가 시 본 표 즉시 갱신.
@@ -317,13 +317,13 @@ CMD ["python", "-m", "<name>_mcp.server"]
 - **Repository / Adapter 우회 직접 driver 호출** (예: tools 에서 asyncpg 직접) — DIP 위반
 - **Schema validation 우회** — 모든 도구 입력 / 출력은 Pydantic 1회 통과
 - **인증 / 보안 미적용 시 호스트 외부 노출** — 내부망 전용. 외부 노출 필요 시 별 reverse proxy + auth
-- **`langgraph` DB 직접 접근** — Document DB MCP 만 `dev_team` DB 의 owner. 다른 MCP 가 같은 DB 를 만지지 않음 (소유권 원칙)
+- **`langgraph` DB 직접 접근** — Doc Store MCP 만 `dev_team` DB 의 owner. 다른 MCP 가 같은 DB 를 만지지 않음 (소유권 원칙)
 
 ---
 
 ## 7. 관련 문서
 
 - 본 root: [`/CLAUDE.md`](../CLAUDE.md) — 프로젝트 일반 규약 (모듈 코드 구조 / 포트 컨벤션 / resources 패턴 등)
-- Reference 구현: [`mcp/document-db/`](./document-db/) — 본 문서의 패턴 1호
-- Module guide 예시: [`mcp/document-db/CLAUDE.md`](./document-db/CLAUDE.md)
+- Reference 구현: [`mcp/doc-store/`](./doc-store/) — 본 문서의 패턴 1호
+- Module guide 예시: [`mcp/doc-store/CLAUDE.md`](./doc-store/CLAUDE.md)
 - 디자인 보고서 (#35): `/tmp/m3-35-design-proposal.md` — 본 패턴 결정 과정

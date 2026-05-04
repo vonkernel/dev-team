@@ -142,7 +142,7 @@ docs / commit / 이슈 본문 / 채팅에서 일관 사용. 새 에이전트 추
 | 5000~7999 | 인프라 (Postgres / Valkey / Neo4j 등) |
 | 8000~8099 | 사용자 facing (UG 등) |
 | 9000~9099 | **에이전트 컨테이너** (primary=9001, librarian=9002, architect=9003, ...) |
-| 9100~9199 | **MCP 서버** (document-db=9100, issue-tracker=9101, wiki=9102, graph-db=9103, ...) |
+| 9100~9199 | **MCP 서버** (doc-store=9100, issue-tracker=9101, wiki=9102, atlas=9103, ...) |
 
 새 에이전트 / MCP 추가 시 같은 대역 안에서 sequential 할당. 변경 시 본 표 즉시 갱신.
 
