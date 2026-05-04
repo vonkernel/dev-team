@@ -71,14 +71,20 @@ class A2AUpstream:
         self,
         text: str,
         context_id: str,
+        *,
+        message_id: str | None = None,
     ) -> AsyncIterator[str | object]:
         """A2A `SendStreamingMessage` 호출. 결과 SSE line / sentinel 을 yield.
+
+        `message_id` 가 주어지면 A2A Message.messageId 로 사용. 호출자(routes)가
+        같은 id 로 event_bus item.append publish → Primary 도 같은 id 사용 →
+        CHR 의 message_id dedup 에서 중복 제거.
 
         Raises:
             UpstreamHTTPError: 재시도 소진 후에도 비-200 응답.
             httpx.ConnectError / httpx.ConnectTimeout: 재시도 소진 후 연결 실패.
         """
-        rpc_payload = _rpc_envelope(text, context_id)
+        rpc_payload = _rpc_envelope(text, context_id, message_id=message_id)
 
         for attempt in range(self._connect_retries + 1):
             try:
@@ -124,14 +130,19 @@ class A2AUpstream:
                 raise
 
 
-def _rpc_envelope(text: str, context_id: str) -> dict[str, Any]:
+def _rpc_envelope(
+    text: str,
+    context_id: str,
+    *,
+    message_id: str | None = None,
+) -> dict[str, Any]:
     return {
         "jsonrpc": "2.0",
         "id": f"ug-{uuid.uuid4()}",
         "method": "SendStreamingMessage",
         "params": {
             "message": {
-                "messageId": f"ug-msg-{uuid.uuid4()}",
+                "messageId": message_id or f"ug-msg-{uuid.uuid4()}",
                 "role": "ROLE_USER",
                 "parts": [{"text": text}],
                 "contextId": context_id,

@@ -32,6 +32,7 @@ from dev_team_shared.a2a.server.graph_handlers.factories import (
     make_initial_task,
 )
 from dev_team_shared.a2a.server.graph_handlers.parse import parse_request_or_error
+from dev_team_shared.a2a.server.graph_handlers.publish import publish_item_append
 from dev_team_shared.a2a.server.graph_handlers.session import ChatContext, log_session
 from dev_team_shared.a2a.server.graph_handlers.stream import stream_artifact_events
 from dev_team_shared.a2a.server.handler import MethodHandler
@@ -64,6 +65,20 @@ class GraphSendStreamingMessageHandler(MethodHandler):
 
         async def event_generator() -> AsyncIterator[str]:
             async with log_session(ctx):
+                # 사용자 메시지 publish (item.append role=user). 에이전트 응답
+                # 스트리밍 chunk 별 publish 는 M3 비스코프 — 스트림 누적 후
+                # 단일 item.append 로 합치는 건 향후 enhancement.
+                await publish_item_append(
+                    request,
+                    context_id=ctx.context_id,
+                    trace_id=ctx.trace_id,
+                    initiator="user",
+                    counterpart=ctx.assistant,
+                    role="user",
+                    sender="user",
+                    content=[p.model_dump(mode="json") for p in a2a_msg.parts],
+                    message_id=a2a_msg.message_id,
+                )
                 yield sse(ctx, make_initial_task(ctx, a2a_msg))
                 try:
                     with anyio.fail_after(AGENT_TOTAL_TIMEOUT_S):  # S4
@@ -94,6 +109,19 @@ class GraphSendStreamingMessageHandler(MethodHandler):
                         make_failed_status_event(ctx, error_detail(exc)),
                     )
                     return
+                # 스트림 정상 종료 — 누적 응답 텍스트를 agent item.append 로 publish
+                accumulated = "".join(ctx.accumulated_response)
+                if accumulated:
+                    await publish_item_append(
+                        request,
+                        context_id=ctx.context_id,
+                        trace_id=ctx.trace_id,
+                        initiator="user",
+                        counterpart=ctx.assistant,
+                        role="agent",
+                        sender=ctx.assistant,
+                        content=[{"text": accumulated}],
+                    )
                 yield sse(ctx, make_completed_status_event(ctx))
 
         return sse_response(event_generator())

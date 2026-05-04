@@ -59,6 +59,7 @@ async def stream_artifact_events(
         if not text:
             continue
         ctx.chunk_count += 1
+        ctx.accumulated_response.append(text)
         yield sse(ctx, make_artifact_event(ctx, text))
 
 

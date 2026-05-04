@@ -6,6 +6,8 @@ requires-python = ">=3.13,<3.14"
 
 # 모든 하한은 PyPI 최신 stable (2026-05 시점) 기준
 dependencies = [
+  # 공용 contract — schemas + 도구명 상수 (server / client 공유, #34)
+  "dev-team-shared",
   # MCP SDK — streamable HTTP transport (spec 2025-06-18)
   "mcp>=1.27.0",
   # PostgreSQL async driver (ORM 도입 금지 — root CLAUDE.md / mcp/document-db/CLAUDE.md §8)
@@ -42,3 +44,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.uv.sources]
+dev-team-shared = { path = "../../shared", editable = true }

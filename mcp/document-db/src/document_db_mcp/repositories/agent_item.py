@@ -9,7 +9,7 @@ from uuid import UUID
 import asyncpg
 
 from document_db_mcp.repositories.base import AbstractRepository
-from document_db_mcp.schemas.agent_item import AgentItemCreate, AgentItemRead
+from dev_team_shared.document_db.schemas.agent_item import AgentItemCreate, AgentItemRead
 
 
 class _ImmutableUpdate:  # placeholder type for ABC contract

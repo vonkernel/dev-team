@@ -133,6 +133,8 @@ services:
     environment:
       # AsyncPostgresSaver 가 체크포인트를 저장할 DSN. `langgraph` DB 를 프레임워크 state 전용으로 사용.
       DATABASE_URI: "postgres://${POSTGRES_USER:-devteam}:${POSTGRES_PASSWORD:-devteam_postgres}@postgres:5432/${POSTGRES_DB:-langgraph}"
+      # A2A 대화 이벤트 publish (#34) — Chronicler 가 consume.
+      VALKEY_URL: "redis://valkey:6379"
     volumes:
       # Override config 마운트 — ${ANTHROPIC_API_KEY} 가 config_loader 단계에서 치환됨
       - ../overrides/primary.yaml:/app/primary/config/override.yaml:ro
@@ -143,6 +145,8 @@ services:
         condition: service_healthy
       postgres-init:
         condition: service_completed_successfully
+      valkey:
+        condition: service_started
 
   # MCP 서버군 (profile: mcp 또는 agents).
   # 모든 MCP 는 streamable HTTP transport (MCP spec 2025-06-18). 컨테이너 내부 8000.
@@ -167,6 +171,28 @@ services:
       postgres-init:
         condition: service_completed_successfully
 
+  # Chronicler (CHR) — A2A 대화 이벤트 수집 (#34).
+  # 단일 Python 스크립트. 에이전트 아님 (LangGraph / LLM 미사용).
+
+  chronicler:
+    profiles: ["agents"]
+    build:
+      context: ..
+      dockerfile: chronicler/Dockerfile
+    image: dev-team/chronicler:latest
+    container_name: dev-team-chronicler
+    restart: unless-stopped
+    environment:
+      VALKEY_URL: "redis://valkey:6379"
+      DOCUMENT_DB_MCP_URL: "http://document-db-mcp:8000/mcp"
+      CHRONICLER_CONSUMER_GROUP: "chronicler"
+      CHRONICLER_CONSUMER_NAME: "chr-1"
+    depends_on:
+      valkey:
+        condition: service_started
+      document-db-mcp:
+        condition: service_started
+
   user-gateway:
     profiles: ["agents"]
     build:
@@ -179,10 +205,14 @@ services:
       # Primary 의 A2A 엔드포인트 / AgentCard URL. compose 내부 DNS 기준.
       PRIMARY_A2A_URL: "http://primary:8000/a2a/primary"
       PRIMARY_CARD_URL: "http://primary:8000/.well-known/agent-card.json"
+      # A2A 대화 이벤트 publish (#34) — UG ↔ P 양쪽 publish, CHR consume.
+      VALKEY_URL: "redis://valkey:6379"
     ports:
       - "8080:8000"                                 # 호스트 8080 ← 컨테이너 8000 (브라우저 접속 경로)
     depends_on:
       primary:
+        condition: service_started
+      valkey:
         condition: service_started
 
 volumes:

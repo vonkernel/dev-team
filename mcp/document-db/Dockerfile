@@ -26,8 +26,13 @@ ENV PIP_NO_CACHE_DIR=1 \
 
 WORKDIR /app
 
+# shared 먼저 (dev-team-shared 의존 해소 — schemas + tool_names + DocumentDbClient)
+COPY shared /app/shared
+RUN pip install -e /app/shared
+
 COPY mcp/document-db /app/document-db
-RUN pip install -e /app/document-db
+RUN sed -i '/^\[tool\.uv\.sources\]/,/^$/d' /app/document-db/pyproject.toml \
+ && pip install -e /app/document-db
 
 WORKDIR /app/document-db
 EXPOSE 8000

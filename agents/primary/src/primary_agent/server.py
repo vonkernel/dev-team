@@ -16,6 +16,8 @@ shared 에 있으며, 본 파일에서 **프로토콜 로직을 다시 작성하
   ANTHROPIC_API_KEY  (필수, overrides/primary.yaml 통해 config 에 치환)
   DATABASE_URI       (선택) - Postgres DSN. 있으면 AsyncPostgresSaver 로 영속 체크포인팅.
                              미설정 시 in-memory (재기동 시 상태 소실).
+  VALKEY_URL         (선택) - 있으면 ValkeyEventBus 로 A2A 대화 이벤트 publish (#34).
+                             미설정 시 publish no-op.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from dev_team_shared.a2a.server.graph_handlers import (
     GraphSendMessageHandler,
     GraphSendStreamingMessageHandler,
 )
+from dev_team_shared.event_bus import ValkeyEventBus
 from fastapi import FastAPI
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
@@ -57,28 +60,50 @@ async def lifespan(app: FastAPI):
     llm = build_llm(config.get("llm") or {})
 
     database_uri = os.environ.get("DATABASE_URI")
+    valkey_url = os.environ.get("VALKEY_URL")
     agent_card = build_agent_card(config)
 
-    if database_uri:
-        async with AsyncPostgresSaver.from_conn_string(database_uri) as checkpointer:
-            await checkpointer.setup()  # idempotent schema/table 생성
-            app.state.graph = build_graph(
-                persona=persona, llm=llm, checkpointer=checkpointer,
+    # event_bus 가 있으면 publish 가 활성. 없으면 graph_handlers/publish 의 helper 가 no-op.
+    event_bus: ValkeyEventBus | None = None
+    if valkey_url:
+        try:
+            event_bus = await ValkeyEventBus.create(valkey_url)
+            logger.info("event_bus ready (Valkey at %s)", valkey_url)
+        except Exception:
+            logger.exception(
+                "ValkeyEventBus 초기화 실패 (url=%s) — publish 비활성화로 진행",
+                valkey_url,
             )
+            event_bus = None
+    else:
+        logger.info("VALKEY_URL not set — A2A 이벤트 publish 비활성화")
+
+    try:
+        if database_uri:
+            async with AsyncPostgresSaver.from_conn_string(database_uri) as checkpointer:
+                await checkpointer.setup()  # idempotent schema/table 생성
+                app.state.graph = build_graph(
+                    persona=persona, llm=llm, checkpointer=checkpointer,
+                )
+                app.state.agent_card = agent_card
+                app.state.event_bus = event_bus
+                logger.info(
+                    "primary agent ready (Postgres checkpointer at %s)",
+                    _mask_dsn(database_uri),
+                )
+                yield
+        else:
+            app.state.graph = build_graph(persona=persona, llm=llm, checkpointer=None)
             app.state.agent_card = agent_card
-            logger.info(
-                "primary agent ready (Postgres checkpointer at %s)",
-                _mask_dsn(database_uri),
+            app.state.event_bus = event_bus
+            logger.warning(
+                "DATABASE_URI not set — running with in-memory state "
+                "(non-durable across restarts)",
             )
             yield
-    else:
-        app.state.graph = build_graph(persona=persona, llm=llm, checkpointer=None)
-        app.state.agent_card = agent_card
-        logger.warning(
-            "DATABASE_URI not set — running with in-memory state "
-            "(non-durable across restarts)",
-        )
-        yield
+    finally:
+        if event_bus is not None:
+            await event_bus.aclose()
 
 
 app = FastAPI(
