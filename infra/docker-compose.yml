@@ -112,10 +112,13 @@ services:
   #  - 각 에이전트가 자체 FastAPI 서버로 A2A 엔드포인트 노출 (primary_agent.server:app)
   #  - 영속성: OSS langgraph-checkpoint-postgres 의 AsyncPostgresSaver 를
   #    lifespan 단계에서 DATABASE_URI 로 wiring
-  #  - 호스트 포트 규약: Primary 9001 / Architect 9002 / Librarian 9003 ...
+  #  - 호스트 포트 규약 (root CLAUDE.md "포트 컨벤션" 참조):
+  #      9000~9099 에이전트 — Primary 9001 / Librarian 9002 / Architect 9003 ...
+  #      9100~9199 MCP    — Document DB 9100 / IssueTracker 9101 / Wiki 9102 / Graph DB 9103
   #
   #  기동:
   #    docker compose -f infra/docker-compose.yml --env-file .env --profile agents up -d
+  #    (MCP 만:  --profile mcp)
 
   primary:
     profiles: ["agents"]
@@ -135,6 +138,29 @@ services:
       - ../overrides/primary.yaml:/app/primary/config/override.yaml:ro
     ports:
       - "9001:8000"                                 # 호스트 9001 ← 컨테이너 8000 (uvicorn)
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+
+  # MCP 서버군 (profile: mcp 또는 agents).
+  # 모든 MCP 는 streamable HTTP transport (MCP spec 2025-06-18). 컨테이너 내부 8000.
+
+  document-db-mcp:
+    profiles: ["mcp", "agents"]
+    build:
+      context: ..
+      dockerfile: mcp/document-db/Dockerfile
+    image: dev-team/document-db-mcp:latest
+    container_name: dev-team-document-db-mcp
+    restart: unless-stopped
+    environment:
+      # dev_team DB DSN (langgraph DB 와 분리, 이슈 #20)
+      DATABASE_URI: "postgres://${POSTGRES_USER:-devteam}:${POSTGRES_PASSWORD:-devteam_postgres}@postgres:5432/${APP_DB:-dev_team}"
+      AUTO_MIGRATE: "true"
+    ports:
+      - "9100:8000"                                 # 호스트 9100 ← 컨테이너 8000
     depends_on:
       postgres:
         condition: service_healthy

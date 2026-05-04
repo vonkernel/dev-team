@@ -68,6 +68,47 @@
 - "그냥 지금만 필요해서 섞어 씀" → 나중에 두 번째 유사 사례가 생기면 **즉시
   추상화 분리** (YAGNI 와 균형: 단일 사용엔 추상화 금지, 2번째 등장 시 추상화).
 
+## 모듈 코드 구조 (Python 패키지 공통)
+
+새 Python 모듈 (에이전트 / MCP 서버 / shared 서브 모듈) 작성 시 다음 구조 따른다.
+
+- **책임별 디렉터리 분리**:
+  - `schemas/` — Pydantic 모델만 (DTO / validation)
+  - `repositories/` — 외부 자원 CRUD (DB / HTTP / file). ABC + concrete 한 쌍씩
+  - `tools/` 또는 `handlers/` — 외부 노출 인터페이스 (MCP tool / FastAPI route 등)
+  - 1 파일 1 책임. 200줄 넘으면 분리 신호.
+- **Repository 패턴 (DIP / OCP)**:
+  - `AbstractRepository[T]` ABC 가 generic CRUD 계약 (`upsert`, `get`, `list`, `delete`, `count`)
+  - collection / entity 별 concrete 클래스. 새 entity = 새 파일 1개 (schemas/X + repositories/X + tools/X) + 등록 1줄. **기존 코드 무수정 (OCP)**
+  - 외부 노출 함수 (tools/handlers) 는 repository 만 호출. 직접 driver (`asyncpg`, `httpx`) 호출 금지
+- **DI via lifespan**:
+  - 외부 자원 (DB pool, MCP client, LLM 등) 은 lifespan 에서 생성 → `app.state` 또는 의존성 주입으로 전달
+  - 모듈 레벨 전역 변수 / 싱글턴 금지 (테스트성 ↓)
+- **Schema validation**:
+  - 입력 / 출력 모두 Pydantic 모델로 한 번씩 통과
+  - DB row → Pydantic 직렬화는 repository 가 책임 (raw dict 가 외부로 새지 않게)
+- **테스트 분리**:
+  - Repository 단위 = `testcontainers` 로 실 인프라 (Postgres / Neo4j / Valkey)
+  - Tool / handler 단위 = Repository mock (실 인프라 없이 빠르게)
+  - 통합 = 컨테이너 기동 후 wire-level 호출 (HTTP / MCP)
+- **AI 에이전트 런타임 자산**:
+  - LLM 컨텍스트에 embed 되는 prompt 자료 (가이드 / 템플릿 / 예시) 는 `agents/{name}/resources/` 하위
+  - 이미지 빌드 시 `COPY` 로 컨테이너에 포함. 수정 = 컨테이너 재배포 (자산 변경 = 행동 변경 추적)
+  - 사람이 읽는 설계 문서는 `docs/`, AI 에이전트 운영 규약은 `CLAUDE.md`, **에이전트 자체의 prompt 자료는 `resources/`** — 셋 모두 다른 카테고리
+
+## 포트 컨벤션
+
+호스트 노출 포트의 의미적 대역. 새 컨테이너 추가 시 따른다.
+
+| 대역 | 용도 |
+|---|---|
+| 5000~7999 | 인프라 (Postgres / Valkey / Neo4j 등) |
+| 8000~8099 | 사용자 facing (UG 등) |
+| 9000~9099 | **에이전트 컨테이너** (primary=9001, librarian=9002, architect=9003, ...) |
+| 9100~9199 | **MCP 서버** (document-db=9100, issue-tracker=9101, wiki=9102, graph-db=9103, ...) |
+
+새 에이전트 / MCP 추가 시 같은 대역 안에서 sequential 할당. 변경 시 본 표 즉시 갱신.
+
 ## 범위 / 지시 준수
 
 - **시키지 않은 것은 하지 말 것.** 사용자의 지적을 과잉 해석해 스펙 밖 코드
