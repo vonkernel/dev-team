@@ -85,6 +85,12 @@ graph TD
         ExtPmMCP["External PM MCP<br/>(GitHub Wiki/Issue 기본)"]
     end
 
+    subgraph ResearchTracks["외부 리소스 조사 (3 트랙, §2.9)"]
+        Ctx7["context7 (외부 SaaS MCP)<br/>라이브러리 docs"]
+        WebFetch["mcp/web-fetch (Playwright)<br/>사용자 URL 페이지"]
+        WebSearch["Anthropic web_search<br/>(LLM API tool, backend 0)"]
+    end
+
     %% 사용자 접점: User Gateway를 통해 P와 A에 개입
     User <-->|채팅 UI| UG
     UG <-->|기획 개입| P
@@ -95,6 +101,12 @@ graph TD
 
     %% 외부 PM MCP는 P 단독 창구 (프로젝트 관리 책임의 일관성)
     P <-->|PRD/태스크 동기화| ExtPmMCP
+
+    %% 외부 리소스 조사 — 모든 에이전트가 필요 시 호출 (간략 표기)
+    P -.->|조사 시| ResearchTracks
+    A -.->|조사 시| ResearchTracks
+    Pairs -.->|조사 시| ResearchTracks
+    L -.->|조사 시| ResearchTracks
 
     %% A ↔ 각 페어 (OO 설계 배포, Eng/QA 동시에 수신)
     A <-->|OO 설계 배포/조율| PairBE
