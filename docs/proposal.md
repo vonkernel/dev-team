@@ -102,11 +102,15 @@ graph TD
     %% 외부 PM MCP는 P 단독 창구 (프로젝트 관리 책임의 일관성)
     P <-->|PRD/태스크 동기화| ExtPmMCP
 
-    %% 외부 리소스 조사 — 모든 에이전트가 필요 시 호출 (간략 표기)
-    P -.->|조사 시| ResearchTracks
-    A -.->|조사 시| ResearchTracks
-    Pairs -.->|조사 시| ResearchTracks
-    L -.->|조사 시| ResearchTracks
+    %% 외부 리소스 조사 — 트랙별 호출 주체 (§2.9)
+    %%   context7: 코드 작업 에이전트 (A / Pairs) + L (라이브러리 메타 read)
+    %%   web-fetch: P / L (사용자 URL 받았을 때)
+    %%   web_search: 모든 에이전트의 LLM (자동 활성, 별 화살표 생략)
+    A -.->|context7| Ctx7
+    Pairs -.->|context7| Ctx7
+    L -.->|context7| Ctx7
+    P -.->|web-fetch| WebFetch
+    L -.->|web-fetch| WebFetch
 
     %% A ↔ 각 페어 (OO 설계 배포, Eng/QA 동시에 수신)
     A <-->|OO 설계 배포/조율| PairBE
@@ -116,16 +120,23 @@ graph TD
     Eng_BE -->|검증 요청| QA_BE
     Eng_FE -->|검증 요청| QA_FE
 
-    %% Librarian ↔ DB (MCP 경유)
-    L <--> GraphMCP
-    L <--> DocMCP
+    %% MCP ↔ DB
     GraphMCP <--> GraphDB
     DocMCP <--> DocDB
 
-    %% Librarian은 순수 Server — 먼저 말 걸지 않음, 단방향 화살표
-    P -->|질의| L
-    A -->|질의| L
-    Pairs -->|Diff 전달 / 질의| L
+    %% write = 각 에이전트 직접 (자기 도메인 데이터, §2.5 정정 — 2026-05)
+    P -->|wiki_pages / issues write| DocMCP
+    A -->|atlas / wiki_pages ADR write| GraphMCP
+    A -->|atlas / wiki_pages ADR write| DocMCP
+    Pairs -->|atlas 색인 / wiki write| GraphMCP
+    Pairs -->|atlas 색인 / wiki write| DocMCP
+
+    %% Librarian = read 사이드 사서 (자연어 / 복합 / 교차 쿼리)
+    L <--> GraphMCP
+    L <--> DocMCP
+    P -->|복합·자연어 read 위임| L
+    A -->|복합·자연어 read 위임| L
+    Pairs -->|복합·자연어 read 위임| L
 
     %% A2A 대화 이벤트는 Broker로 publish (fire-and-forget)
     UG -.->|대화 이벤트 publish| Broker
@@ -133,12 +144,10 @@ graph TD
     A -.->|대화 이벤트 publish| Broker
     Pairs -.->|대화 이벤트 publish| Broker
 
-    %% Chronicler가 Broker를 구독하여 Doc DB에 영속화
+    %% Chronicler가 Broker를 구독하여 Doc DB에 영속화 (직접 — L 경유 X)
     Broker -->|XREADGROUP| Chronicler
     Chronicler -->|저장 성공 후 XACK| Broker
-    Chronicler -->|Doc DB 저장| DocMCP
-
-    %% write = 각 에이전트 직접 (자기 도메인 데이터). read (복합 / 자연어) = Librarian 경유.
+    Chronicler -->|Doc DB 영속 (직접)| DocMCP
 ```
 
 **다이어그램 단순화 주석:**
