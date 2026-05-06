@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 import pytest
-from dev_team_shared.adapters.llm import (
+from dev_team_shared.llm import (
     LLMSpec,
     UnknownLLMProviderError,
     create_chat_model,

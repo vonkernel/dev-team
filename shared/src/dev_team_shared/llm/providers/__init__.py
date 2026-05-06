@@ -11,6 +11,6 @@
 이로써 `factory.py` 는 신규 provider 추가에 대해 수정되지 않는다 (OCP).
 """
 
-from dev_team_shared.adapters.llm.providers import anthropic  # noqa: F401  (side-effect import)
+from dev_team_shared.llm.providers import anthropic  # noqa: F401  (side-effect import)
 
 __all__: list[str] = []

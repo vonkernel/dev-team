@@ -72,6 +72,10 @@
 
 새 Python 모듈 (에이전트 / MCP 서버 / shared 서브 모듈) 작성 시 다음 구조 따른다.
 
+> 디렉터리별 추가 규약:
+> - **MCP 서버**: [`mcp/CLAUDE.md`](mcp/CLAUDE.md) — thin bridge 원칙, API-client 패턴 등
+> - **shared 서브패키지**: [`shared/CLAUDE.md`](shared/CLAUDE.md) — Pattern A (out-of-process service SDK) vs Pattern B (in-process infra library) 분류 가이드
+
 - **책임별 디렉터리 분리**:
   - `schemas/` — Pydantic 모델만 (DTO / validation)
   - `repositories/` — 외부 자원 CRUD (DB / HTTP / file). ABC + concrete 한 쌍씩
