@@ -127,6 +127,19 @@
 type, label, category 등) 를 다룰 때 따르는 원칙. **결정론적 프로그램이 아닌
 LLM 에이전트** 의 특성에 기반.
 
+### 데이터 접근 분담 (정정 — 2026-05, proposal §2.5)
+
+| 작업 | 호출자 | 호출 방식 |
+|---|---|---|
+| **자기 도메인 write** | 각 에이전트 (P / A / ENG / QA / CHR) | Doc Store / Atlas MCP **직접** |
+| **단순 read** (자기 데이터 식별자 알 때) | 각 에이전트 | MCP 직접 |
+| **복합 / 자연어 / 교차 read** | 에이전트 → A2A → L | L 이 LLM ReAct 로 매핑 |
+| **외부 도구 sync** (예: Doc Store ↔ GitHub) | 책임 에이전트 (P) | 외부 MCP 직접 |
+
+CHR (Chronicler, #34) 의 직접 write 패턴이 다른 에이전트에도 일관 적용된
+형태. write 시 LLM dispatch 비용 절감, traceability 향상, 사서 비유 (L = read
+사서) 정확화.
+
 ### 도메인 추상은 LLM 런타임 결정 — 코드 enum 박지 않는다
 
 - 에이전트의 status / type / category 같은 도메인 추상은 **매 프로젝트 / 작업
