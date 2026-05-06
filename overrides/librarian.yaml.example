@@ -1,0 +1,10 @@
+# Librarian (L) 에이전트 override config.
+#
+# docker compose 가 이 파일을 `/app/librarian/config/override.yaml` 로 마운트.
+# 컨테이너 기동 시 shared.config_loader 가 base.yaml 과 deep merge.
+#
+# ⚠️  평문 시크릿 금지 — `${ENV_VAR}` 로 env 참조만, 실제 값은 레포 루트 `.env` 에.
+# ⚠️  Override 금지 필드 (config_loader denylist): role, specialty, persona, workflow
+
+llm:
+  api_key: ${ANTHROPIC_API_KEY}
