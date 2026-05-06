@@ -147,7 +147,7 @@ graph TD
     %% Chronicler가 Broker를 구독하여 Doc DB에 영속화 (직접 — L 경유 X)
     Broker -->|XREADGROUP| Chronicler
     Chronicler -->|저장 성공 후 XACK| Broker
-    Chronicler -->|Doc DB 영속 (직접)| DocMCP
+    Chronicler -->|Doc DB 영속 — L 경유 X| DocMCP
 ```
 
 **다이어그램 단순화 주석:**
