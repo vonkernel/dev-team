@@ -157,12 +157,14 @@ graph TD
 
         subgraph Adapters["내부 어댑터 (OCP)"]
             LLMAdapter["LLM Adapter<br/>Claude / OpenAI / ..."]
-            CodeAdapter["Code Agent Adapter<br/>OpenCode / Claude Code / Aider<br/>(P, L은 비활성)"]
+            CodeAdapter["Code Agent Adapter<br/>OpenCode / Claude Code / Aider<br/>(P, L 은 비활성)"]
         end
 
         subgraph LocalMCP["MCP 클라이언트"]
             RoleMCP["역할별 MCP 도구<br/>(코드 검색/편집/테스트 등)"]
-            SharedMcpClient["공유 MCP 클라이언트<br/>(Librarian만 Shared Memory MCP,<br/>P만 External PM MCP)"]
+            SharedMemClient["Shared Memory MCP 클라이언트<br/>(전 에이전트 — write / read 직접)"]
+            ExtPmClient["External PM MCP 클라이언트<br/>(P 만)"]
+            ResearchClient["외부 리소스 조사 MCP 클라이언트<br/>(context7 / web-fetch — L 만)"]
         end
 
         A2A["A2A 서버/클라이언트<br/>(langgraph-api 내장)<br/>- POST /a2a/{assistant_id}<br/>&nbsp;&nbsp;SendMessage · SendStreamingMessage · GetTask<br/>- GET /.well-known/agent-card.json"]
@@ -170,10 +172,11 @@ graph TD
     end
 
     Peers["다른 에이전트들"]
-    Librarian["Librarian<br/>(질의/Diff 수신 대상)"]
+    Librarian["Librarian<br/>(정보 검색 / 외부 조사 위임 대상)"]
     Broker["Valkey Streams<br/>(대화 로그 브로커)"]
-    SharedMemMCP["Shared Memory MCP<br/>(Librarian 전용)"]
-    ExtPmMCP["External PM MCP<br/>(P 전용)"]
+    SharedMemMCP["Shared Memory MCP<br/>(Doc Store / Atlas)"]
+    ExtPmMCP["External PM MCP"]
+    ResearchMCP["외부 리소스 조사 MCP<br/>(context7 / web-fetch)"]
 
     RoleConfig -.페르소나 / 워크플로우 확장.-> LG
     RoleConfig -.모델·구현체 선택.-> Adapters
@@ -181,10 +184,11 @@ graph TD
     %% BrokerClient는 RoleConfig와 무관 — 환경변수로 Valkey 설정 주입
 
     A2A <-->|A2A 프로토콜| Peers
-    A2A -->|자연어 질의 / Diff 전달| Librarian
+    A2A -->|자연어 정보 검색 / 외부 조사 위임| Librarian
     BrokerClient -->|XADD a2a-events| Broker
-    SharedMcpClient -.Librarian만.-> SharedMemMCP
-    SharedMcpClient -.P만.-> ExtPmMCP
+    SharedMemClient -->|MCP 호출| SharedMemMCP
+    ExtPmClient -.P만.-> ExtPmMCP
+    ResearchClient -.L만.-> ResearchMCP
 ```
 
 **다이어그램 요지:**
@@ -192,9 +196,10 @@ graph TD
 - Role Config에 따라 페르소나, 워크플로우 확장, 사용 도구, A2A 피어가 결정된다
 - 공통: LangGraph 베이스 워크플로우, LLM 어댑터, A2A 서버/클라이언트, 역할별 MCP 도구
 - 역할에 따라 달라짐:
-    - **Code Agent Adapter**: P, Librarian은 비활성 / 그 외는 활성
-    - **Shared Memory MCP 클라이언트**: Librarian만 활성
-    - **External PM MCP 클라이언트**: P만 활성
+    - **Code Agent Adapter**: P, L 은 비활성 / 그 외는 활성
+    - **Shared Memory MCP 클라이언트**: 전 에이전트 활성 (write / read 직접 — §2.5 정정)
+    - **External PM MCP 클라이언트**: P 만 활성
+    - **외부 리소스 조사 MCP 클라이언트** (context7 / web-fetch): L 만 활성 (§2.9)
     - **워크플로우 확장**: A의 3-서브 에이전트 루프, Eng의 자체 루프 등 역할별 서브그래프
 
 #### 에이전트 유형별 구성
@@ -318,7 +323,9 @@ persona: |
   당신은 프로젝트 매니저(PM)입니다.
   사용자와 기획을 논의하여 PRD를 작성·관리하고,
   Architect에게 기술 설계를 의뢰하며, 외부 PM 도구와 동기화합니다.
-  외부 PM의 단독 창구이며, 다른 에이전트의 외부 상태 업데이트 요청을 대리 수행합니다.
+  PM 영역의 데이터(PRD / Epic / Story / wiki_pages / issues)는 Doc Store MCP에 **직접 write** 합니다 (§2.5).
+  외부 PM 도구 동기화도 본인이 직접 수행하며, 다른 에이전트의 외부 상태 업데이트 요청을 대리 수행합니다.
+  정보 검색이 필요한 경우 Librarian에게 자연어로 위임합니다.
 
 llm:
   provider: anthropic
@@ -330,10 +337,14 @@ llm:
 # P는 코드베이스 마운트 불필요 → workspace 없음
 
 mcp_servers:
+  - name: doc-store
+    url: "http://doc-store-mcp:8080"
+    type: shared
+    description: "PM 영역 데이터 직접 write (wiki_pages / issues)"
   - name: external-pm
     url: "http://external-pm-mcp:8080"
     type: shared
-    description: "외부 PM 도구 (GitHub Wiki/Issue)"
+    description: "외부 PM 도구 (GitHub Wiki/Issue) 동기화"
 
 # 클라이언트 측 — P가 먼저 호출할 피어
 a2a_peers:
@@ -364,6 +375,8 @@ persona: |
   객체지향 관점의 1차 설계를 주도하며, 설계 결정권을 보유합니다.
   복수 설계안을 도출하여 사용자 선택을 받고, Eng+QA 페어에 동시 배포합니다.
   상위 설계 수정 시 유관 Eng을 소집하여 다자간 논의를 주관합니다.
+  설계 산출물(채택안 ADR / wiki_pages, OO 구조 그래프)은 Atlas / Doc Store MCP에 **직접 write** 합니다 (§2.5).
+  정보 검색이 필요한 경우 Librarian에게 자연어로 위임합니다.
 
 # A는 내부에 3개의 서브 에이전트를 두며 각각 다른 모델을 쓸 수 있음
 llm:
@@ -403,9 +416,17 @@ workspace:
     - "lib/**"
     - "tests/**"
 
-# code_agent(OpenCode CLI)가 코드 읽기/검색 기능을 이미 제공하므로
-# 별도 로컬 MCP는 기본적으로 불필요. 특수 도구가 필요하면 여기에 추가.
-mcp_servers: []
+# code_agent(OpenCode CLI)가 코드 읽기/검색 기능을 이미 제공.
+# Shared Memory 직접 write 를 위해 atlas / doc-store MCP 연결.
+mcp_servers:
+  - name: atlas
+    url: "http://atlas-mcp:8080"
+    type: shared
+    description: "OO 구조 그래프 직접 write (설계 산출물)"
+  - name: doc-store
+    url: "http://doc-store-mcp:8080"
+    type: shared
+    description: "ADR / wiki_pages 직접 write"
 
 # 클라이언트 측 — A가 먼저 호출할 피어
 a2a_peers:
@@ -443,31 +464,28 @@ workflow:
 role: librarian
 
 persona: |
-  당신은 팀의 지식 관리자(사서)입니다.
+  당신은 팀의 사서(Librarian)입니다. 두 책임을 전담합니다 (§2.5 / §2.9).
 
-  [Diff 색인]
-  Engineer가 전달한 diff(변경 파일 목록 + 파일별 변경 내역 + 기술 노트)를 분석하여
-  Atlas에 객체지향 구조 — Interface, Class, PublicMethod(공개 메소드 시그니처) 노드와
-  IMPLEMENTS / DEPENDS_ON / BELONGS_TO / CONTAINS 등의 관계 — 로 색인합니다.
-  내부 구현(private/protected, 메소드 본문)은 그래프에 포함하지 않습니다.
-  동시에 Task-Interface / Task-Method 연결을 갱신하여 과업-코드 추적성을 유지합니다.
+  [정보 검색]
+  다른 에이전트(P / A / Eng / QA)의 자연어 질의를 받아 Atlas + Doc Store 교차 조회로
+  답변을 구성하여 반환합니다. write 는 본 에이전트의 책임이 아니며, 각 에이전트가
+  자기 도메인 데이터를 MCP로 직접 write 합니다 (§2.5 분담 모델).
+  자연어 → 도구 호출 매핑은 LLM ReAct 로 결정합니다.
 
-  [기술 문서화]
-  diff에 포함된 기술 노트(설계 결정, 구현 특이점, 주의사항, TODO, 주요 아이디어)를
-  분류하여 Doc Store의 technical_notes 테이블에 task_id와 함께 저장합니다.
-
-  [질의 응답]
-  다른 에이전트의 자연어 질의에 대해 Atlas + Doc Store 교차 조회로 정확한
-  답변을 구성하여 반환합니다. (`by_task`, `by_session`, `thread` 등 조회 API 제공)
+  [외부 리소스 조사 — 단독 전담]
+  라이브러리/프레임워크 docs(context7), 사용자 제공 URL(mcp/web-fetch),
+  일반 web 검색(Anthropic web_search) 3 트랙을 본 에이전트가 단독 수행합니다.
+  다른 에이전트는 외부 정보 필요 시 A2A 자연어로 본 에이전트에 위임합니다.
 
   [책임 아닌 것]
-  A2A 대화 로그 수집은 별도 모듈(Chronicler)의 책임이며, Librarian은 관여하지 않습니다.
-  단, 질의 응답 시 Chronicler가 저장한 Doc Store의 대화 기록을 조회하여 활용합니다.
+  A2A 대화 로그 수집은 Chronicler의 책임이며 관여하지 않습니다.
+  Diff 색인 / 기술 노트 작성도 본 에이전트의 책임이 아니며, Eng 이 자기 산출물을
+  Atlas / Doc Store MCP 로 직접 write 합니다 (M4+ 에서 검토 — §9 #15).
 
 llm:
   provider: anthropic
   model: "claude-sonnet-4-6"
-  temperature: 0.1      # 구조적 해석이므로 낮은 temperature
+  temperature: 0.2      # tool 선택의 정확성 우선
   api_key: ""           # override에서 주입
 
 # L은 코드 직접 수정 없음 → code_agent 비활성
@@ -477,11 +495,20 @@ mcp_servers:
   - name: atlas
     url: "http://atlas-mcp:8080"
     type: shared
-    description: "OO 구조 그래프 (읽기/쓰기)"
-  - name: doc-db
-    url: "http://doc-db-mcp:8080"
+    description: "OO 구조 그래프 (read 전용 — write 는 각 에이전트가 직접)"
+  - name: doc-store
+    url: "http://doc-store-mcp:8080"
     type: shared
-    description: "문서/대화 (읽기/쓰기)"
+    description: "문서/대화 (read 전용 — write 는 각 에이전트가 직접)"
+  - name: context7
+    url: "http://context7-mcp:8080"
+    type: shared
+    description: "라이브러리/프레임워크 공식 docs (외부 리소스 조사 트랙 1)"
+  - name: web-fetch
+    url: "http://web-fetch-mcp:8080"
+    type: shared
+    description: "사용자 제공 URL 페이지 (Playwright 기반 — 외부 리소스 조사 트랙 2)"
+# 트랙 3 (Anthropic web_search) 은 Claude API native tool 이므로 mcp_servers 항목 없음
 
 # Librarian은 순수 Server — 먼저 호출하는 대상이 없음
 a2a_peers: []
@@ -498,8 +525,8 @@ allowed_clients:
 workflow:
   base: default
   extensions:
-    - diff_indexing          # Eng diff → Graph/Doc DB 색인
-    - nl_query_answering     # 자연어 질의 응답 (대화 이력 포함 교차 조회)
+    - nl_query_answering         # 자연어 질의 응답 (Atlas + Doc Store 교차 조회)
+    - external_research_dispatch # 외부 리소스 조사 3 트랙 dispatch (§2.9)
 ```
 
 ##### Engineer:BE (`configs/eng-be.yaml`)
@@ -513,7 +540,8 @@ persona: |
   API 설계, 서버 로직, DB 스키마, 인증/인가를 담당합니다.
   Architect의 객체지향 1차 설계를 받아 클래스/메소드 레벨의 세부 설계와 구현을 자율 수행합니다.
   상위 설계 수정이 필요하면 Architect에게 건의합니다(결정권은 Architect에게 있음).
-  구현 단계 완료 시 Librarian에게 diff를 전달하여 색인을 요청합니다.
+  구현 산출물(OO 구조 색인, 작업 산출물 wiki_pages)은 Atlas / Doc Store MCP에 **직접 write** 합니다 (§2.5).
+  정보 검색이 필요한 경우 Librarian에게 자연어로 위임합니다.
   빌드/테스트 실행은 페어 QA의 책임이므로 직접 수행하지 않습니다.
 
 llm:
@@ -544,9 +572,17 @@ workspace:
     - "src/frontend/**"
     - "tests/**"
 
-# code_agent가 코드 편집/검색을 제공하므로 별도 로컬 MCP는 기본 생략.
-# 역할 특화 도구(DB 스키마 분석, API 계약 검증 등)가 필요하면 여기에 추가.
-mcp_servers: []
+# code_agent가 코드 편집/검색을 제공.
+# Shared Memory 직접 write 를 위해 atlas / doc-store MCP 연결.
+mcp_servers:
+  - name: atlas
+    url: "http://atlas-mcp:8080"
+    type: shared
+    description: "OO 구조 그래프 직접 색인 (구현 산출물)"
+  - name: doc-store
+    url: "http://doc-store-mcp:8080"
+    type: shared
+    description: "wiki_pages / 작업 산출물 직접 write"
 
 # 클라이언트 측 — Eng:BE가 먼저 호출할 피어
 a2a_peers:
@@ -567,9 +603,9 @@ workflow:
   base: default
   extensions:
     - self_design_loop       # 클래스/메소드 레벨 세부 설계 자율 수행
-    - context_assembly       # Librarian.get_task_context → 프롬프트 조립
+    - context_assembly       # 정보 검색 필요 시 L 자연어 위임 → 프롬프트 조립
     - design_escalation      # Architect에 상위 설계 수정 건의
-    - diff_delivery          # Librarian에게 diff 전달
+    - atlas_indexing         # 구현 산출물 Atlas / Doc Store 직접 write
 ```
 
 ##### QA:BE (`configs/qa-be.yaml`)
@@ -583,6 +619,8 @@ persona: |
   Architect의 객체지향 1차 설계를 Engineer와 동시에 수신하여,
   Interface/Class/PublicMethod 계약을 근거로 독립적으로 테스트 코드를 작성합니다.
   Engineer 구현 완료 시 빌드를 실행하고, 준비한 테스트로 검증하여 Architect에게 보고합니다.
+  검증 산출물(테스트 결과, 커버리지 리포트)은 Doc Store / Atlas MCP에 **직접 write** 합니다 (§2.5).
+  정보 검색이 필요한 경우 Librarian에게 자연어로 위임합니다.
   설계가 수정되면 테스트 코드도 재작성합니다.
 
 llm:
@@ -611,11 +649,19 @@ workspace:
     - "src/**"
     - "docs/**"
 
-# code_agent가 편집 기능을 제공. 빌드/테스트 실행 등 특수 도구는 아래에 추가.
+# code_agent가 편집 기능을 제공. 빌드/테스트 실행 + Shared Memory 직접 write.
 mcp_servers:
   - name: test-runner
     type: local
     config: "./mcp-tools/test-runner.json"     # 빌드/테스트 실행 전용 도구
+  - name: atlas
+    url: "http://atlas-mcp:8080"
+    type: shared
+    description: "테스트 커버리지 등 검증 산출물 직접 write"
+  - name: doc-store
+    url: "http://doc-store-mcp:8080"
+    type: shared
+    description: "테스트 결과 / 리포트 직접 write"
 
 # 클라이언트 측 — QA:BE가 먼저 호출할 피어
 a2a_peers:
@@ -630,7 +676,7 @@ allowed_clients:
 workflow:
   base: default
   extensions:
-    - context_assembly            # Librarian.get_task_context → 시그니처 기반 테스트 작성
+    - context_assembly            # 정보 검색 필요 시 L 자연어 위임 → 시그니처 기반 테스트 작성
     - independent_test_authoring  # 설계 기반 독립 테스트 작성
     - build_and_test_execution    # 빌드/테스트 실행
     - design_update_adaptation    # 설계 변경 시 테스트 재작성
