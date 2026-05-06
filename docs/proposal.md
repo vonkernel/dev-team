@@ -64,8 +64,9 @@ graph TD
         A --- Pairs
     end
 
+    L["Librarian (L)<br/>사서 — 정보 검색 + 외부 리소스 조사"]
+
     subgraph MemoryZone["Shared Memory"]
-        L["Librarian (L)<br/>지식 관리자<br/>Diff 색인 + 질의 응답"]
         subgraph DB["데이터베이스 (추상화)"]
             GraphDB["Atlas<br/>OO 구조"]
             DocDB["Doc Store<br/>Task/Session/Item"]
@@ -77,21 +78,21 @@ graph TD
     end
 
     subgraph EventPipe["대화 기록 파이프라인"]
-        Broker["Valkey Streams<br/>(Message Broker)"]
-        Chronicler["Chronicler<br/>경량 Consumer<br/>(에이전트 아님)"]
+        Broker["Valkey Streams<br/>Message Broker"]
+        Chronicler["Chronicler<br/>경량 Consumer<br/>에이전트 아님"]
     end
 
     subgraph ExtMCP["외부 PM MCP 서버"]
-        ExtPmMCP["External PM MCP<br/>(GitHub Wiki/Issue 기본)"]
+        ExtPmMCP["External PM MCP<br/>GitHub Wiki/Issue 기본"]
     end
 
     subgraph ResearchTracks["외부 리소스 조사 (3 트랙, §2.9)"]
-        Ctx7["context7 (외부 SaaS MCP)<br/>라이브러리 docs"]
-        WebFetch["mcp/web-fetch (Playwright)<br/>사용자 URL 페이지"]
-        WebSearch["Anthropic web_search<br/>(LLM API tool, backend 0)"]
+        Ctx7["context7<br/>라이브러리 docs"]
+        WebFetch["mcp/web-fetch<br/>Playwright"]
+        WebSearch["Anthropic web_search<br/>LLM API native"]
     end
 
-    %% 사용자 접점: User Gateway를 통해 P와 A에 개입
+    %% 사용자 접점
     User <-->|채팅 UI| UG
     UG <-->|기획 개입| P
     UG <-->|기술 설계 개입| A
@@ -99,24 +100,14 @@ graph TD
     %% P ↔ A
     P <-->|PRD 전달/협의| A
 
-    %% 외부 PM MCP는 P 단독 창구 (프로젝트 관리 책임의 일관성)
+    %% 외부 PM MCP는 P 단독 창구
     P <-->|PRD/태스크 동기화| ExtPmMCP
 
-    %% 외부 리소스 조사 — 트랙별 호출 주체 (§2.9)
-    %%   context7: 코드 작업 에이전트 (A / Pairs) + L (라이브러리 메타 read)
-    %%   web-fetch: P / L (사용자 URL 받았을 때)
-    %%   web_search: 모든 에이전트의 LLM (자동 활성, 별 화살표 생략)
-    A -.->|context7| Ctx7
-    Pairs -.->|context7| Ctx7
-    L -.->|context7| Ctx7
-    P -.->|web-fetch| WebFetch
-    L -.->|web-fetch| WebFetch
-
-    %% A ↔ 각 페어 (OO 설계 배포, Eng/QA 동시에 수신)
+    %% A ↔ 각 페어
     A <-->|OO 설계 배포/조율| PairBE
     A <-->|OO 설계 배포/조율| PairFE
 
-    %% Eng → QA 단방향 A2A (Eng이 대화 열고, QA는 응답으로 검증 결과 반환)
+    %% Eng → QA
     Eng_BE -->|검증 요청| QA_BE
     Eng_FE -->|검증 요청| QA_FE
 
@@ -124,27 +115,30 @@ graph TD
     GraphMCP <--> GraphDB
     DocMCP <--> DocDB
 
-    %% write = 각 에이전트 직접 (자기 도메인 데이터, §2.5 정정 — 2026-05)
+    %% write 직접 — 각 에이전트가 자기 도메인 데이터를 적절한 MCP 에 직접 write
     P -->|wiki_pages / issues write| DocMCP
-    A -->|atlas / wiki_pages ADR write| GraphMCP
-    A -->|atlas / wiki_pages ADR write| DocMCP
-    Pairs -->|atlas 색인 / wiki write| GraphMCP
-    Pairs -->|atlas 색인 / wiki write| DocMCP
+    A -->|atlas write| GraphMCP
+    A -->|wiki_pages ADR write| DocMCP
+    Pairs -->|atlas 색인| GraphMCP
+    Pairs -->|wiki / 작업 산출물 write| DocMCP
 
-    %% Librarian = read 사이드 사서 (자연어 / 복합 / 교차 쿼리)
-    L <--> GraphMCP
-    L <--> DocMCP
-    P -->|복합·자연어 read 위임| L
-    A -->|복합·자연어 read 위임| L
-    Pairs -->|복합·자연어 read 위임| L
+    %% L 에게 위임 — 정보 검색 + 외부 리소스 조사
+    P -->|정보 검색 / 외부 조사 위임| L
+    A -->|정보 검색 / 외부 조사 위임| L
+    Pairs -->|정보 검색 / 외부 조사 위임| L
 
-    %% A2A 대화 이벤트는 Broker로 publish (fire-and-forget)
+    %% L 이 backend 호출 — DB 정보 검색 + 외부 리소스 조사 단독 수행
+    L <-->|정보 검색| GraphMCP
+    L <-->|정보 검색| DocMCP
+    L -.->|외부 리소스 조사 3 트랙| ResearchTracks
+
+    %% A2A 대화 이벤트는 Broker로 publish
     UG -.->|대화 이벤트 publish| Broker
     P -.->|대화 이벤트 publish| Broker
     A -.->|대화 이벤트 publish| Broker
     Pairs -.->|대화 이벤트 publish| Broker
 
-    %% Chronicler가 Broker를 구독하여 Doc DB에 영속화 (직접 — L 경유 X)
+    %% Chronicler — Broker 구독 후 Doc DB 직접 영속
     Broker -->|XREADGROUP| Chronicler
     Chronicler -->|저장 성공 후 XACK| Broker
     Chronicler -->|Doc DB 영속 — L 경유 X| DocMCP
@@ -245,7 +239,7 @@ graph TD
 |----------|-----------|----------|------|
 | P | LLM API | 없음 | 판단/소통만 수행 |
 | A | LLM API | OpenCode CLI | 리뷰/검수 시 코드 조작 |
-| L | LLM API | 없음 | 다른 에이전트의 read 사이드 사서 — 자연어 / 복합 쿼리를 도구 호출로 매핑 (MCP 경유) |
+| L | LLM API | 없음 | 사서 — DB 정보 검색 + 외부 리소스 조사 (전담). 자연어 요청을 도구 호출로 매핑 |
 | Eng:* | LLM API | OpenCode CLI | 코드 구현 |
 | QA:* | LLM API | OpenCode CLI | 테스트 작성/실행 |
 
@@ -706,8 +700,8 @@ sequenceDiagram
 
 Shared Memory(Doc Store + Atlas)는 **공유 MCP 서버**가 thin CRUD 계층으로 노출
 하며, 각 에이전트가 **자기 도메인 데이터를 MCP 통해 직접 write** 한다.
-**Librarian(L)** 은 read 사이드의 사서 — 자연어 / 복합 / 교차 쿼리를 도구
-호출로 매핑한다.
+**Librarian(L)** 은 사서 — DB 정보 검색과 외부 리소스 조사를 자연어 요청으로
+받아 도구 호출로 매핑한다 (Shared Memory 박스 외부의 별도 컴포넌트).
 
 #### 분담 모델 (정정 — 2026-05)
 
@@ -715,7 +709,8 @@ Shared Memory(Doc Store + Atlas)는 **공유 MCP 서버**가 thin CRUD 계층으
 |---|---|---|
 | **자기 도메인 write** | 각 에이전트 (P / A / ENG / QA / CHR) | Doc Store / Atlas MCP **직접** |
 | **단순 read** (자기 데이터 식별자 알 때) | 각 에이전트 | MCP 직접 가능 |
-| **복합 / 자연어 / 교차 read** | 에이전트 → A2A → L | L 이 자연어 → 도구 매핑 (사서) |
+| **정보 검색** (자연어 / 교차 쿼리) | 에이전트 → A2A → L | L 이 자연어 → 도구 매핑 (사서) |
+| **외부 리소스 조사** (라이브러리 docs / URL 페이지 / 일반 web) | 에이전트 → A2A → L | **L 단독 전담** — 다른 에이전트는 외부 트랙 직접 호출 X |
 | **외부 도구 sync** (예: Doc Store ↔ GitHub Issues / Wiki) | 책임 에이전트 (예: P) | 외부 MCP (IssueTracker / Wiki) 직접 |
 
 이 분담은 **CHR (#34) 이미 정착시킨 직접 패턴**을 다른 에이전트에 일관 적용
@@ -725,12 +720,17 @@ Shared Memory(Doc Store + Atlas)는 **공유 MCP 서버**가 thin CRUD 계층으
 
 | 역할 | 입력 | 처리 | 출력 |
 |------|------|------|------|
-| **자연어 read 응답** | 에이전트의 자연어 질의 | Atlas + Doc Store 교차 쿼리 (LLM ReAct) | 자연어로 정리된 답변 |
-| **복합 / 조합 쿼리** | "context X 의 대화 로그" 같은 multi-collection 쿼리 | 여러 도구 순차 호출 후 정리 | 통합 결과 |
-| **(M5+) 자연어 검색** | 페이지 / 이슈 본문 검색 | full-text / semantic | 매칭 결과 |
+| **DB 정보 검색** | 에이전트의 자연어 질의 | Atlas + Doc Store 교차 쿼리 (LLM ReAct) | 자연어로 정리된 답변 |
+| **조합 쿼리** | "context X 의 대화 로그" 같은 multi-collection 쿼리 | 여러 도구 순차 호출 후 정리 | 통합 결과 |
+| **외부 리소스 조사** | 라이브러리 docs / 사용자 URL 페이지 / 일반 web 조회 | 3 트랙 도구 (§2.9) 호출 후 정리 | 조사 결과 자연어 응답 |
+| **(M5+) 자연어 / 의미 기반 검색** | 페이지 / 이슈 본문 검색 | full-text / semantic | 매칭 결과 |
 
 > **L 은 write 도구를 노출하지 않는다.** 각 에이전트가 자기 도메인 데이터를
 > 직접 MCP 로 write. Diff 색인 같은 후처리도 호출자가 수행 (M4+ 별 결정).
+
+> **외부 리소스 조사는 L 전담**. 다른 에이전트는 context7 / web-fetch / web_search
+> 트랙을 직접 호출하지 않고 L 에게 자연어 위임. L 은 §2.9 의 3 트랙을 단독으로
+> 다룬다.
 
 > **대화 로그 수집은 Librarian의 역할이 아니다.** 별도의 경량 Consumer인 Chronicler가 Valkey Streams 브로커를 통해 수집·저장한다. (섹션 2.6 참조)
 
@@ -739,7 +739,8 @@ Shared Memory(Doc Store + Atlas)는 **공유 MCP 서버**가 thin CRUD 계층으
 | 경로 | 방식 | 용도 |
 |------|------|------|
 | **자기 도메인 write** | 에이전트 → MCP → DB | 직접 — wiki_pages / issues / atlas 등 |
-| **자연어 / 복합 read** | 에이전트 → A2A → Librarian → MCP → DB | 자연어 질의, 교차 참조 |
+| **정보 검색** | 에이전트 → A2A → Librarian → MCP → DB | 자연어 질의, 교차 참조 |
+| **외부 리소스 조사** | 에이전트 → A2A → Librarian → 3 트랙 (§2.9) | 라이브러리 docs / URL / web search |
 | **Task Context 조립** | Eng/QA → A2A → Librarian → Atlas | Code Agent 호출 전 필요한 파일/참조 시그니처 |
 | **대화 로그 기록** | 에이전트 → Valkey Streams → Chronicler → MCP → Doc Store | A2A 대화 이력 수집 (Librarian 경유 X) |
 | **외부 도구 sync** | 에이전트 → 외부 MCP (IssueTracker/Wiki 등) | Doc Store 의 데이터를 외부에 push |
@@ -755,25 +756,26 @@ Shared Memory(Doc Store + Atlas)는 **공유 MCP 서버**가 thin CRUD 계층으
 
 #### 접근 권한 매트릭스 (정정 — 2026-05)
 
-| 주체 | MCP 직접 read | MCP 직접 write | A2A → Librarian (read) | Broker publish |
+| 주체 | MCP 직접 read | MCP 직접 write | A2A → L (정보 검색 / 외부 조사) | Broker publish |
 |------|:------------:|:------------:|:---------------:|:--------------:|
-| **Librarian** | O | minimal (read 위주, M4+ 의 옵션 C 시 색인 추천) | — | X |
+| **Librarian** | O | minimal (M4+ 의 옵션 C 시 색인 추천) | — | X |
 | **Chronicler** | — | O (Doc DB, 대화 영속) | — | X (구독만) |
-| **P** | O (자기 도메인 — wiki_pages / issues) | **O** (wiki_pages / issues + 외부 sync) | 복합 / 교차 read | O |
-| **A** (M4+) | O (atlas / wiki_pages) | **O** (atlas / wiki_pages — ADR 등) | 복합 / 교차 read | O |
-| **Eng:{역할}** (M5+) | O (atlas / wiki_pages) | **O** (atlas — 코드 변경 색인) | 복합 / 교차 read | O |
-| **QA:{역할}** (M5+) | O | **O** (테스트 결과 / wiki_pages) | 복합 / 교차 read | O |
+| **P** | O (자기 도메인 — wiki_pages / issues) | **O** (wiki_pages / issues + 외부 sync) | 정보 검색 + 외부 조사 | O |
+| **A** (M4+) | O (atlas / wiki_pages) | **O** (atlas / wiki_pages — ADR 등) | 정보 검색 + 외부 조사 | O |
+| **Eng:{역할}** (M5+) | O (atlas / wiki_pages) | **O** (atlas — 코드 변경 색인) | 정보 검색 + 외부 조사 | O |
+| **QA:{역할}** (M5+) | O | **O** (테스트 결과 / wiki_pages) | 정보 검색 + 외부 조사 | O |
 
 **정정된 원칙:**
 - **write = 각 에이전트 직접** — 자기 도메인 데이터를 MCP 통해 직접 영속.
   자기 데이터의 schema 는 자기가 가장 잘 앎.
-- **read = Librarian 통과 (복합 / 자연어)** — 자기 데이터의 단순 read 는 직접
-  도 가능하지만, 다른 도메인 / 자연어 / 교차 쿼리는 L 의 사서 역할 활용.
+- **정보 검색 = Librarian 통과** — DB 안에서 데이터를 찾아오는 것이 사서 역할.
+  자기 데이터의 단순 read 는 직접도 가능하지만, 자연어 / 교차 쿼리는 L 의 사서 역할 활용.
+- **외부 리소스 조사 = Librarian 전담** — 라이브러리 docs / 사용자 URL / 일반 web search 모두 L 단독 (§2.9).
 - **CHR 의 직접 패턴이 reference** — 결정론적 worker 도, LLM 에이전트도 일관.
 
 **설계 원칙:**
 - MCP 서버는 비즈니스 로직 없는 thin CRUD (mcp/CLAUDE.md §0)
-- Librarian = read 사이드의 자연어 / 복합 layer (LLM ReAct)
+- Librarian = 사서 (정보 검색 + 외부 리소스 조사) — LLM ReAct 매핑
 - 에이전트 직접 write — schema 는 prompt 에 노출 (claude-sonnet-4-6 의 200K
   context 에서 미미한 부담)
 - 외부 도구 sync (Doc Store ↔ GitHub 등) 는 책임 에이전트 (P) 가 외부 MCP 직접 호출
@@ -1081,31 +1083,31 @@ P와 Librarian 이미지는 Code Agent 불필요 → Bun/OpenCode 미설치.
 ### 2.9. 외부 리소스 조사 (3 트랙)
 
 에이전트가 작업 도중 외부 정보를 조회해야 할 때 (라이브러리 사용법, 사용자
-제공 URL 의 페이지 내용, 일반 web 검색 등) **3 트랙**으로 분담:
+제공 URL 의 페이지 내용, 일반 web 검색 등) **L 이 전담** 하며 내부적으로
+**3 트랙**으로 분담:
 
 ```mermaid
 flowchart LR
-    Agents["에이전트 (P / A / ENG / QA / L)"]
-    Agents -->|MCP 직접| C7["트랙 1: context7<br/>(라이브러리 docs SaaS, 외부 MCP)"]
-    Agents -->|MCP 직접| WF["트랙 2: web-fetch<br/>(자체 mcp/web-fetch — Playwright)"]
-    Agents -.LLM API tool.-> WS["트랙 3: Anthropic web_search<br/>(Claude API native — backend 0)"]
+    OtherAgents["P / A / ENG / QA"]
+    OtherAgents -->|자연어 위임| L["Librarian (L)"]
+    L -->|MCP| C7["트랙 1: context7<br/>(라이브러리 docs SaaS, 외부 MCP)"]
+    L -->|MCP| WF["트랙 2: web-fetch<br/>(자체 mcp/web-fetch — Playwright)"]
+    L -.LLM API tool.-> WS["트랙 3: Anthropic web_search<br/>(Claude API native — backend 0)"]
 ```
 
-| 트랙 | backend | 용도 | 호출 방식 |
+| 트랙 | backend | 용도 | L 의 호출 방식 |
 |------|---------|------|----------|
-| **1. context7** | Upstash SaaS (이미 MCP 노출, `https://mcp.context7.com/mcp`) | 라이브러리 / 프레임워크 공식 docs (코드 작업 빈번) | 에이전트가 외부 MCP 에 직접 connect — wrapper 0 |
-| **2. web-fetch (Playwright)** | 자체 컨테이너 `mcp/web-fetch/` — chromium headless + trafilatura | 사용자 제공 URL 의 페이지 내용 파악 (JS-heavy / SPA 까지) | 에이전트의 lifespan 에서 connect, LangChain tool 로 노출 |
-| **3. Anthropic web_search** | Anthropic SaaS — Claude API 의 [`web_search_20250305`](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool) tool | 일반 web search (사용자 의도 / 시장 조사 / 외부 정보) | LLM 호출 시 `tools` 배열에 추가 — backend 0 |
+| **1. context7** | Upstash SaaS (이미 MCP 노출, `https://mcp.context7.com/mcp`) | 라이브러리 / 프레임워크 공식 docs | L 의 lifespan 에서 외부 MCP 에 connect (wrapper 0) |
+| **2. web-fetch (Playwright)** | 자체 컨테이너 `mcp/web-fetch/` — chromium headless + trafilatura | 사용자 제공 URL 의 페이지 내용 파악 (JS-heavy / SPA 까지) | L 의 lifespan 에서 connect, LangChain tool 로 노출 |
+| **3. Anthropic web_search** | Anthropic SaaS — Claude API 의 [`web_search_20250305`](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool) tool | 일반 web search (사용자 의도 / 시장 조사 / 외부 정보) | L 의 LLM 호출 시 `tools` 배열에 추가 — backend 0 |
 
-**호출 주체** (M3 ~ M5+):
-- context7 — A / ENG / QA (코드 작업 직접) + L (라이브러리 메타 read 위임)
-- web-fetch — P / L (사용자가 URL 제공 시)
-- web_search — 모든 에이전트의 LLM (자동 활성)
+**호출 주체**: L 단독. 다른 에이전트 (P / A / ENG / QA) 가 외부 정보 필요하면
+A2A 자연어로 L 에게 위임 — L 이 LLM 추론으로 적절한 트랙 선택 + 호출 + 응답 정리.
 
 **비-스코프 (별 작업)**:
 - 일반 web search 의 추가 backend (Brave / Tavily / Serper 등) — 트랙 3 부족 시 M5+ 별 이슈
 - Google 직접 scrape (Playwright + Google) — bot detection / ToS risk 로 회피
-- 각 에이전트의 운영 지침 (`agents/<name>/resources/external-research-guide.md`) — agent 별 wiring 시점에 작성 (LLM 컨텍스트 embed)
+- L 의 운영 지침 (`agents/librarian/resources/external-research-guide.md`) — L wiring 후속 이슈에서 작성 (LLM 컨텍스트 embed)
 
 상세 설계 / 결정 근거: 별 docs (예: `docs/external-research.md`) — backend 작업 시점 (M6) 에 작성.
 
@@ -1459,7 +1461,7 @@ sequenceDiagram
 7. A가 수행하는 후처리:
     - **채택안**: 프로젝트 코드베이스의 `docs/design/`에 md 파일로 저장
     - **미채택안**: A 가 Doc Store MCP 직접 호출 (`wiki_pages.create` with `page_type=adr-alternative` 등) — write 직접 (§2.5 정정)
-8. A 가 채택 설계의 OO 구조를 Atlas MCP 직접 호출로 색인 (write 직접). 복합 분석은 L 자연어 read 호출.
+8. A 가 채택 설계의 OO 구조를 Atlas MCP 직접 호출로 색인 (write 직접). 정보 검색 / 외부 리소스 조사가 필요하면 L 에게 자연어 위임.
 9. A: 태스크를 Eng+QA 페어 단위로 분할
 
 #### 3단계: 병렬 구현·검증
@@ -1826,15 +1828,16 @@ MCP 서버는 두 종류로 나뉜다:
 
 | 에이전트 | Shared Memory MCP (write) | Shared Memory MCP (read) | External PM MCP | 역할별 MCP 도구 |
 |----------|:------------------------:|:-----------------------:|:---------------:|---------------|
-| P | **O** (직접 — wiki_pages / issues) | O (직접) + 복합은 L 자연어 | **O** (단독 창구 — IssueTracker / Wiki) | — |
-| A | **O** (직접 — atlas / wiki_pages ADR 등) | O (직접) + 복합은 L 자연어 | X (P 에게 위임) | 코드 읽기/검색, 리뷰 도구 |
-| L | minimal (M4+ 옵션 C 시 색인 추천만) | O — 사서 역할 (자연어 → 도구 매핑) | X | 없음 |
-| Eng:* | **O** (직접 — atlas 색인) | O (직접) + 복합은 L 자연어 | X (A→P) | 코드 편집/빌드/테스트 |
-| QA:* | **O** (직접 — wiki_pages / 테스트 결과) | O (직접) + 복합은 L 자연어 | X (A→P) | 테스트 실행/리포트 |
+| P | **O** (직접 — wiki_pages / issues) | O (직접) + 정보 검색·외부 조사 → L | **O** (단독 창구 — IssueTracker / Wiki) | — |
+| A | **O** (직접 — atlas / wiki_pages ADR 등) | O (직접) + 정보 검색·외부 조사 → L | X (P 에게 위임) | 코드 읽기/검색, 리뷰 도구 |
+| L | minimal (M4+ 옵션 C 시 색인 추천만) | O — 사서 (정보 검색 + 외부 리소스 조사) | X | 없음 |
+| Eng:* | **O** (직접 — atlas 색인) | O (직접) + 정보 검색·외부 조사 → L | X (A→P) | 코드 편집/빌드/테스트 |
+| QA:* | **O** (직접 — wiki_pages / 테스트 결과) | O (직접) + 정보 검색·외부 조사 → L | X (A→P) | 테스트 실행/리포트 |
 
 **정정된 원칙 (§2.5 참조):**
 - **write 직접**: 자기 도메인 데이터는 자기 MCP 호출 — schema 노출 / dispatch 비용 ↓ / traceability ↑
-- **read 사서 (L)**: 자연어 / 복합 / 교차 쿼리는 L 의 LLM 매핑 활용
+- **정보 검색 사서 (L)**: DB 안의 자연어 / 교차 쿼리는 L 의 LLM 매핑 활용
+- **외부 리소스 조사 전담 (L)**: 라이브러리 docs / URL / web search 는 L 단독 (§2.9)
 - **외부 PM 단독 창구 (P)**: Doc Store ↔ GitHub Issues / Wiki sync 는 P 가 직접 IssueTracker / Wiki MCP 호출. A / ENG / QA 가 외부 반영 필요하면 A→P 위임.
 
 ### 6.4. 추상화 레이어 (OCP 원칙)
@@ -2025,9 +2028,9 @@ dev-team/
 | 5-1 | Task lifecycle | A2A 표준 `TaskState` 사용 — `TASK_STATE_SUBMITTED`, `TASK_STATE_WORKING`, `TASK_STATE_COMPLETED`, `TASK_STATE_FAILED`, `TASK_STATE_CANCELED`, `TASK_STATE_REJECTED`, **`TASK_STATE_INPUT_REQUIRED`** (인간·상위 에이전트 개입 대기), `TASK_STATE_AUTH_REQUIRED` |
 | 5-2 | Agent Card | 각 에이전트 `/.well-known/agent-card.json` 에 [AgentCard](https://a2a-protocol.org/latest/specification/) 스펙 JSON 노출. 필수: `name`, `description`, `supportedInterfaces`, `version`, `capabilities`, `defaultInputModes`, `defaultOutputModes`, `skills`. 시그니처(`signatures[]`)는 향후 과제 |
 | 5-3 | 스트리밍 | User Gateway ↔ Primary 사용자 채팅은 `SendStreamingMessage` 기반 SSE. 초기 `Task`/`Message` 이후 `TaskStatusUpdateEvent` / `TaskArtifactUpdateEvent` 이벤트 전달 |
-| 6 | Shared Memory 관리 | **각 에이전트가 자기 도메인 데이터를 MCP 직접 write** (CHR 의 직접 패턴 일관 적용). L 은 read 사이드 사서 — 자연어 / 복합 / 교차 쿼리만 dispatch. (정정: 2026-05) |
-| 7 | Shared Memory 접근 구조 | write: 에이전트 → MCP → DB (직접) / 단순 read: 에이전트 → MCP → DB (직접) / 복합·자연어 read: 에이전트 → A2A → L → MCP → DB |
-| 8 | Librarian 책임 | read 사이드 layer — 자연어 / 복합 쿼리 LLM 매핑. write 도구 미노출 (M4+ Diff 색인 옵션 C 시 추천만). DB 직접 접근 X — MCP 경유 일관 |
+| 6 | Shared Memory 관리 | **각 에이전트가 자기 도메인 데이터를 MCP 직접 write** (CHR 의 직접 패턴 일관 적용). L 은 사서 — 정보 검색 + 외부 리소스 조사 (전담). (정정: 2026-05) |
+| 7 | Shared Memory 접근 구조 | write: 에이전트 → MCP → DB / 단순 read: 에이전트 → MCP → DB / 정보 검색 (자연어): 에이전트 → A2A → L → MCP → DB |
+| 8 | Librarian 책임 | 사서 — DB 정보 검색 + 외부 리소스 조사 (3 트랙, §2.9). write 도구 미노출 (M4+ Diff 색인 옵션 C 시 추천만). DB 직접 접근 X — MCP 경유 일관 |
 | 9 | Eng+QA 페어 구조 | 역할별 Eng+QA 1:1 페어, 프로젝트별 동적 구성, 1 Agent = 1 Container |
 | 10 | Eng-QA 협업 방식 | A의 설계를 동시 수신하여 **병렬** 작업 (Eng 구현 / QA 독립 테스트 코드 작성) |
 | 11 | Eng 자율성 | 클래스/메소드/서브 패키지 레벨의 세부 설계는 Eng 자율, 상위 설계 수정은 A 주도 |

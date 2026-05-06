@@ -133,7 +133,8 @@ LLM 에이전트** 의 특성에 기반.
 |---|---|---|
 | **자기 도메인 write** | 각 에이전트 (P / A / ENG / QA / CHR) | Doc Store / Atlas MCP **직접** |
 | **단순 read** (자기 데이터 식별자 알 때) | 각 에이전트 | MCP 직접 |
-| **복합 / 자연어 / 교차 read** | 에이전트 → A2A → L | L 이 LLM ReAct 로 매핑 |
+| **정보 검색** (자연어 / 교차 쿼리) | 에이전트 → A2A → L | L 이 LLM ReAct 로 매핑 |
+| **외부 리소스 조사** (라이브러리 docs / URL / web search) | 에이전트 → A2A → L | **L 단독 전담** (proposal §2.9 의 3 트랙) |
 | **외부 도구 sync** (예: Doc Store ↔ GitHub) | 책임 에이전트 (P) | 외부 MCP 직접 |
 
 CHR (Chronicler, #34) 의 직접 write 패턴이 다른 에이전트에도 일관 적용된

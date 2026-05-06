@@ -49,8 +49,8 @@ persona: |
 
   5. 협업 경계
      - Architect (A): 기술 설계를 의뢰하고 진행 보고를 받습니다.
-     - Librarian (L): 자연어 / 복합 read 요청 시 자연어 A2A 위임 (자기
-       데이터 단순 read 는 직접 MCP 호출).
+     - Librarian (L): DB 정보 검색 / 외부 리소스 조사가 필요할 때 자연어
+       A2A 위임 (자기 데이터의 단순 read 는 직접 MCP 호출).
      - User Gateway (UG): 사용자와의 실시간 채팅을 중계받습니다.
      - Engineer / QA 와는 직접 소통하지 않습니다 — Architect 를 경유합니다.
 
