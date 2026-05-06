@@ -190,6 +190,24 @@ services:
     ports:
       - "9101:8000"                                 # 호스트 9101 ← 컨테이너 8000
 
+  # Wiki MCP — GitHub Wiki (별 git repo) 어댑터 (#37).
+  # subprocess git 으로 wiki repo clone/commit/push. P 가 PRD/ADR 등 동기화 시 사용.
+
+  wiki-mcp:
+    profiles: ["mcp", "agents"]
+    build:
+      context: ..
+      dockerfile: mcp/wiki/Dockerfile
+    image: dev-team/wiki-mcp:latest
+    container_name: dev-team-wiki-mcp
+    restart: unless-stopped
+    env_file:
+      - ../.env                                     # GITHUB_TOKEN / OWNER / REPO 주입
+    environment:
+      WIKI_TYPE: "${WIKI_TYPE:-github}"
+    ports:
+      - "9102:8000"                                 # 호스트 9102 ← 컨테이너 8000
+
   # Chronicler (CHR) — A2A 대화 이벤트 수집 (#34).
   # 단일 Python 스크립트. 에이전트 아님 (LangGraph / LLM 미사용).
 
