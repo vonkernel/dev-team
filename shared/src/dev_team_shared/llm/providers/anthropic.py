@@ -12,7 +12,7 @@ from typing import Any
 from langchain_anthropic import ChatAnthropic
 from langchain_core.language_models import BaseChatModel
 
-from dev_team_shared.adapters.llm.factory import LLMSpec, register_provider
+from dev_team_shared.llm.factory import LLMSpec, register_provider
 
 
 def _build(spec: LLMSpec) -> BaseChatModel:

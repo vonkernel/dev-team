@@ -6,8 +6,8 @@ provider 구현 모듈(`providers/*`)이 임포트 시점에 팩토리에 자가
 """
 
 # 내장 provider 들 자가 등록 (side-effect import)
-from dev_team_shared.adapters.llm import providers  # noqa: F401
-from dev_team_shared.adapters.llm.factory import (
+from dev_team_shared.llm import providers  # noqa: F401
+from dev_team_shared.llm.factory import (
     LLMSpec,
     UnknownLLMProviderError,
     create_chat_model,

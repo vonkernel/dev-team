@@ -18,7 +18,7 @@ import logging
 from pathlib import Path
 from typing import Annotated, Any, TypedDict
 
-from dev_team_shared.adapters.llm import LLMSpec, create_chat_model
+from dev_team_shared.llm import LLMSpec, create_chat_model
 from dev_team_shared.config_loader import load_config
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, SystemMessage
