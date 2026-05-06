@@ -6,6 +6,7 @@ requires-python = "==3.13.*"
 members = [
     "dev-team",
     "dev-team-shared",
+    "librarian-agent",
     "primary-agent",
     "user-gateway",
 ]
@@ -565,6 +566,36 @@ sdist = { url = "https://files.pythonhosted.org/packages/6f/75/1ee27b3510bf5b1b5
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f4/76/53033db34ffccd25d62c32b23b9468f7228b455da6976e1c420ae31555c4/langsmith-0.7.33-py3-none-any.whl", hash = "sha256:5b535b991d52d3b664ebb8dc6f95afcf8d0acb42e062ac45a54a6a4820139f20", size = 378981, upload-time = "2026-04-20T16:17:52.503Z" },
 ]
+
+[[package]]
+name = "librarian-agent"
+version = "0.1.0"
+source = { editable = "agents/librarian" }
+dependencies = [
+    { name = "dev-team-shared" },
+    { name = "fastapi" },
+    { name = "langgraph" },
+    { name = "langgraph-checkpoint-postgres" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "dev-team-shared", editable = "shared" },
+    { name = "fastapi", specifier = ">=0.120.0" },
+    { name = "langgraph", specifier = ">=1.1.9" },
+    { name = "langgraph-checkpoint-postgres", specifier = ">=3.0.5" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.0.3" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.3.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "librt"

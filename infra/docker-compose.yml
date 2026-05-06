@@ -148,6 +148,36 @@ services:
       valkey:
         condition: service_started
 
+  # Librarian (L) — Doc Store 단일 창구 (#38).
+  # 자연어 요청을 받아 LLM 추론으로 Doc Store MCP 도구 호출.
+
+  librarian:
+    profiles: ["agents"]
+    build:
+      context: ..                                   # repo root (shared + agents/librarian 포함)
+      dockerfile: agents/librarian/Dockerfile
+    image: dev-team/librarian:latest
+    container_name: dev-team-librarian
+    restart: unless-stopped
+    env_file:
+      - ../.env                                     # ANTHROPIC_API_KEY 등 주입
+    environment:
+      # AsyncPostgresSaver 체크포인트 DSN.
+      DATABASE_URI: "postgres://${POSTGRES_USER:-devteam}:${POSTGRES_PASSWORD:-devteam_postgres}@postgres:5432/${POSTGRES_DB:-langgraph}"
+      # Doc Store MCP — librarian 이 자연어 요청을 받아 호출하는 단일 backend.
+      DOC_STORE_MCP_URL: "http://doc-store-mcp:8000/mcp"
+    volumes:
+      - ../overrides/librarian.yaml:/app/librarian/config/override.yaml:ro
+    ports:
+      - "9002:8000"                                 # 호스트 9002 ← 컨테이너 8000 (root CLAUDE.md 포트 컨벤션)
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+      doc-store-mcp:
+        condition: service_started
+
   # MCP 서버군 (profile: mcp 또는 agents).
   # 모든 MCP 는 streamable HTTP transport (MCP spec 2025-06-18). 컨테이너 내부 8000.
 
