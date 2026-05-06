@@ -39,57 +39,42 @@
 
 ```mermaid
 graph TD
-    User["사용자 (Human)"]
-    UG["User Gateway<br/>사용자 ↔ 에이전트 중계"]
+    User["사용자"]
+    UG["User Gateway"]
 
-    P["Primary (P)<br/>PM, PRD 작성"]
+    P["Primary"]
+    A["Architect"]
 
-    subgraph ArchGroup["Architect 관할"]
-        direction TB
-        A["Architect (A)<br/>OO 설계 주도"]
-
-        subgraph Pairs[" "]
-            direction LR
-            subgraph PairBE["BE 페어"]
-                Eng_BE["Eng:BE"]
-                QA_BE["QA:BE"]
-            end
-
-            subgraph PairFE["FE 페어"]
-                Eng_FE["Eng:FE"]
-                QA_FE["QA:FE"]
-            end
-        end
-
-        A --- Pairs
+    subgraph PairBE["BE 페어"]
+        Eng_BE["Eng:BE"] -->|검증 요청| QA_BE["QA:BE"]
     end
 
-    L["Librarian (L)<br/>사서 — 정보 검색 + 외부 리소스 조사"]
+    subgraph PairFE["FE 페어"]
+        Eng_FE["Eng:FE"] -->|검증 요청| QA_FE["QA:FE"]
+    end
 
-    subgraph MemoryZone["Shared Memory"]
-        subgraph DB["데이터베이스 (추상화)"]
-            GraphDB["Atlas<br/>OO 구조"]
-            DocDB["Doc Store<br/>Task/Session/Item"]
-        end
-        subgraph MCP["공유 MCP 서버"]
-            GraphMCP["Atlas MCP"]
-            DocMCP["Doc Store MCP"]
-        end
+    L["Librarian<br/>사서 — 정보 검색 + 외부 리소스 조사"]
+
+    subgraph SharedMemory["Shared Memory"]
+        DocMCP["Doc Store MCP"]
+        GraphMCP["Atlas MCP"]
+        DocDB["Document DB<br/>Doc Store"]
+        GraphDB["Graph DB<br/>Atlas"]
+        DocMCP <--> DocDB
+        GraphMCP <--> GraphDB
     end
 
     subgraph EventPipe["대화 기록 파이프라인"]
-        Broker["Valkey Streams<br/>Message Broker"]
-        Chronicler["Chronicler<br/>경량 Consumer<br/>에이전트 아님"]
+        Broker["Valkey Streams"]
+        Chronicler["Chronicler"]
     end
 
-    subgraph ExtMCP["외부 PM MCP 서버"]
-        ExtPmMCP["External PM MCP<br/>GitHub Wiki/Issue 기본"]
-    end
+    ExtPmMCP["External PM MCP<br/>GitHub Wiki/Issue"]
 
     subgraph ResearchTracks["외부 리소스 조사 (3 트랙, §2.9)"]
-        Ctx7["context7<br/>라이브러리 docs"]
-        WebFetch["mcp/web-fetch<br/>Playwright"]
-        WebSearch["Anthropic web_search<br/>LLM API native"]
+        Ctx7["context7"]
+        WebFetch["mcp/web-fetch"]
+        WebSearch["Anthropic web_search"]
     end
 
     %% 사용자 접점
@@ -97,65 +82,44 @@ graph TD
     UG <-->|기획 개입| P
     UG <-->|기술 설계 개입| A
 
-    %% P ↔ A
+    %% 에이전트 간 협업
     P <-->|PRD 전달/협의| A
-
-    %% 외부 PM MCP는 P 단독 창구
-    P <-->|PRD/태스크 동기화| ExtPmMCP
-
-    %% A ↔ 각 페어
     A <-->|OO 설계 배포/조율| PairBE
     A <-->|OO 설계 배포/조율| PairFE
 
-    %% Eng → QA
-    Eng_BE -->|검증 요청| QA_BE
-    Eng_FE -->|검증 요청| QA_FE
+    %% 외부 PM 도구 — P 단독 창구
+    P <-->|동기화| ExtPmMCP
 
-    %% MCP ↔ DB
-    GraphMCP <--> GraphDB
-    DocMCP <--> DocDB
+    %% Shared Memory — 에이전트 직접 데이터 저장 / 탐색
+    P & A & PairBE & PairFE -->|데이터 저장 / 탐색| SharedMemory
+    Chronicler -->|대화 영속| SharedMemory
 
-    %% write 직접 — 각 에이전트가 자기 도메인 데이터를 적절한 MCP 에 직접 write
-    P -->|wiki_pages / issues write| DocMCP
-    A -->|atlas write| GraphMCP
-    A -->|wiki_pages ADR write| DocMCP
-    Pairs -->|atlas 색인| GraphMCP
-    Pairs -->|wiki / 작업 산출물 write| DocMCP
-
-    %% L 에게 위임 — 정보 검색 + 외부 리소스 조사
-    P -->|정보 검색 / 외부 조사 위임| L
-    A -->|정보 검색 / 외부 조사 위임| L
-    Pairs -->|정보 검색 / 외부 조사 위임| L
-
-    %% L 이 backend 호출 — DB 정보 검색 + 외부 리소스 조사 단독 수행
-    L <-->|정보 검색| GraphMCP
-    L <-->|정보 검색| DocMCP
+    %% 정보 검색 — L 전담 (외부 리소스 조사 포함 개념)
+    P & A & PairBE & PairFE -->|정보 검색| L
+    L -->|통합 정보 검색| SharedMemory
     L -.->|외부 리소스 조사 3 트랙| ResearchTracks
 
-    %% A2A 대화 이벤트는 Broker로 publish
-    UG -.->|대화 이벤트 publish| Broker
-    P -.->|대화 이벤트 publish| Broker
-    A -.->|대화 이벤트 publish| Broker
-    Pairs -.->|대화 이벤트 publish| Broker
-
-    %% Chronicler — Broker 구독 후 Doc DB 직접 영속
-    Broker -->|XREADGROUP| Chronicler
-    Chronicler -->|저장 성공 후 XACK| Broker
-    Chronicler -->|Doc DB 영속 — L 경유 X| DocMCP
+    %% A2A 대화 이벤트 publish
+    UG & P & A & PairBE & PairFE -.->|대화 이벤트 publish| Broker
+    Broker -->|consume| Chronicler
 ```
 
 **다이어그램 단순화 주석:**
 
-가독성을 위해 Pairs 서브그래프를 단위로 묶어 그린 엣지가 있습니다. 실제로는 각 페어 내부의 Eng/QA 개별 에이전트가 연결됩니다.
+가독성을 위해 페어 단위로 묶거나 추상 라벨로 표기한 부분이 있습니다.
 
-| 다이어그램 표기 | 실제 연결 |
-|----------------|----------|
-| `A <--> Pairs` (과제 배분/검수) | A ↔ 각 페어의 Eng, QA 각각과 연결 (배분은 Eng/QA 동시 수신) |
-| `Pairs --> L` (Diff 전달 / 질의) | Eng: Diff 전달 + 질의, QA: 질의만 (QA는 Diff 없음) |
-| `Pairs -.-> Broker` (대화 이벤트 publish) | 각 페어의 Eng, QA 각각이 개별적으로 publish |
+| 단순화 표기 | 의미 / 실제 |
+|----------|-----------|
+| `PairBE` / `PairFE` 페어 단위 화살표 | 실제로는 각 페어 안의 Eng·QA 가 개별로 연결 (데이터 저장 / 정보 검색 / publish 모두 Eng·QA 각각 수행) |
+| `데이터 저장 / 탐색` (한 라벨) | 각 에이전트가 자기 도메인 데이터를 적절한 MCP 에 직접 write 또는 단순 read. 실 호출 대상은 도메인별 (P → DocMCP / A → 양쪽 / Pairs → 양쪽). 디테일은 §2.5 |
+| `정보 검색` (L 입력) | DB 정보 검색 + 외부 리소스 조사 모두 포함하는 자연어 위임. L 이 LLM 추론으로 적절한 도구 / 트랙 선택 |
+| `통합 정보 검색` (L → SharedMemory) | L 이 Atlas + Doc Store 양쪽 교차 쿼리 (LLM ReAct) |
+| `외부 리소스 조사 3 트랙` | context7 / mcp/web-fetch / Anthropic web_search. L 단독 전담 (디테일 §2.9) |
+| `대화 이벤트 publish` (점선) | fire-and-forget. UG + 모든 에이전트 → Broker. CHR 가 consume + DocMCP 직접 영속 (L 경유 X). XREADGROUP / XACK 디테일 §2.6 |
 
 **표현되지 않은 관계 (의도적 생략):**
-- Eng ↔ Eng 연결은 A가 다자간 논의 소집 시에만 A 주관 하에 이루어짐 (정기 연결 아님)
+- Eng ↔ Eng 직접 통신 X (A 가 다자간 논의 소집 시에만 A 주관)
+- A 가 페어 내 Eng / QA 에 동시 배포 (페어 단위 화살표 안에 포함)
 
 ### 2.2. User Gateway
 
