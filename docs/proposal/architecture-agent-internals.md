@@ -17,36 +17,46 @@ graph TD
         end
 
         subgraph Adapters["내부 어댑터 (OCP)"]
-            LLMAdapter["LLM Adapter<br/>Claude / OpenAI / ..."]
-            CodeAdapter["Code Agent Adapter<br/>OpenCode / Claude Code / Aider<br/>(P, L 은 비활성)"]
+            direction LR
+            LLMAdapter["LLM Adapter<br/>Claude / OpenAI / ...<br/>(Claude Web Search 등 native tool 주입)"]
+            CodeAdapter["Code Agent Adapter<br/>(기본: OpenCode CLI —<br/>P · L 비활성)"]
         end
 
         subgraph LocalMCP["MCP 클라이언트"]
-            RoleMCP["역할별 MCP 도구<br/>(코드 검색/편집/테스트 등)"]
-            SharedMemClient["Shared Memory MCP 클라이언트<br/>(전 에이전트 — write / read 직접)"]
-            ExtPmClient["External PM MCP 클라이언트<br/>(P 만)"]
-            ResearchClient["외부 리소스 조사 MCP 클라이언트<br/>(context7 / web-fetch — L 만)"]
+            direction LR
+            SharedMemClient["Shared Memory<br/>MCP 클라이언트<br/>(전 에이전트)"]
+            ExtPmClient["External PM<br/>MCP 클라이언트<br/>(P 만)"]
+            ResearchClient["외부 리소스 조사<br/>MCP 클라이언트<br/>(L 만)"]
+            RoleMCP["역할 특화 local MCP<br/>(예: QA 의 test-runner)"]
         end
 
-        A2A["A2A 서버/클라이언트<br/>(langgraph-api 내장)<br/>- POST /a2a/{assistant_id}<br/>&nbsp;&nbsp;SendMessage · SendStreamingMessage · GetTask<br/>- GET /.well-known/agent-card.json"]
-        BrokerClient["Valkey 클라이언트<br/>(대화 이벤트 publish 전용)"]
+        subgraph Network["네트워크 / 이벤트"]
+            direction LR
+            A2A["A2A 서버 / 클라이언트<br/>(자체 FastAPI)<br/>POST /a2a/{role}<br/>GET /.well-known/agent-card.json"]
+            BrokerClient["이벤트 브로커 클라이언트<br/>(대화 이벤트 publish 전용)"]
+        end
     end
 
+    %% Config 주입
+    RoleConfig -.-> LG
+    RoleConfig -.-> Adapters
+
+    %% LG → effectors (vertical stacking 강제)
+    LG --> Adapters
+    LG --> LocalMCP
+    LG --> Network
+
+    %% 외부 서비스
     Peers["다른 에이전트들"]
-    Librarian["Librarian<br/>(정보 검색 / 외부 조사 위임 대상)"]
+    Librarian["Librarian<br/>(정보 검색 / 외부 조사 위임)"]
     Broker["Valkey Streams<br/>(대화 로그 브로커)"]
     SharedMemMCP["Shared Memory MCP<br/>(Doc Store / Atlas)"]
     ExtPmMCP["External PM MCP"]
     ResearchMCP["외부 리소스 조사 MCP<br/>(context7 / web-fetch)"]
 
-    RoleConfig -.페르소나 / 워크플로우 확장.-> LG
-    RoleConfig -.모델·구현체 선택.-> Adapters
-    %% LocalMCP, A2A는 RoleConfig의 목록을 읽어 초기화 (자명하므로 엣지 생략)
-    %% BrokerClient는 RoleConfig와 무관 — 환경변수로 Valkey 설정 주입
-
     A2A <-->|A2A 프로토콜| Peers
-    A2A -->|자연어 정보 검색 / 외부 조사 위임| Librarian
-    BrokerClient -->|XADD a2a-events| Broker
+    A2A -->|자연어 위임| Librarian
+    BrokerClient -->|publish| Broker
     SharedMemClient -->|MCP 호출| SharedMemMCP
     ExtPmClient -.P만.-> ExtPmMCP
     ResearchClient -.L만.-> ResearchMCP
