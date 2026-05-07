@@ -320,7 +320,7 @@ L 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 URL Playw
 | 27 | API Key 정책 | Base config에는 `api_key: ""`로 비워둠. Override config에서 `${ENV_VAR}` 참조로 주입 필수. 평문 시크릿을 yaml에 쓰지 않음. `.env`는 git ignore |
 | 28 | Code Agent 실행 방식 | OpenCode CLI를 Python subprocess(non-interactive)로 기동. 각 호출은 one-shot — 상태 유지가 필요한 긴 작업은 LangGraph가 단계 분할 |
 | 29 | 자유 탐색 차단 | OpenCode의 `permission` 필드로 **Eng/QA에서 read/grep/glob = `deny`** — 전체 코드베이스 스캔 방지 (Atlas 정제 컨텍스트만 사용) |
-| 30 | Context Assembly | Eng/QA는 OpenCode 호출 전 Librarian.`get_task_context(task_id)`로 편집 대상 + 참조 시그니처 수신 → 프롬프트 조립. 이것이 Atlas의 핵심 활용 지점 |
+| 30 | Context Assembly | Eng / QA 는 OpenCode 호출 전 **Atlas MCP 직접 read** (자기 도메인 단순 read — task_id / interface_id 등 식별자 기반 그래프 탐색) 로 편집 대상 + 참조 시그니처 수신 → 프롬프트 조립. 자연어 / 교차 쿼리 (예: 과거 ADR · 논의 결합) 는 Librarian 자연어 위임. 이것이 Atlas 의 핵심 활용 지점 |
 | 31 | 편집 범위 2중 방어 | 1차: OpenCode permission(탐색 차단) / 2차: 실행 후 `git diff --name-only`를 `workspace.write_scope`와 대조 → 벗어나면 롤백 (Python 래퍼 책임) |
 | 32 | Code Agent 이미지 구성 | A/Eng/QA 이미지는 멀티스테이지 Dockerfile로 Bun + OpenCode CLI 베이크. P/Librarian 이미지에는 포함하지 않음 |
 | 33 | Diff 본문 포맷 | **git unified diff** 그대로 사용 (자체 포맷 정의 안 함). Eng이 어차피 git으로 변경 추적하므로 생성 비용 없음. 표준 파서 도구 재활용 가능 |
