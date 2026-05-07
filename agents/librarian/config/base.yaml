@@ -1,6 +1,6 @@
 # Librarian (L) 에이전트 — base config (이미지에 baked-in)
 #
-# 전체 설계 의도: docs/proposal.md §2.5 / §3.2
+# 전체 설계 의도: docs/proposal/architecture-shared-memory.md, docs/proposal/agents-roles.md
 # 본 이슈: #38
 #
 # ⚠️  override 금지 필드: role, specialty, persona, workflow

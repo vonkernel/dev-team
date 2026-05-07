@@ -3,7 +3,7 @@
 로컬에서 dev-team 인프라(Neo4j + PostgreSQL + Valkey)를 띄우고, 각 데이터 시스템을 GUI 도구로 관찰하는 방법을 정리한다.
 
 > **참고** — Doc Store 는 기존 MongoDB 에서 PostgreSQL + JSONB 로 전환되었다.
-> 전환 배경은 `docs/proposal.md §6.4` 및 이슈 #20 참조.
+> 전환 배경은 [`docs/proposal/tech-stack.md`](./proposal/tech-stack.md) 의 §6.4 추상화 레이어 항목 및 이슈 #20 참조.
 
 ---
 

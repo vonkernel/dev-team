@@ -15,7 +15,7 @@ shared 의 서브패키지는 책임에 따라 두 패턴 중 하나로 분류�
 
 외부 서비스 (보통 MCP 서버) 의 **consumer-side typed wrapper**. 호출자는
 **모든 에이전트** (P / A / ENG / QA / CHR / L) — 자기 도메인 데이터를 MCP
-직접 write / read (proposal §2.5 정정). 실 어댑터 /
+직접 write / read ([architecture-shared-memory](../docs/proposal/architecture-shared-memory.md) 참조). 실 어댑터 /
 backend 호출 코드는 shared 가 아닌 별 모듈 (`mcp/<name>/` 등) 안.
 
 **책임**:

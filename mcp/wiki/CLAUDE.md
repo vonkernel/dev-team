@@ -124,6 +124,6 @@ mcp/CLAUDE.md §6 위에 추가:
 - [`/CLAUDE.md`](../../CLAUDE.md) — "에이전트 ↔ 외부 도구 운영 원칙"
 - [`mcp/CLAUDE.md`](../CLAUDE.md) §0 / §2.2 — thin bridge / API-client 패턴
 - [`agents/primary/resources/wiki-authoring-guide.md`](../../agents/primary/resources/wiki-authoring-guide.md) — P 의 wiki 작성 가이드 (LLM 컨텍스트 embed)
-- [`docs/proposal.md`](../../docs/proposal.md) §3.2 / §6.1단계 — P 가 wiki 작성 정책
+- [`docs/proposal/agents-roles.md`](../../docs/proposal/agents-roles.md), [`docs/proposal/workflow.md`](../../docs/proposal/workflow.md) — P 가 wiki 작성 정책
 - 이슈: #37
 - 패턴 reference: `mcp/issue-tracker/` (#36)

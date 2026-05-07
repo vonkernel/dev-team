@@ -12,7 +12,7 @@
   DB MCP 클라이언트 두 가지로만 구성.
 - 책임: **A2A 대화 이벤트 수집 → Doc Store 영속화**.
 
-자세한 시스템 위치 / 흐름은 [`docs/proposal.md`](../docs/proposal.md) §2.6 참조.
+자세한 시스템 위치 / 흐름은 [`docs/proposal/architecture-event-pipeline.md`](../docs/proposal/architecture-event-pipeline.md) 참조.
 
 ---
 
@@ -95,5 +95,5 @@ env:
 ## 8. 관련 문서
 
 - root [`/CLAUDE.md`](../CLAUDE.md) — 프로젝트 일반 규약
-- [`docs/proposal.md`](../docs/proposal.md) §2.6 — Chronicler 정체성 / Task/Session/Item
+- [`docs/proposal/architecture-event-pipeline.md`](../docs/proposal/architecture-event-pipeline.md) — Chronicler 정체성 / Task/Session/Item
 - [`docs/doc-store-schema.md`](../docs/doc-store-schema.md) — 영속 대상 스키마

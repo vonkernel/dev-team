@@ -1,6 +1,6 @@
 # Primary 에이전트 — base config (이미지에 baked-in)
 #
-# 전체 설계 의도: docs/proposal.md §3.2
+# 전체 설계 의도: docs/proposal/agents-roles.md
 # 런타임/빌드 전략: docs/agent-runtime.md
 #
 # ⚠️  override 금지 필드: role, specialty, persona, workflow

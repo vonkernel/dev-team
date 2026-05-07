@@ -130,6 +130,6 @@ await client.issue_transition(ref, status_id=ready.id)
 - root [`CLAUDE.md`](../../../CLAUDE.md) — "에이전트 ↔ 외부 도구 운영 원칙"
 - [`mcp/CLAUDE.md`](../../../mcp/CLAUDE.md) §0 — "MCP 의 본질 — thin bridge"
 - [`mcp/issue-tracker/CLAUDE.md`](../../../mcp/issue-tracker/CLAUDE.md) — 도구 면 / GitHub 어댑터 디테일
-- [`docs/proposal.md`](../../../docs/proposal.md) §3.2 — P 역할 정의
+- [`docs/proposal/agents-roles.md`](../../../docs/proposal/agents-roles.md) — P 역할 정의
 - [`agents/primary/config/base.yaml`](../config/base.yaml) — persona / a2a peers
 - [`agents/primary/resources/wiki-authoring-guide.md`](./wiki-authoring-guide.md) — 위키 작성 가이드 (자매)

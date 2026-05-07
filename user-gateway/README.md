@@ -150,6 +150,6 @@ curl -sS --no-buffer -X POST http://localhost:8080/api/chat \
 ## 관련 문서
 
 - [`docs/sse.md`](./docs/sse.md) — UG 고유 SSE 사항 (모듈 책임, 하드닝, 환경변수, 번역 계약)
-- [`../docs/proposal.md`](../docs/proposal.md) — 전체 시스템 설계
+- [`../docs/proposal-main.md`](../docs/proposal-main.md) — 전체 시스템 설계
 - [`../docs/agent-runtime.md`](../docs/agent-runtime.md) — A2A 서버 규약 (Primary 기준)
 - [`../agents/primary/README.md`](../agents/primary/README.md) — Primary 기동/검증
