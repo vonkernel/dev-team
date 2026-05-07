@@ -21,7 +21,7 @@
 | Code Agent 실행 전략 | [`proposal/architecture-code-agent.md`](proposal/architecture-code-agent.md) |
 | 외부 리소스 조사 (3 트랙) | [`proposal/architecture-external-research.md`](proposal/architecture-external-research.md) |
 | 에이전트 역할 정의 | [`proposal/agents-roles.md`](proposal/agents-roles.md) |
-| 지식 그래프 모델링 | [`proposal/knowledge-model.md`](proposal/knowledge-model.md) |
+| 지식 모델링 | [`proposal/knowledge-model.md`](proposal/knowledge-model.md) |
 | 협업 프로세스 (단계별 상세) | [`proposal/workflow.md`](proposal/workflow.md) |
 | 기술 스택 상세 | [`proposal/tech-stack.md`](proposal/tech-stack.md) |
 | 프로젝트 구조 | [`proposal/project-structure.md`](proposal/project-structure.md) |
@@ -242,7 +242,7 @@ L 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 URL Playw
 
 ---
 
-## 4. 지식 그래프 모델링 → [knowledge-model](proposal/knowledge-model.md)
+## 4. 지식 모델링 → [knowledge-model](proposal/knowledge-model.md)
 
 이중 계층 — **Atlas (Semantic Layer, Neo4j)** 가 OO 구조 (Interface / Class / PublicMethod 노드 + IMPLEMENTS / DEPENDS_ON / BELONGS_TO 관계) + 과업-코드 추적성 (Task / Feature / BugReport) 모델, **Doc Store (Episodic Layer, PostgreSQL+JSONB)** 가 기록/대화/문서 영속.
 
