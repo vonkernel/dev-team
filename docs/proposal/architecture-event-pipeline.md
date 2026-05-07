@@ -1,4 +1,4 @@
-# A2A 대화 이벤트 수집 (Valkey + CHR)
+# A2A 대화 이벤트 수집
 
 > 본 문서는 [`proposal-main.md`](../proposal-main.md) §2.6 에서 분리. (#66)
 

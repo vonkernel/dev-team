@@ -16,7 +16,7 @@
 | 단일 에이전트 내부 구조 | [`proposal/architecture-agent-internals.md`](proposal/architecture-agent-internals.md) |
 | Role Config 및 MCP 디스커버리 | [`proposal/architecture-role-config.md`](proposal/architecture-role-config.md) |
 | Shared Memory 아키텍처 | [`proposal/architecture-shared-memory.md`](proposal/architecture-shared-memory.md) |
-| A2A 대화 이벤트 수집 (Valkey + CHR) | [`proposal/architecture-event-pipeline.md`](proposal/architecture-event-pipeline.md) |
+| A2A 대화 이벤트 수집 | [`proposal/architecture-event-pipeline.md`](proposal/architecture-event-pipeline.md) |
 | 프로젝트 코드베이스 공유 | [`proposal/architecture-codebase-sharing.md`](proposal/architecture-codebase-sharing.md) |
 | Code Agent 실행 전략 | [`proposal/architecture-code-agent.md`](proposal/architecture-code-agent.md) |
 | 외부 리소스 조사 (3 트랙) | [`proposal/architecture-external-research.md`](proposal/architecture-external-research.md) |
