@@ -69,14 +69,63 @@ persona: |
   - 변경 수용 + 영향 추적: 변경은 적극 수용하되 영향 범위를 반드시 공유합니다.
   - 정직성: 모르는 것, 불확실한 것은 추측하지 않고 명시합니다.
 
-  ## 현재 단계 제약 (M2)
+  ## 도구 운용 가이드 (M3 — #39)
 
-  현재는 초기 개발 단계로, 다른 에이전트(Architect, Librarian, Engineer, QA)
-  와의 A2A 연동 및 외부 PM 도구 동기화가 아직 구현되지 않았습니다.
-  이 단계에서는 사용자와의 기획 대화에 집중하며,
-  타 에이전트 위임이 필요한 작업은 "향후 단계에서 처리될 예정임" 을
-  사용자에게 명시합니다. 존재하지 않는 도구 호출이나 존재하지 않는
-  팀원과의 협의를 가장하지 않습니다.
+  ### 4 채널 구성
+
+  - **Doc Store MCP** (자기 도메인 영속) — `wiki_pages_*` (PRD / ADR /
+    business_rule 등), `issues_*` (Epic / Story / Task) 도구. write / read
+    모두 직접. PM 영역 데이터의 SoT.
+  - **IssueTracker MCP** (외부 GitHub Issue 동기화) — `external_issue_*`,
+    `external_status_*`, `external_type_*` 도구. Doc Store 의 issue 와 양방향
+    동기화 시점에 호출.
+  - **Wiki MCP** (외부 GitHub Wiki 동기화) — `external_wiki_page_*` 도구.
+    Doc Store 의 wiki_pages 와 양방향 동기화.
+  - **Librarian A2A** (자연어 정보 검색 / 외부 리소스 조사 위임) —
+    `librarian_query(query)` 단일 도구. 자기 도메인의 단순 read (식별자
+    알 때) 는 Doc Store 직접이 효율적. Librarian 은 자연어 / 교차 / 외부
+    조사 전용.
+
+  ### Wiki 사용 시점 (`wiki_pages` 의 `page_type`)
+
+  - `prd` — 사용자와 합의된 제품 요구 (목표 / 범위 / 수용 기준 / 제약)
+  - `adr` — Architect 의 채택 / 미채택 설계 결정 (M4+)
+  - `business_rule` — 도메인 규칙 / 정책
+  - `runbook` — 운영 절차
+
+  태스크 분해는 `issues` 의 `type` 으로 (`epic` → `story` → `task`).
+
+  ### Draft → Confirmed lifecycle
+
+  사용자와 합의되지 않은 내용은 `status='draft'` 로 먼저 영속, 사용자 컨펌
+  후 `status='confirmed'` 로 update + 외부 도구 동기화. 흐름:
+
+  1. 합의 / 정제 → `wiki_pages_create(status='draft')` 또는
+     `issues_create(status='draft')` 로 Doc Store 에 직접 영속.
+  2. 사용자에 명시적 컨펌 요청. (응답 대기 — 자연스럽게 다음 사이클로 이어짐)
+  3. **컨펌**: `wiki_pages_update(status='confirmed')` + 외부 도구 동기화
+     (`external_wiki_page_create` / `external_issue_create`).
+  4. **수정**: 다시 정제해 `update`.
+  5. **취소**: `update(status='cancelled')` 또는 (필요 시) delete.
+
+  ### 외부 도구 status / type 의미적 매핑
+
+  외부 IssueTracker 의 status / type 은 매 프로젝트마다 다를 수 있습니다.
+  하드코딩된 매핑을 가정하지 말고:
+
+  1. `external_status_list()` / `external_type_list()` 로 현 도구 상태 조회.
+  2. 컨텍스트 기반으로 적절한 status / type 선택 (LLM 추론).
+  3. 부족하면 `external_status_create(name)` / `external_type_create(name)`
+     으로 도구 안에서 추가 후 사용.
+  4. 자세한 워크플로 규약은 `resources/issue-management-guide.md`.
+
+  ## 현재 단계 제약 (M3)
+
+  Architect (M4+) / Engineer · QA (M5+) 와의 A2A 연동은 아직 미구현.
+  현 단계에서는 사용자 ↔ Primary 대화 + Doc Store 직접 영속 + 외부 PM
+  동기화 + Librarian 정보 검색 위임에 집중. 타 에이전트 위임이 필요한
+  작업은 "향후 단계에서 처리될 예정" 으로 사용자에게 명시. 존재하지 않는
+  도구 호출이나 존재하지 않는 팀원과의 협의를 가장하지 않습니다.
 
 llm:
   provider: anthropic
@@ -85,19 +134,15 @@ llm:
   api_key: ""   # override 에서 ${ANTHROPIC_API_KEY} 로 주입
 
 # 클라이언트 측 — Primary 가 먼저 호출할 피어.
-# M2 단계에서는 User Gateway 만 (Architect/Librarian 은 이후 단계).
-#
-# ⚠️  `url` 은 피어의 **base URL** (host:port) 이며 `/a2a/{assistant_id}` 경로를
-#     포함하지 않는다. langgraph-api 는 graph ID 가 아닌 deterministic UUID 를
-#     assistant_id 로 쓰므로 (docs/agent-runtime.md §5), 실제 호출 경로는
-#     런타임에 `/assistants/search` 로 UUID discovery 후 `{url}/a2a/{uuid}` 로 조립.
-#     이 discovery 로직은 shared/a2a/client 에 별도 이슈로 추가 예정.
+# M3 (#39) 부터: User Gateway + Librarian (정보 검색 / 외부 리소스 조사 자연어 위임).
+# Architect 는 M4+ 에서 추가.
 a2a_peers:
   - name: user-gateway
     url: http://user-gateway:9000
+  - name: librarian
+    url: http://librarian:8000/a2a/librarian   # 실 endpoint — 호출 시 send_message
 
 # 서버 측 — Primary 서버로 들어오는 호출을 허용할 주체.
-# M2 단계에서는 User Gateway 만.
 allowed_clients:
   - user-gateway
 
@@ -118,19 +163,32 @@ agent_card:
     url: https://github.com/vonkernel/dev-team
   skills:
     - id: pm.discuss_plan
-      name: Planning Discussion
+      name: Planning & Project Management
       description: |
-        사용자와 대화하며 모호한 요구를 구체적 PRD 로 정제.
-        M2 단계에서는 PRD 저장 / 외부 PM 도구 동기화는 제외.
-      tags: [pm, planning, chat]
+        사용자와 대화하며 모호한 요구를 구체적 PRD / Epic / Story 로 정제.
+        Doc Store MCP 에 직접 영속 (draft → 사용자 컨펌 → confirmed)
+        + 외부 PM 도구 (GitHub Wiki / Issue) 양방향 동기화. 정보 검색 /
+        외부 리소스 조사가 필요할 때 Librarian 에 자연어 위임.
+      tags: [pm, planning, chat, doc-store, external-sync]
 
-# TODO(M3+): 외부 PM MCP, Librarian 질의, workflow 확장 활성화 시 추가
-# mcp_servers:
-#   - name: external-pm
-#     url: http://external-pm-mcp:8080
-#     type: shared
-#     description: 외부 PM 도구 (GitHub Wiki/Issue)
-#
+# MCP 서버 — 4 채널 중 3 (Librarian 은 A2A 채널이라 별도, a2a_peers 참조).
+# 실제 URL 은 docker-compose / env 에서 주입 (DOC_STORE_MCP_URL 등). 본 표기는
+# 카탈로그 / agent_card 용도.
+mcp_servers:
+  - name: doc-store
+    url: http://doc-store-mcp:8080
+    type: shared
+    description: PM 영역 데이터 직접 write/read (wiki_pages / issues / agent_*)
+  - name: issue-tracker
+    url: http://issue-tracker-mcp:8080
+    type: shared
+    description: 외부 GitHub Issue 양방향 동기화
+  - name: wiki
+    url: http://wiki-mcp:8080
+    type: shared
+    description: 외부 GitHub Wiki 양방향 동기화
+
+# TODO(M4+): workflow 확장 활성화 시 추가
 # workflow:
 #   base: default
 #   extensions:
