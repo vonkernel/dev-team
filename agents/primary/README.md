@@ -1,7 +1,7 @@
 # Primary 에이전트
 
 프로젝트 매니저(PM) 역할. 사용자와 기획을 협의하고 PRD 를 정제하며 전체 흐름을
-관리한다. 전체 설계: [`docs/proposal.md` §3.2](../../docs/proposal.md).
+관리한다. 전체 설계: [`docs/proposal/agents-roles.md`](../../docs/proposal/agents-roles.md).
 런타임 전략: [`docs/agent-runtime.md`](../../docs/agent-runtime.md).
 
 - 이슈: #6
@@ -161,7 +161,7 @@ curl -sS --no-buffer -X POST http://localhost:9001/a2a/primary \
 
 ## 관련 문서
 
-- [`docs/proposal.md` §3.2](../../docs/proposal.md) — Primary 역할 전체 설계
+- [`docs/proposal/agents-roles.md`](../../docs/proposal/agents-roles.md) — Primary 역할 전체 설계 (entry point: [`docs/proposal-main.md`](../../docs/proposal-main.md))
 - [`docs/agent-runtime.md`](../../docs/agent-runtime.md) — 공용 런타임/빌드 규약
 - [`docs/infra-setup.md`](../../docs/infra-setup.md) — 인프라 (Neo4j/Postgres/Valkey) 기동 가이드
 - [`shared/src/dev_team_shared/a2a/README.md`](../../shared/src/dev_team_shared/a2a/README.md) — AgentCard 및 A2A 타입

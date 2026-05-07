@@ -6,7 +6,7 @@
 
 - 최초 작성 이슈: #18
 - 주요 개정 이슈: #6 — langgraph-api 의존 제거, 자체 FastAPI 경로로 전환
-- 관련 문서: [proposal.md](./proposal.md), [infra-setup.md](./infra-setup.md)
+- 관련 문서: [proposal-main.md](./proposal-main.md), [infra-setup.md](./infra-setup.md)
 
 ---
 

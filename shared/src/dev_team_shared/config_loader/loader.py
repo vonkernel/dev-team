@@ -13,7 +13,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-# proposal.md §2.4: 오버라이드 허용 규칙
+# docs/proposal/architecture-role-config.md: 오버라이드 허용 규칙
 # 허용되지 않은 필드의 override 는 경고와 함께 무시한다.
 #
 # - 코드·정체성 관련 필드 (persona, workflow, role, specialty) 는 override 금지.

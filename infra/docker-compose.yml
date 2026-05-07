@@ -30,8 +30,8 @@ services:
 
   # PostgreSQL (단일 인스턴스 / 2개 DB 운영)
   #   - `langgraph` DB : langgraph-api 프레임워크 전용 (checkpoint / thread / run)
-  #   - `dev_team`  DB : 애플리케이션 document storage (PRD, Session/Task/Item, JSONB 활용)
-  # 배경은 docs/proposal.md, 이슈 #20 참조.
+  #   - `dev_team`  DB : 애플리케이션 데이터 (Doc Store 5 collection — wiki_pages / issues / agent_tasks / agent_sessions / agent_items, 정형 RDB + 일부 JSONB)
+  # 배경은 docs/proposal-main.md, 이슈 #20 참조.
   postgres:
     image: postgres:17
     container_name: dev-team-postgres
@@ -108,7 +108,7 @@ services:
   # ────────────────────────────────────────────────────────────────
   #  에이전트 서비스 (profile: agents)
   # ────────────────────────────────────────────────────────────────
-  #  - 공통 Docker 이미지 + override config 마운트 구조 (docs/proposal.md §2.4)
+  #  - 공통 Docker 이미지 + override config 마운트 구조 (docs/proposal/architecture-role-config.md)
   #  - 각 에이전트가 자체 FastAPI 서버로 A2A 엔드포인트 노출 (primary_agent.server:app)
   #  - 영속성: OSS langgraph-checkpoint-postgres 의 AsyncPostgresSaver 를
   #    lifespan 단계에서 DATABASE_URI 로 wiring

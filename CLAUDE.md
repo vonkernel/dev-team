@@ -13,7 +13,8 @@
 
 - **커밋은 논리 단위로 분리.** 대규모 변경을 하나의 커밋에 몰아넣지 말고
   관심사별로 쪼갠다 (예: 의존성 편집 / 구현 / 문서 / 설정은 별개 커밋).
-- **PR description 은 커밋이 추가될 때마다 갱신.** 초기 작성 후 방치하지 않는다.
+- **PR description 은 변경 내용 (요약 / 결정 / 후속 작업 등) 만 기술.** Commit 목록은 GitHub PR UI 에서 자동으로 보이므로 description 안에 별도 commit table / 목록을 만들지 않는다 — 갱신 부담만 늘고 정보 중복.
+- **PR description 은 변경 내용이 추가될 때마다 갱신.** 초기 작성 후 방치하지 않는다.
 - **PR 머지 직후 루틴:**
   1. 관련 이슈 body 에 **완료 요약** 추가 (원 스코프 대비 변경점 병기).
   2. 칸반: `In Review` → **Done**.
@@ -127,6 +128,20 @@
 type, label, category 등) 를 다룰 때 따르는 원칙. **결정론적 프로그램이 아닌
 LLM 에이전트** 의 특성에 기반.
 
+### 데이터 접근 분담 (정정 — 2026-05, [docs/proposal/architecture-shared-memory.md](docs/proposal/architecture-shared-memory.md))
+
+| 작업 | 호출자 | 호출 방식 |
+|---|---|---|
+| **자기 도메인 write** | 각 에이전트 (P / A / ENG / QA / CHR) | Doc Store / Atlas MCP **직접** |
+| **단순 read** (자기 데이터 식별자 알 때) | 각 에이전트 | MCP 직접 |
+| **정보 검색** (자연어 / 교차 쿼리) | 에이전트 → A2A → L | L 이 LLM ReAct 로 매핑 |
+| **외부 리소스 조사** (라이브러리 docs / URL / web search) | 에이전트 → A2A → L | **L 단독 전담** ([docs/proposal/architecture-external-research.md](docs/proposal/architecture-external-research.md) 의 3 트랙) |
+| **외부 도구 sync** (예: Doc Store ↔ GitHub) | 책임 에이전트 (P) | 외부 MCP 직접 |
+
+CHR (Chronicler, #34) 의 직접 write 패턴이 다른 에이전트에도 일관 적용된
+형태. write 시 LLM dispatch 비용 절감, traceability 향상, 사서 비유 (L = read
+사서) 정확화.
+
 ### 도메인 추상은 LLM 런타임 결정 — 코드 enum 박지 않는다
 
 - 에이전트의 status / type / category 같은 도메인 추상은 **매 프로젝트 / 작업
@@ -154,8 +169,6 @@ LLM 에이전트** 의 특성에 기반.
 
 ## 에이전트 명명 약어
 
-docs / commit / 이슈 본문 / 채팅에서 일관 사용. 새 에이전트 추가 시 본 표에 등록.
-
 | 에이전트 | 약어 | 도입 |
 |---|---|---|
 | Primary | **P** | M2 (구현됨) |
@@ -166,7 +179,16 @@ docs / commit / 이슈 본문 / 채팅에서 일관 사용. 새 에이전트 추
 | Engineer | **ENG** | M5+ |
 | QA | **QA** | M5+ |
 
-긴 이름 (`primary` / `chronicler` 등) 도 코드 / 식별자에선 여전히 사용. 약어는 자유 산문 (docs / commit / 이슈 본문 / 채팅) 한정.
+### 사용 컨텍스트별 표기 규칙
+
+| 컨텍스트 | 표기 |
+|---|---|
+| **이슈 / 커밋 메시지 / PR 제목·본문 / 채팅** | **약어 권장** — 짧고 가독성 우선 (예: `P / A 분담`, `Eng+QA 페어`) |
+| **공식 문서 (`docs/proposal*.md` / sub doc / README)** | **정식 이름 사용** — Primary / Architect / Librarian / Engineer (단 QA 는 그대로). 첫 등장 시 약어 병기 가능 |
+| **에이전트 persona text (`agents/*/config/base.yaml`)** | **정식 이름 사용** — LLM 컨텍스트에 임베드되므로 의미 전달 정확성 우선 |
+| **코드 / 식별자 / 파일명** | 긴 이름 (`primary` / `chronicler` 등) 또는 약어 (`be` / `fe` 같은 specialty) — 기존 컨벤션 그대로 |
+
+새 에이전트 추가 시 본 표에 등록.
 
 ## 포트 컨벤션
 
