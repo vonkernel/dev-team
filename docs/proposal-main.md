@@ -228,7 +228,7 @@ Librarian 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 U
 | Runtime | Docker (1 Agent = 1 Container) | 격리된 실행 환경 |
 | **코드베이스 공유** | **Docker 볼륨 마운트** | **호스트 프로젝트 디렉토리를 전 에이전트에 bind mount** |
 | Atlas | 추상화 인터페이스 (기본: Neo4j) | OO 구조 (Semantic Layer), 추후 교체 가능 |
-| Doc Store | 추상화 인터페이스 (기본: PostgreSQL — 정형 RDB 스키마, 일부 필드 JSONB) | 기록/대화/문서 (Episodic Layer), 추후 교체 가능. ※ Postgres 를 선택한 맥락은 [tech-stack §6.4](proposal/tech-stack.md) 참조 |
+| Doc Store | 추상화 인터페이스 (기본: PostgreSQL — 정형 RDB 스키마, 일부 필드 JSONB) | 기록/대화/문서 (Episodic Layer), 추후 교체 가능. ※ Postgres 를 선택한 맥락은 [tech-stack §6.5](proposal/tech-stack.md) 참조 |
 | Shared Memory 접근 | MCP Server (공유, asyncpg pool 기반) | 전 에이전트 자기 도메인 직접 write / read + Chronicler 대화 자동 영속 (분담 모델 — [architecture-shared-memory](proposal/architecture-shared-memory.md)) |
 | 도구 연동 | MCP (Model Context Protocol) | 역할별 외부 도구 연동 |
 | 외부 PM 도구 | 추상화 인터페이스 (기본: GitHub Wiki/Issue) | PRD/태스크 동기화, 추후 Jira/Confluence 등 지원 |

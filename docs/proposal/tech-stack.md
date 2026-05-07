@@ -2,7 +2,48 @@
 
 > 본 문서는 [`proposal-main.md`](../proposal-main.md) §6 에서 분리. (#66)
 
-## 6.1. 컨테이너 구성
+## 6.1. 에이전트 구성 컨셉 — Python + LangChain + LangGraph
+
+본 시스템의 모든 에이전트는 **Python + LangChain + LangGraph** 의 3 layer 조합으로 구성된다. 이 조합이 "어떻게 사고하고 / 어떻게 행동하고 / 무엇을 기억하는가" 의 골격을 정의한다.
+
+### 왜 Python?
+
+LLM / 에이전트 / MCP 생태계의 1st-class 언어. LangGraph / LangChain / MCP SDK / 주요 어댑터 (Anthropic / OpenAI / Neo4j / asyncpg) 가 모두 Python 1차 지원. 여러 언어를 섞으면 통합 비용이 커지므로 한 언어로 통일.
+
+### LangGraph — 사고의 흐름 (워크플로우 엔진 + 상태 머신)
+
+LangGraph 는 에이전트의 사고를 **명시적인 graph (StateGraph)** 로 표현한다. 한 에이전트의 한 응답이 단일 LLM 호출이 아닌 **여러 단계의 노드 + 분기 + 루프** 로 펼쳐질 수 있다. 본 시스템에서 이 표현력이 핵심으로 활용되는 지점:
+
+- **단계적 추론** — 수신 → 사고 → 도구 호출 → 검증 → 응답 같은 multi-step 패턴
+- **분기 / 루프** — Architect 의 *메인 설계 → 검증 → 최종 컨펌 → (반려 시 재작업)* 같은 sub-agent 피드백 루프가 sub-graph 로 자연스럽게 표현 ([agents-roles](agents-roles.md) / [proposal-main §1.4](../proposal-main.md#14-에이전트-구성))
+- **상태 영속 (체크포인트)** — 노드 사이마다 상태 스냅샷이 PostgreSQL 에 저장되어 프로세스 중단 / 재기동 / 사용자 인터럽션 (`TASK_STATE_INPUT_REQUIRED`) 후 **직전 체크포인트부터 이어서 진행** 가능. 장시간 자율 작업의 정상화 보장
+
+본 시스템의 multi-agent 패턴은 **두 layer 로 분리** 된다:
+
+- **Within-agent (LangGraph)** — 한 에이전트 안의 sub-graph 모듈들. 예: Architect 의 3-sub-agent 루프, Engineer 의 자체 설계-구현-검증 루프
+- **Cross-agent (A2A)** — 별 컨테이너 간 통신 (§6.3). LangGraph 의 multi-agent 추상이 아닌 **별도의 표준 프로토콜** 위에 직접 구현 — 컨테이너 격리 / 언어 중립 / 외부 에이전트 합류 가능성 보존을 위해
+
+### LangChain — LLM 추상화 (provider 교체 가능)
+
+각 LangGraph 노드가 LLM 을 호출할 때 **LangChain 의 `BaseChatModel` 인터페이스** 를 통해 호출한다. config 의 `provider` + `model` 로 구현체 결정 — `ChatAnthropic` (Claude) / `ChatOpenAI` (GPT) / `ChatGoogleGenerativeAI` (Gemini) / 로컬 LLM (`ChatOllama` 등) 으로 자유로이 교체. 도구 호출 / 스트리밍 / structured output 같은 LLM 기능을 통일 인터페이스로 제공.
+
+한 에이전트 안에서도 sub-agent 별로 다른 모델을 쓸 수 있다 — Architect 의 메인 설계는 `claude-opus-4-7`, 검증도 같은 모델, 최종 컨펌은 가벼운 `claude-sonnet-4-6` ([proposal-main §8 #25](../proposal-main.md#8-확정-사항-decisions-made)).
+
+### 세 layer 의 결합 — 두뇌 / 손 / 기억
+
+본 시스템 에이전트의 모든 동작은 다음 3 책임으로 분해된다:
+
+| 레이어 | 책임 | 구현 |
+|---|---|---|
+| **두뇌** (사고) | 무엇을 할지 결정 | LangGraph 노드 안의 LangChain LLM 호출 |
+| **손** (실행) | 결정한 것을 실행 | Code Agent (OpenCode CLI) 어댑터 / MCP 클라이언트 (도구 호출) |
+| **기억** (영속) | 컨텍스트 유지 | LangGraph 체크포인터 (대화 / 작업 상태) + Atlas / Doc Store MCP (지식 자산) |
+
+이 분리 덕에 Code Agent / LLM Provider / Atlas / Doc Store 모두 인터페이스 추상화가 가능 (§6.5 추상화 레이어).
+
+> **상세 패키지 / 임포트 / 컨테이너 내부 와이어링** 은 본 문서의 범위가 아님. [`docs/agent-runtime.md` §1 런타임 스택](../agent-runtime.md) 참조.
+
+## 6.2. 컨테이너 구성
 
 ```yaml
 # 예시: docker-compose 구조
@@ -88,7 +129,7 @@ services:
     image: neo4j:5
     ports: ["7474:7474", "7687:7687"]
 
-  # 단일 Postgres 인스턴스에 2개 DB 분리 운영 (§6.4 참조)
+  # 단일 Postgres 인스턴스에 2개 DB 분리 운영 (§6.5 참조)
   #   - langgraph : langgraph-api 프레임워크 전용
   #   - dev_team  : 애플리케이션 document storage (JSONB)
   postgres:
@@ -135,7 +176,7 @@ primary:
 - 쓰기 범위는 에이전트 내부 로직 + Role Config에서 허용 디렉토리를 명시하여 제한
 - Primary와 Librarian은 코드베이스를 마운트하지 않음 (불필요)
 
-## 6.2. A2A 통신 (A2A Protocol v1.0)
+## 6.3. A2A 통신 (A2A Protocol v1.0)
 
 에이전트 간 통신은 **[A2A Protocol v1.0](https://a2a-protocol.org/latest/)** (Linux Foundation 표준) 을 따른다. 구현은 **`langgraph-api` ≥ 0.4.21** 이 내장 제공하는 A2A 서버를 활용하며, 각 에이전트의 LangGraph 인스턴스가 `/a2a/{assistant_id}` 엔드포인트를 직접 노출하므로 별도의 A2A Gateway 구축은 불필요하다.
 
@@ -252,7 +293,7 @@ A2A v1.0 스펙의 공식 메서드명은 PascalCase:
 
 응답은 짧은 작업이면 `Message`, 긴 작업이면 `Task`(`status.state`가 `TASK_STATE_SUBMITTED`/`TASK_STATE_WORKING`)를 반환. 후자는 `GetTask` 폴링 또는 `SendStreamingMessage` SSE 구독으로 진행.
 
-## 6.3. MCP 연동 계획
+## 6.4. MCP 연동 계획
 
 MCP 서버는 두 종류로 나뉜다:
 
@@ -276,7 +317,7 @@ MCP 서버는 두 종류로 나뉜다:
 - **외부 리소스 조사 전담 (Librarian)**: 라이브러리 docs / URL / web search 는 Librarian 단독 ([architecture-external-research](architecture-external-research.md))
 - **외부 PM 단독 창구 (Primary)**: Doc Store ↔ GitHub Issues / Wiki sync 는 Primary 가 직접 IssueTracker / Wiki MCP 호출. Architect / Engineer / QA 가 외부 반영 필요하면 Architect→Primary 위임.
 
-## 6.4. 추상화 레이어 (OCP 원칙)
+## 6.5. 추상화 레이어 (OCP 원칙)
 
 시스템의 핵심 외부 의존성은 **인터페이스 계약**을 먼저 정의하고, 실제 구현체는 교체 가능하도록 구성한다. **초기 구현체**는 아래 "기본 구현" 컬럼을 따르되, 인터페이스를 통해 추후 다른 구현을 추가할 수 있도록 한다(Open-Closed Principle).
 
