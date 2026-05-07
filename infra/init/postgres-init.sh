@@ -8,8 +8,8 @@
 # 배경 (자세한 내용은 docs/proposal-main.md, issue #20):
 #   본 프로젝트는 저장소를 둘로 분리하지 않고 단일 Postgres 인스턴스에
 #   **DB 2개를 분리 운영** 한다:
-#     1) `langgraph`  — langgraph-api 프레임워크 전용. 프레임워크가 직접 스키마/마이그레이션 관리.
-#     2) `dev_team`   — 애플리케이션 문서형 저장소 (PRD, Session/Task/Item, 대화 이벤트 로그 등). JSONB 활용.
+#     1) `langgraph`  — langgraph-checkpoint-postgres (AsyncPostgresSaver) 전용. 라이브러리가 직접 스키마/마이그레이션 관리.
+#     2) `dev_team`   — 애플리케이션 데이터 (Doc Store 5 collection — wiki_pages / issues / agent_tasks / agent_sessions / agent_items). 정형 RDB + 일부 JSONB 보조.
 #
 # 용도:
 #   1) docker compose 의 one-shot init 서비스에서 자동 실행

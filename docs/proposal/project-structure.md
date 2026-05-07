@@ -77,7 +77,7 @@ dev-team/
 │       └── main.py                # Valkey Streams 구독 → Doc DB MCP 저장
 ├── mcp-servers/                   # 공유 MCP 서버 (각각 별도 이미지 빌드)
 │   ├── atlas/                  # Atlas MCP (기본: Neo4j)
-│   ├── doc-db/                    # Doc Store MCP (기본: PostgreSQL + JSONB)
+│   ├── doc-db/                    # Doc Store MCP (기본: PostgreSQL)
 │   └── external-pm/               # External PM MCP (기본: GitHub Wiki+Issue)
 │
 ├── infra/

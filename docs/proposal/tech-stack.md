@@ -327,7 +327,7 @@ MCP 서버는 두 종류로 나뉜다:
 |------------|---------------|----------|--------------|---------|
 | **Code Agent** | 코드 편집/빌드/테스트 실행 | OpenCode CLI | Claude Code CLI, Aider CLI, Cursor CLI | 에이전트 내부 어댑터 |
 | **Atlas** | OO 구조(Interface/Class/PublicMethod) 저장/조회 | Neo4j | ArangoDB, JanusGraph, Neptune | 공유 MCP 서버 |
-| **Doc Store** | PRD/문서/대화(Task/Session/Item) 저장/조회 | **PostgreSQL + JSONB** | CouchDB, MongoDB, Elasticsearch | 공유 MCP 서버 |
+| **Doc Store** | PRD/문서/대화(Task/Session/Item) 저장/조회 | **PostgreSQL** (정형 RDB + JSONB 보조) | CouchDB, MongoDB, Elasticsearch | 공유 MCP 서버 |
 | **External PM Tool** | PRD/태스크 외부 공유 및 동기화 | GitHub Wiki + GitHub Issue | Jira, Confluence, Linear, Notion | **공유 MCP 서버** |
 | **LLM Provider** | 추론 엔진 | Claude API (ChatAnthropic) | OpenAI / Gemini / 로컬 LLM (ChatOpenAI, ChatGoogleGenerativeAI 등) | **LangChain `BaseChatModel` 인터페이스 사용** — config의 `provider` + `model`로 구현체 선택 |
 

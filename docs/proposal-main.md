@@ -198,7 +198,7 @@ LangGraph 베이스 + LLM Adapter + Code Agent Adapter + MCP 클라이언트 (Sh
 
 ### 2.5. Shared Memory 아키텍처 → [shared-memory](proposal/architecture-shared-memory.md)
 
-이중 계층 — Atlas (Semantic / Neo4j) + Doc Store (Episodic / PostgreSQL+JSONB). **분담 모델 (정정 — 2026-05)**: write = 각 에이전트 직접 / 단순 read = 직접 / 정보 검색 = Librarian 통과 / 외부 리소스 조사 = Librarian 단독.
+이중 계층 — Atlas (Semantic / Neo4j) + Doc Store (Episodic / PostgreSQL). **분담 모델 (정정 — 2026-05)**: write = 각 에이전트 직접 / 단순 read = 직접 / 정보 검색 = Librarian 통과 / 외부 리소스 조사 = Librarian 단독.
 
 ### 2.6. A2A 대화 이벤트 수집 → [event-pipeline](proposal/architecture-event-pipeline.md)
 
@@ -259,7 +259,7 @@ Librarian 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 U
 
 ## 4. 지식 모델링 → [knowledge-model](proposal/knowledge-model.md)
 
-이중 계층 — **Atlas (Semantic Layer, Neo4j)** 가 OO 구조 (Interface / Class / PublicMethod 노드 + IMPLEMENTS / DEPENDS_ON / BELONGS_TO 관계) + 과업-코드 추적성 (Task / Feature / BugReport) 모델, **Doc Store (Episodic Layer, PostgreSQL+JSONB)** 가 기록/대화/문서 영속.
+이중 계층 — **Atlas (Semantic Layer, Neo4j)** 가 OO 구조 (Interface / Class / PublicMethod 노드 + IMPLEMENTS / DEPENDS_ON / BELONGS_TO 관계) + 과업-코드 추적성 (Task / Feature / BugReport) 모델, **Doc Store (Episodic Layer, PostgreSQL)** 가 기록/대화/문서 영속.
 
 상세 모델링 → [knowledge-model](proposal/knowledge-model.md).
 
@@ -324,7 +324,7 @@ Librarian 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 U
 | 16 | 코드베이스 공유 | 호스트 프로젝트 디렉토리를 전 에이전트 컨테이너에 `/workspace`로 bind mount |
 | 17 | 설계안 채택 UX | Architect가 복수 설계안 제시 → 사용자 선택 → 채택안은 코드베이스 `docs/design/`에 md로 저장, 미채택안은 Doc Store |
 | 18 | 추상화 (OCP) | Code Agent, Atlas, Doc Store, External PM Tool, LLM Provider 모두 인터페이스로 추상화 |
-| 19 | 기본 구현체 | OpenCode CLI / Neo4j / **PostgreSQL + JSONB** / GitHub Wiki+Issue / Claude API |
+| 19 | 기본 구현체 | OpenCode CLI / Neo4j / **PostgreSQL** / GitHub Wiki+Issue / Claude API |
 | 20 | External PM 연동 방식 | 공유 MCP 서버로 외부화 (Atlas/Doc DB MCP와 동일 패턴) |
 | 21 | PRD 이중 저장 | Doc Store + External PM MCP 양쪽에 기록 |
 | 22 | Docker 이미지 전략 | **에이전트별 독립 이미지** (모듈 분리, 공통 코드는 `shared/` 패키지로 재사용) / Engineer·QA는 specialty별 config로 다수 컨테이너 기동 / MCP 서버·User Gateway·Chronicler: 별도 이미지 |
