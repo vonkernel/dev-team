@@ -1,17 +1,21 @@
 """Librarian 의 LangChain tool 정의.
 
-Doc Store 의 5 collection thin pass-through. LangChain `@tool` 로 wrapping 해
-LLM 의 `bind_tools()` 에 부착 — LLM 이 자연어 → tool 매핑 결정.
+Doc Store 의 5 collection read 도구 + 조합 쿼리 1 개. LangChain `@tool` 로
+wrapping 해 LLM 의 `bind_tools()` 에 부착 — LLM 이 자연어 → tool 매핑 결정.
 
 도메인 wrapper (`upsert_prd` 등) 박지 않음 (root CLAUDE.md "에이전트 ↔ 외부
 도구 운영 원칙"). LLM 이 매 요청 컨텍스트에 맞춰 page_type / type 필드 결정.
 
-M3 노출 op (delete / count 미노출 — 호출자 불필요):
-- wiki_pages: create / update / get / list / get_by_slug
-- issues:     create / update / get / list
+분담 모델 (#63 정정 — 2026-05): write 는 각 에이전트가 Doc Store / Atlas
+MCP 직접. **Librarian 은 read-only 사서** — 자연어 / 교차 쿼리 매핑.
+
+M3 노출 op (read 13 + 조합 1 = 14):
+- wiki_pages: get / get_by_slug / list
+- issues: get / list
 - agent_tasks: get / list
 - agent_sessions: get / list / list_by_task / find_by_context
-- agent_items:    list / list_by_session
+- agent_items: list / list_by_session
+- 조합: chronicler_log_by_context (session find + items list 결합)
 """
 
 from __future__ import annotations
@@ -22,17 +26,22 @@ from uuid import UUID
 from dev_team_shared.doc_store import (
     AgentItemRead,
     AgentSessionRead,
-    AgentSessionUpdate,
     AgentTaskRead,
     DocStoreClient,
-    IssueCreate,
     IssueRead,
-    IssueUpdate,
-    WikiPageCreate,
     WikiPageRead,
-    WikiPageUpdate,
 )
 from langchain_core.tools import BaseTool, tool
+from pydantic import BaseModel, ConfigDict
+
+
+class ChroniclerLog(BaseModel):
+    """contextId 1 개의 chronicler 로그 = session + items 결합 결과."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    session: AgentSessionRead | None
+    items: list[AgentItemRead]
 
 
 def build_tools(client: DocStoreClient) -> list[BaseTool]:
@@ -42,18 +51,8 @@ def build_tools(client: DocStoreClient) -> list[BaseTool]:
     """
 
     # ──────────────────────────────────────────────────────────────────
-    # wiki_pages
+    # wiki_pages (read)
     # ──────────────────────────────────────────────────────────────────
-
-    @tool
-    async def wiki_pages_create(doc: WikiPageCreate) -> WikiPageRead:
-        """Create a wiki page (PRD / ADR / business_rule 등). page_type 필드로 분류."""
-        return await client.wiki_page_create(doc)
-
-    @tool
-    async def wiki_pages_update(id: str, patch: WikiPageUpdate) -> WikiPageRead | None:
-        """Update wiki page by id (UUID). 미존재 시 null."""
-        return await client.wiki_page_update(UUID(id), patch)
 
     @tool
     async def wiki_pages_get(id: str) -> WikiPageRead | None:
@@ -78,18 +77,8 @@ def build_tools(client: DocStoreClient) -> list[BaseTool]:
         )
 
     # ──────────────────────────────────────────────────────────────────
-    # issues
+    # issues (read)
     # ──────────────────────────────────────────────────────────────────
-
-    @tool
-    async def issues_create(doc: IssueCreate) -> IssueRead:
-        """Create an issue mirror (Epic / Story / Task 등). type 필드로 분류."""
-        return await client.issue_create(doc)
-
-    @tool
-    async def issues_update(id: str, patch: IssueUpdate) -> IssueRead | None:
-        """Update issue by id (UUID). 미존재 시 null."""
-        return await client.issue_update(UUID(id), patch)
 
     @tool
     async def issues_get(id: str) -> IssueRead | None:
@@ -109,7 +98,7 @@ def build_tools(client: DocStoreClient) -> list[BaseTool]:
         )
 
     # ──────────────────────────────────────────────────────────────────
-    # agent_tasks (read-only at M3)
+    # agent_tasks (read)
     # ──────────────────────────────────────────────────────────────────
 
     @tool
@@ -124,13 +113,13 @@ def build_tools(client: DocStoreClient) -> list[BaseTool]:
         offset: int = 0,
         order_by: str = "created_at DESC",
     ) -> list[AgentTaskRead]:
-        """List agent tasks. CHR 가 영속한 작업 단위 메타."""
+        """List agent tasks. Chronicler 가 영속한 작업 단위 메타."""
         return await client.agent_task_list(
             where=where, limit=limit, offset=offset, order_by=order_by,
         )
 
     # ──────────────────────────────────────────────────────────────────
-    # agent_sessions
+    # agent_sessions (read)
     # ──────────────────────────────────────────────────────────────────
 
     @tool
@@ -161,7 +150,7 @@ def build_tools(client: DocStoreClient) -> list[BaseTool]:
         return await client.agent_session_find_by_context(context_id)
 
     # ──────────────────────────────────────────────────────────────────
-    # agent_items
+    # agent_items (read)
     # ──────────────────────────────────────────────────────────────────
 
     @tool
@@ -181,14 +170,27 @@ def build_tools(client: DocStoreClient) -> list[BaseTool]:
         """List items for a session (UUID). chronicler 로그 본문."""
         return await client.agent_item_list_by_session(UUID(session_id))
 
+    # ──────────────────────────────────────────────────────────────────
+    # 조합 쿼리 (composite read)
+    # ──────────────────────────────────────────────────────────────────
+
+    @tool
+    async def chronicler_log_by_context(context_id: str) -> ChroniclerLog:
+        """contextId 의 chronicler 로그 (session + items) 한 번에 조회.
+
+        `agent_sessions_find_by_context` + `agent_items_list_by_session` 두
+        호출을 합친 조합 쿼리. session 미존재 시 items 는 빈 리스트.
+        """
+        session = await client.agent_session_find_by_context(context_id)
+        if session is None:
+            return ChroniclerLog(session=None, items=[])
+        items = await client.agent_item_list_by_session(session.id)
+        return ChroniclerLog(session=session, items=items)
+
     return [
-        wiki_pages_create,
-        wiki_pages_update,
         wiki_pages_get,
         wiki_pages_get_by_slug,
         wiki_pages_list,
-        issues_create,
-        issues_update,
         issues_get,
         issues_list,
         agent_tasks_get,
@@ -199,7 +201,8 @@ def build_tools(client: DocStoreClient) -> list[BaseTool]:
         agent_sessions_find_by_context,
         agent_items_list,
         agent_items_list_by_session,
+        chronicler_log_by_context,
     ]
 
 
-__all__ = ["build_tools"]
+__all__ = ["build_tools", "ChroniclerLog"]

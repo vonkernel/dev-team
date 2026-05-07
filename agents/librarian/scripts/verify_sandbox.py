@@ -4,9 +4,10 @@
 대상: A2A `SendStreamingMessage` 로 자연어 요청 → LLM 이 tool 호출 + 자연어 응답
 
 검증 시나리오 (read-only — Doc Store 데이터 변경 X):
-  1. AgentCard 정상
+  1. AgentCard 정상 (skill = read 중심 — #64)
   2. "wiki_pages.list" 자연어 요청 → wiki_pages_list tool 호출 + 자연어 응답
   3. "agent_tasks 몇 개" → agent_tasks_list 호출 + count 응답
+  4. chronicler_log_by_context — 조합 쿼리 (#64 신설)
 """
 
 from __future__ import annotations
@@ -107,6 +108,16 @@ async def main() -> int:
     print("\n[3] 'agent_tasks 몇 개?' (count via list)")
     events = await send_streaming_message(
         "agent_tasks collection 에 현재 몇 개의 task 가 있는지 list 도구로 확인하고 개수만 알려줘.",
+    )
+    final = _extract_final_text(events)
+    print(f"    final text (first 300):\n      {final[:300]!r}")
+    if not final:
+        print("    !! 자연어 응답 없음")
+        return 1
+
+    print("\n[4] chronicler_log_by_context — 임의 contextId 조회 (조합 쿼리)")
+    events = await send_streaming_message(
+        "context_id 'nonexistent-ctx' 의 chronicler 로그를 chronicler_log_by_context 도구로 조회하고 결과 알려줘. (없으면 없다고)",
     )
     final = _extract_final_text(events)
     print(f"    final text (first 300):\n      {final[:300]!r}")
