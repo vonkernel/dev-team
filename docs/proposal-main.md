@@ -83,39 +83,49 @@ graph TD
     User["사용자"]
     UG["User Gateway"]
 
-    P["Primary"]
-    A["Architect"]
+    subgraph ExecAgents["Exec Agents"]
+        P["[A] Primary"]
+        A["[A] Architect"]
 
-    subgraph PairBE["BE 페어"]
-        Eng_BE["Eng:BE"] -->|검증 요청| QA_BE["QA:BE"]
+        subgraph PairBE["BE 페어"]
+            Eng_BE["[A] Eng:BE"] -->|검증 요청| QA_BE["[A] QA:BE"]
+        end
+
+        subgraph PairFE["FE 페어"]
+            Eng_FE["[A] Eng:FE"] -->|검증 요청| QA_FE["[A] QA:FE"]
+        end
+
+        P <-->|PRD 전달/협의| A
+        A <-->|OO 설계 배포/조율| PairBE
+        A <-->|OO 설계 배포/조율| PairFE
     end
 
-    subgraph PairFE["FE 페어"]
-        Eng_FE["Eng:FE"] -->|검증 요청| QA_FE["QA:FE"]
-    end
-
-    L["Librarian<br/>사서 — 정보 검색 + 외부 리소스 조사"]
+    L["[A] Librarian<br/>사서 — 정보 검색 + 외부 리소스 조사"]
 
     subgraph SharedMemory["Shared Memory"]
-        DocMCP["Doc Store MCP"]
-        GraphMCP["Atlas MCP"]
-        DocDB["Document DB<br/>Doc Store"]
-        GraphDB["Graph DB<br/>Atlas"]
+        subgraph InterfaceLayer["Interface Layer"]
+            DocMCP["[MCP] Doc Store"]
+            GraphMCP["[MCP] Atlas"]
+        end
+        subgraph PersistenceLayer["Persistence Layer"]
+            DocDB["[Infra] Document DB"]
+            GraphDB["[Infra] Graph DB"]
+        end
         DocMCP <--> DocDB
         GraphMCP <--> GraphDB
     end
 
     subgraph EventPipe["대화 기록 파이프라인"]
-        Broker["Valkey Streams"]
-        Chronicler["Chronicler"]
+        Broker["[Infra] Valkey Streams"]
+        Chronicler["[Infra] Chronicler"]
     end
 
-    ExtPmMCP["External PM MCP<br/>GitHub Wiki/Issue"]
+    ExtPmMCP["[MCP] External PM Services"]
 
     subgraph ResearchTracks["외부 리소스 조사 (3 트랙, §2.9)"]
-        Ctx7["context7"]
-        WebFetch["mcp/web-fetch"]
-        WebSearch["Anthropic web_search"]
+        Ctx7["[MCP] context7"]
+        WebFetch["[MCP] web-fetch"]
+        WebSearch["[Tool] Claude Web Search"]
     end
 
     %% 사용자 접점
@@ -123,40 +133,38 @@ graph TD
     UG <-->|기획 개입| P
     UG <-->|기술 설계 개입| A
 
-    %% 에이전트 간 협업
-    P <-->|PRD 전달/협의| A
-    A <-->|OO 설계 배포/조율| PairBE
-    A <-->|OO 설계 배포/조율| PairFE
-
-    %% 외부 PM 도구 — P 단독 창구
+    %% 외부 PM 서비스 — P 단독 창구
     P <-->|동기화| ExtPmMCP
 
-    %% Shared Memory — 에이전트 직접 데이터 저장 / 탐색
-    P & A & PairBE & PairFE -->|데이터 저장 / 탐색| SharedMemory
-    Chronicler -->|대화 영속| SharedMemory
+    %% Shared Memory — Interface Layer 로만 화살표
+    ExecAgents -->|데이터 저장 / 탐색| InterfaceLayer
+    Chronicler -->|대화 영속| InterfaceLayer
 
-    %% 정보 검색 — L 전담 (외부 리소스 조사 포함 개념)
-    P & A & PairBE & PairFE -->|정보 검색| L
-    L -->|통합 정보 검색| SharedMemory
+    %% 정보 검색 — L 전담 (외부 리소스 조사 포함)
+    ExecAgents -->|정보 검색| L
+    L -->|통합 정보 검색| InterfaceLayer
     L -.->|외부 리소스 조사 3 트랙| ResearchTracks
 
     %% A2A 대화 이벤트 publish
-    UG & P & A & PairBE & PairFE -.->|대화 이벤트 publish| Broker
+    ExecAgents -.->|대화 이벤트 publish| Broker
+    UG -.->|대화 이벤트 publish| Broker
     Broker -->|consume| Chronicler
 ```
 
 **다이어그램 단순화 주석:**
 
-가독성을 위해 페어 단위로 묶거나 추상 라벨로 표기한 부분이 있습니다.
+가독성을 위해 그룹 박스로 묶거나 추상 라벨로 표기한 부분이 있습니다. 각 노드의 prefix 는 컴포넌트 종류 — **`[A]`** 에이전트 (LLM 기반), **`[MCP]`** MCP 서버, **`[Infra]`** 비-에이전트 인프라 / 서비스, **`[Tool]`** LLM API native tool.
 
 | 단순화 표기 | 의미 / 실제 |
 |----------|-----------|
+| `Exec Agents` 박스 | Project Execution Agents — P / A / BE 페어 / FE 페어 를 묶은 추상. 박스에서 나가는 화살표 (`데이터 저장 / 탐색`, `정보 검색`, `대화 이벤트 publish`) 는 박스 안의 모든 에이전트 각각이 수행. L 도 [A] 에이전트지만 사서 역할의 차별성 (다른 에이전트의 호출 대상) 을 살리기 위해 박스 밖 별도 노드로 표시 |
 | `PairBE` / `PairFE` 페어 단위 화살표 | 실제로는 각 페어 안의 Eng·QA 가 개별로 연결 (데이터 저장 / 정보 검색 / publish 모두 Eng·QA 각각 수행) |
-| `데이터 저장 / 탐색` (한 라벨) | 각 에이전트가 자기 도메인 데이터를 적절한 MCP 에 직접 write 또는 단순 read. 실 호출 대상은 도메인별 (P → DocMCP / A → 양쪽 / Pairs → 양쪽). 디테일은 [shared-memory](proposal/architecture-shared-memory.md) |
-| `정보 검색` (L 입력) | DB 정보 검색 + 외부 리소스 조사 모두 포함하는 자연어 위임. L 이 LLM 추론으로 적절한 도구 / 트랙 선택 |
-| `통합 정보 검색` (L → SharedMemory) | L 이 Atlas + Doc Store 양쪽 교차 쿼리 (LLM ReAct) |
-| `외부 리소스 조사 3 트랙` | context7 / mcp/web-fetch / Anthropic web_search. L 단독 전담 (디테일 [external-research](proposal/architecture-external-research.md)) |
-| `대화 이벤트 publish` (점선) | fire-and-forget. UG + 모든 에이전트 → Broker. CHR 가 consume + DocMCP 직접 영속 (L 경유 X). XREADGROUP / XACK 디테일 [event-pipeline](proposal/architecture-event-pipeline.md) |
+| `Shared Memory` 의 Interface / Persistence Layer 분리 | 외부에서 들어오는 화살표는 모두 **Interface Layer (MCP) 로만** — Persistence (DB) 는 MCP 가 내부적으로만 접근. 추상화 layer 강제 |
+| `데이터 저장 / 탐색` (Exec Agents → Interface Layer) | 박스 단위 화살표 1 개로 그렸지만 실제로는 박스 안 에이전트마다 호출 대상 MCP 가 다름:<br/>· **P** → Doc Store (PRD / 이슈 / wiki)<br/>· **A** → Doc Store (ADR / wiki) + Atlas (OO 구조)<br/>· **Eng / QA** → Doc Store (작업 산출물) + Atlas (코드 색인 / 테스트 매핑)<br/>모두 자기 도메인 데이터를 **직접 write 또는 단순 read** (L 경유 X). 자세한 권한 매트릭스는 [shared-memory](proposal/architecture-shared-memory.md) 참조 |
+| `정보 검색` (Exec Agents → L) | DB 정보 검색 + 외부 리소스 조사 모두 포함하는 자연어 위임. L 이 LLM 추론으로 적절한 도구 / 트랙 선택 |
+| `통합 정보 검색` (L → Interface Layer) | L 이 Doc Store + Atlas 양쪽 교차 쿼리 (LLM ReAct) |
+| `외부 리소스 조사 3 트랙` | context7 / web-fetch / Claude Web Search. L 단독 전담 (디테일 [external-research](proposal/architecture-external-research.md)) |
+| `대화 이벤트 publish` (점선) | fire-and-forget. Exec Agents 박스 + UG → Broker (별도 화살표 2 줄). Chronicler 가 consume + Doc Store 직접 영속 (L 경유 X). XREADGROUP / XACK 디테일 [event-pipeline](proposal/architecture-event-pipeline.md) |
 
 **표현되지 않은 관계 (의도적 생략):**
 - Eng ↔ Eng 직접 통신 X (A 가 다자간 논의 소집 시에만 A 주관)
