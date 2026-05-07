@@ -206,20 +206,21 @@ L 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 URL Playw
 
 | 컴포넌트 | 기술 | 역할 |
 |----------|------|------|
-| 워크플로우 엔진 | LangGraph (+ `langgraph-api` ≥ 0.4.21) | 에이전트 내부 상태 머신 + **A2A v1.0 서버 내장** (JSON-RPC 2.0, SSE) |
+| 워크플로우 엔진 | LangGraph | 에이전트 내부 상태 머신 (StateGraph / 노드 / 체크포인트) |
+| A2A 서버 | 자체 FastAPI 라우트 (`/a2a/{role}`) | A2A v1.0 엔드포인트 호스팅 (JSON-RPC 2.0, SSE) |
+| User Gateway | FastAPI 중계 서비스 (별 컨테이너) | 사용자 UI ↔ A2A 네트워크 중계, SSE 스트리밍 |
 | 코드 실행 도구 | 추상화 인터페이스 (기본: OpenCode CLI) | 코드 조작 실행 엔진, 추후 교체 가능 |
 | 추론 엔진 | LLM API (역할·서브 에이전트별 선택) | 모든 에이전트의 판단/검증 |
 | Runtime | Docker (1 Agent = 1 Container) | 격리된 실행 환경 |
 | **코드베이스 공유** | **Docker 볼륨 마운트** | **호스트 프로젝트 디렉토리를 전 에이전트에 bind mount** |
 | Atlas | 추상화 인터페이스 (기본: Neo4j) | OO 구조 (Semantic Layer), 추후 교체 가능 |
-| Doc Store | 추상화 인터페이스 (기본: **PostgreSQL + JSONB**) | 기록/대화/문서 (Episodic Layer), 추후 교체 가능. ※ Postgres 를 선택한 맥락은 [tech-stack §6.4](proposal/tech-stack.md) 참조 |
-| Shared Memory 접근 | MCP Server (공유, FIFO 큐잉) | Librarian 및 Chronicler 전용 |
+| Doc Store | 추상화 인터페이스 (기본: PostgreSQL — 정형 RDB 스키마, 일부 필드 JSONB) | 기록/대화/문서 (Episodic Layer), 추후 교체 가능. ※ Postgres 를 선택한 맥락은 [tech-stack §6.4](proposal/tech-stack.md) 참조 |
+| Shared Memory 접근 | MCP Server (공유, asyncpg pool 기반) | 전 에이전트 자기 도메인 직접 write / read + Chronicler 대화 자동 영속 (분담 모델 — [architecture-shared-memory](proposal/architecture-shared-memory.md)) |
 | 도구 연동 | MCP (Model Context Protocol) | 역할별 외부 도구 연동 |
 | 외부 PM 도구 | 추상화 인터페이스 (기본: GitHub Wiki/Issue) | PRD/태스크 동기화, 추후 Jira/Confluence 등 지원 |
+| 외부 리소스 조사 | context7 (외부 MCP) + 자체 mcp/web-fetch (Playwright) + Claude Web Search (LLM API native tool) | 3 트랙 — 라이브러리 docs / 사용자 URL / 일반 web search. L 단독 전담 ([architecture-external-research](proposal/architecture-external-research.md)) |
 | **Message Broker** | **Valkey Streams** | **A2A 대화 이벤트 publish용 (단순 구성 유지, 추상화 불필요)** |
 | **Chronicler** | **경량 Python Consumer (에이전트 아님)** | **Valkey Streams 구독 → Doc Store 영속화** |
-
-> 본 표 자체에 stale 라인 (`langgraph-api` ≥ 0.4.21 — 폐기 결정 / Shared Memory 접근 = "Librarian 및 Chronicler 전용" — 새 분담 모델 위반) 이 일부 잔존. 본 PR 의 stale reference 정리 단계에서 함께 갱신.
 
 ---
 
