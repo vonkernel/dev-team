@@ -298,93 +298,28 @@ Librarian 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 U
 
 ---
 
-## 8. 확정 사항 (Decisions Made)
+## 8. 미결정 사항 / 다음 단계
 
-| # | 항목 | 결정 내용 |
-|---|------|----------|
-| 1 | 에이전트 내부 구조 | LangGraph(워크플로우 + A2A) + LLM API(판단) + Code Agent(실행, 추상화됨) |
-| 2 | Code Agent 위치 | 에이전트의 "두뇌"가 아닌 "손" — 추상화 인터페이스로 교체 가능 (기본: OpenCode CLI) |
-| 3 | 사용자 접점 | 사용자는 Primary(기획)와 Architect(기술 설계) 양쪽과 상시 직접 소통 가능 |
-| 4 | Architect의 내부 구조 | 메인 설계 / 검증 / 최종 컨펌 3개 서브 에이전트 루프, 각자 다른 LLM 모델 사용 가능 |
-| 5 | A2A 통신 | **A2A Protocol v1.0** (Linux Foundation 표준) 준수. `langgraph-api` 내장 A2A 서버 활용 — JSON-RPC 2.0 바인딩 / `SendMessage` / `SendStreamingMessage` (SSE) / `GetTask`. 필드는 camelCase, enum은 SCREAMING_SNAKE_CASE 문자열. 별도 게이트웨이 불필요 |
-| 5-1 | Task lifecycle | A2A 표준 `TaskState` 사용 — `TASK_STATE_SUBMITTED`, `TASK_STATE_WORKING`, `TASK_STATE_COMPLETED`, `TASK_STATE_FAILED`, `TASK_STATE_CANCELED`, `TASK_STATE_REJECTED`, **`TASK_STATE_INPUT_REQUIRED`** (인간·상위 에이전트 개입 대기), `TASK_STATE_AUTH_REQUIRED` |
-| 5-2 | Agent Card | 각 에이전트 `/.well-known/agent-card.json` 에 [AgentCard](https://a2a-protocol.org/latest/specification/) 스펙 JSON 노출. 필수: `name`, `description`, `supportedInterfaces`, `version`, `capabilities`, `defaultInputModes`, `defaultOutputModes`, `skills`. 시그니처(`signatures[]`)는 향후 과제 |
-| 5-3 | 스트리밍 | User Gateway ↔ Primary 사용자 채팅은 `SendStreamingMessage` 기반 SSE. 초기 `Task`/`Message` 이후 `TaskStatusUpdateEvent` / `TaskArtifactUpdateEvent` 이벤트 전달 |
-| 6 | Shared Memory 관리 | **각 에이전트가 자기 도메인 데이터를 MCP 직접 write** (CHR 의 직접 패턴 일관 적용). Librarian 은 사서 — 정보 검색 + 외부 리소스 조사 (전담). (정정: 2026-05) |
-| 7 | Shared Memory 접근 구조 | write: 에이전트 → MCP → DB / 단순 read: 에이전트 → MCP → DB / 정보 검색 (자연어): 에이전트 → A2A → Librarian → MCP → DB |
-| 8 | Librarian 책임 | 사서 — DB 정보 검색 + 외부 리소스 조사 (3 트랙, [external-research](proposal/architecture-external-research.md)). write 도구 미노출. DB 직접 접근 X — MCP 경유 일관 |
-| 9 | Engineer+QA 페어 구조 | 역할별 Engineer+QA 1:1 페어, 프로젝트별 동적 구성, 1 Agent = 1 Container |
-| 10 | Engineer-QA 협업 방식 | Architect의 설계를 동시 수신하여 **병렬** 작업 (Engineer 구현 / QA 독립 테스트 코드 작성) |
-| 11 | Engineer 자율성 | 클래스/메소드/서브 패키지 레벨의 세부 설계는 Engineer 자율, 상위 설계 수정은 Architect 주도 |
-| 12 | 다자간 논의 | 상위 설계 수정이 유관 Engineer에 영향 시 Architect가 다자간 Session 소집 |
-| 13 | 대화 이력 구조 | Task → Session → Item 3계층, `prev_item_id`로 대화 쓰레드 추적 |
-| 14 | 이벤트 수집 파이프라인 | Valkey Streams 브로커 + **Chronicler** 경량 Consumer가 Doc Store에 영속화 (Librarian 책임 아님) |
-| 14-1 | Chronicler 정체성 | 에이전트가 아닌 인프라 모듈 — LLM/LangGraph/Role Config 미사용, 단순 Python 스크립트 수준 |
-| 15 | Diff 기반 색인 | **Engineer 자체 색인** — Engineer 이 자기 변경 diff 분석 → Atlas / Doc Store MCP 직접 write. (정정: 2026-05 — `#63` Librarian 역할 정리 시점에 옵션 A 확정. 다른 에이전트 (Architect / QA) 도 동일하게 자기 산출물 직접 영속) |
-| 16 | 코드베이스 공유 | 호스트 프로젝트 디렉토리를 전 에이전트 컨테이너에 `/workspace`로 bind mount |
-| 17 | 설계안 채택 UX | Architect가 복수 설계안 제시 → 사용자 선택 → 채택안은 코드베이스 `docs/design/`에 md로 저장, 미채택안은 Doc Store |
-| 18 | 추상화 (OCP) | Code Agent, Atlas, Doc Store, External PM Tool, LLM Provider 모두 인터페이스로 추상화 |
-| 19 | 기본 구현체 | OpenCode CLI / Neo4j / **PostgreSQL** / GitHub Wiki+Issue / Claude API |
-| 20 | External PM 연동 방식 | 공유 MCP 서버로 외부화 (Atlas/Doc DB MCP와 동일 패턴) |
-| 21 | PRD 이중 저장 | Doc Store + External PM MCP 양쪽에 기록 |
-| 22 | Docker 이미지 전략 | **에이전트별 독립 이미지** (모듈 분리, 공통 코드는 `shared/` 패키지로 재사용) / Engineer·QA는 specialty별 config로 다수 컨테이너 기동 / MCP 서버·User Gateway·Chronicler: 별도 이미지 |
-| 23 | Config 로딩 전략 | **Base Config (이미지 내부 baked-in) + Override Config (선택적 마운트)**를 deep merge. `persona`, `workflow`, `role`, `specialty`는 override 금지 |
-| 24 | Specialty 선택 방식 | `CONFIG_PROFILE` 환경변수로 이미지 내부 base config 선택 (예: `CONFIG_PROFILE=be` → `configs/be.yaml` 로드) |
-| 25 | LLM 모델 배정 | Primary: `claude-sonnet-4-6` / Architect: main_design·verification `claude-opus-4-7`, final_confirm `claude-sonnet-4-6` / Librarian: `claude-sonnet-4-6` / Engineer·QA: `claude-sonnet-4-6` |
-| 26 | LLM 추상화 | LangChain `BaseChatModel` 사용. config의 `provider` + `model`로 구현체 선택 (`ChatAnthropic`, `ChatOpenAI`, `ChatGoogleGenerativeAI`, 로컬 LLM 등) |
-| 27 | API Key 정책 | Base config에는 `api_key: ""`로 비워둠. Override config에서 `${ENV_VAR}` 참조로 주입 필수. 평문 시크릿을 yaml에 쓰지 않음. `.env`는 git ignore |
-| 28 | Code Agent 실행 방식 | OpenCode CLI를 Python subprocess(non-interactive)로 기동. 각 호출은 one-shot — 상태 유지가 필요한 긴 작업은 LangGraph가 단계 분할 |
-| 29 | 자유 탐색 차단 | OpenCode의 `permission` 필드로 **Engineer/QA에서 read/grep/glob = `deny`** — 전체 코드베이스 스캔 방지 (Atlas 정제 컨텍스트만 사용) |
-| 30 | Context Assembly | Engineer / QA 는 OpenCode 호출 전 **Atlas MCP 직접 read** (자기 도메인 단순 read — task_id / interface_id 등 식별자 기반 그래프 탐색) 로 편집 대상 + 참조 시그니처 수신 → 프롬프트 조립. 자연어 / 교차 쿼리 (예: 과거 ADR · 논의 결합) 는 Librarian 자연어 위임. 이것이 Atlas 의 핵심 활용 지점 |
-| 31 | 편집 범위 2중 방어 | 1차: OpenCode permission(탐색 차단) / 2차: 실행 후 `git diff --name-only`를 `workspace.write_scope`와 대조 → 벗어나면 롤백 (Python 래퍼 책임) |
-| 32 | Code Agent 이미지 구성 | Architect/Engineer/QA 이미지는 멀티스테이지 Dockerfile로 Bun + OpenCode CLI 베이크. Primary/Librarian 이미지에는 포함하지 않음 |
-| 33 | Diff 본문 포맷 | **git unified diff** 그대로 사용 (자체 포맷 정의 안 함). Engineer이 어차피 git으로 변경 추적하므로 생성 비용 없음. 표준 파서 도구 재활용 가능 |
+본 시스템은 M2 ~ M3 단계 (Primary 구현 + Librarian 도입) 까지 진행됨. 아래는 이후 마일스톤 (M4+ Architect / M5+ Engineer · QA) 에서 풀어가야 할 추가 설계 / 구현 항목.
 
-## 9. 미결정 사항 (Open Questions)
+### 추가 논의 / 결정 필요
 
-| # | 항목 | 설명 | 우선순위 |
-|---|------|------|----------|
-| 1 | LangGraph 상세 설계 | 에이전트별 내부 노드 구성, 상태 스키마, Architect의 3-서브 에이전트 그래프 | 높음 |
-| 3 | Atlas 스키마 확정 | OO 구조 노드/관계 타입 상세 정의 | 높음 |
-| 4 | Diff 전달 메시지 스키마 | diff 본문은 **git unified diff** 그대로. 래핑 메시지(task_id / summary / tech_notes / timestamp)의 필드와 `tech_notes.category` enum 확정 필요 | 중간 |
-| 5 | 설계안 선택 UX | Architect의 복수 설계안 제시 포맷 및 사용자 선택 인터페이스 | 중간 |
-| 6 | 공유 MCP 서버 상세 | FIFO 큐잉 구현, 읽기 병렬 정책 | 중간 |
-| 7 | 볼륨 마운트 권한 제어 | 에이전트별 쓰기 디렉토리 범위 강제 방법 (OS 레벨 vs 에이전트 레벨) | 중간 |
-| 8 | External PM 어댑터 | GitHub Wiki/Issue 첫 구현체의 동기화 시점 및 충돌 해결 전략 | 중간 |
-| 9 | 인증/보안 | 에이전트 간 A2A 통신 보안, 시크릿 관리, 외부 PM API 키 | 중간 |
-| 10 | 모니터링 | 에이전트 상태 모니터링, 로그 집계 | 낮음 |
-| 11 | 스케일링 전략 | 에이전트 수평 확장, 부하 분산 | 낮음 |
+- **Atlas 스키마 확정** (M4+) — OO 구조 노드 / 관계 타입 상세 정의. Architect 도입 시점에 첫 사용 케이스 따라 확정
+- **설계안 선택 UX** — Architect 가 복수 설계안 제시할 때의 포맷 / 사용자 선택 인터페이스 (multi_proposal extension)
+- **볼륨 마운트 권한 제어** — `workspace.write_scope` 강제 방법 (OS 레벨 vs 에이전트 레벨 git diff 검증). 현재는 후자 (Python 래퍼) 만 채택 — 1 차 방어 추가 필요 시 검토
+- **External PM 어댑터** — GitHub Wiki / Issue 동기화 시점 / 충돌 해결 전략 (M3 [#36](https://github.com/vonkernel/dev-team/issues/36) / [#37](https://github.com/vonkernel/dev-team/issues/37) 진행 중)
+- **인증 / 보안** — A2A 통신 보안 / 시크릿 관리 / 외부 API 키 운영. 현재는 내부망 + `.env` 만 — 외부 노출 / 멀티 테넌시 시점에 본격 검토
 
----
+### 향후 검토
 
-## 10. 다음 단계 (Next Steps)
+- **Agent Card 서명** — 현재 미서명. 외부 에이전트가 동적으로 합류하는 시나리오가 생기면 위변조 방지 목적으로 도입 검토
+- **A2A Push Notifications** — 현재는 `GetTask` 폴링 + `SendStreamingMessage` SSE 로 충분. 비동기 완료 통보가 과도한 폴링 부담 유발 시 재검토
+- **Python 3.14 상향** — LangGraph 가 3.14 classifier 포함 시 검토 (2026-04 기준 3.13 까지만 지원)
 
-1. **프로토타입 범위 확정** — MVP에 포함할 에이전트 및 기능 범위 결정
-2. **추상화 인터페이스 설계** — CodeAgent, GraphDB, DocDB, ExternalPmTool, LLM Provider 인터페이스 계약 확정
-3. **단일 에이전트 PoC** — LangGraph 기반 공통 베이스 + Role Config 로더 + MCP 클라이언트 동작 검증
-4. **Architect의 서브 에이전트 루프 PoC** — 메인 설계 → 검증 → 최종 컨펌 그래프 구조 검증 (모델 분리 포함)
-5. **대화 기록 파이프라인 PoC** — 에이전트 → Valkey Streams → Chronicler → Doc Store 흐름, Task/Session/Item 계층 저장 및 조회 동작 검증
-6. **Engineer 자체 Atlas 색인 PoC** — Engineer 이 자기 변경 diff 분석 → Atlas MCP 직접 write 로 OO 구조 색인 (분담 모델 옵션 A 확정 — `#63`)
-7. **볼륨 마운트 + 설계안 md 저장 PoC** — Architect가 채택 설계를 코드베이스에 기록, 에이전트 간 코드 공유 검증
-8. **Engineer-QA 병렬 구현·검증 PoC** — 1개 페어로 Architect→(Engineer, QA) 동시 설계 전달 후 병렬 작업 검증
-9. **Context Assembly + OpenCode 제어 PoC**
-    - Engineer / QA 가 자기 도메인 데이터를 Atlas MCP 직접 read (정보 검색 / 교차 쿼리는 Librarian 자연어 위임)
-    - 프롬프트 조립기 구현
-    - `opencode run` permission=deny 적용 시 실제 탐색이 차단되는지 검증
-    - git diff 화이트리스트 검증 + 롤백 동작 확인
+### 남은 PoC
 
----
-
-## 부록: 향후 검토 메모
-
-### Agent Card 서명
-
-현재 Agent Card 는 **미서명** 상태로 노출. A2A v1.0 의 서명 Agent Card 는 도메인 소유자가 카드 발급을 암호학적으로 보증하는 기능으로, 향후 신규 외부 에이전트가 우리 팀에 동적으로 합류하는 시나리오가 생기면 위변조 방지 목적으로 도입 검토.
-
-### A2A Push Notifications
-
-A2A v1.0 의 Push notifications (웹훅 기반 비동기 콜백) 은 현재 미채택. 현재는 `GetTask` 폴링 + `SendStreamingMessage` SSE 로 충분하다고 판단. 에이전트 간 완전 비동기 완료 통보가 과도한 폴링 부담을 유발할 때 재검토.
-
-### Python 3.14 상향
-
-LangGraph 가 Python 3.14 를 공식 classifier 에 포함하면 버전 상향 검토 (2026-04 기준 3.13 까지만 지원).
+- **Architect 서브 에이전트 루프 PoC** (M4+) — 메인 설계 → 검증 → 최종 컨펌 그래프 + 모델 분리
+- **Engineer 자체 Atlas 색인 PoC** (M5+) — 자기 변경 diff 분석 → Atlas MCP 직접 write
+- **볼륨 마운트 + 설계안 md 저장 PoC** (M4+) — Architect 채택 설계 코드베이스 기록, 에이전트 간 코드 공유
+- **Engineer-QA 페어 병렬 구현·검증 PoC** (M5+) — 1 페어로 Architect → (Engineer, QA) 동시 설계 전달 후 병렬 작업
+- **Context Assembly + OpenCode 제어 PoC** (M5+) — Engineer / QA 가 Atlas 직접 read, 프롬프트 조립, OpenCode `permission=deny` 검증, git diff 화이트리스트
