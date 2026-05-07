@@ -86,10 +86,10 @@ llm:
 | 필드 | 의미 | 비고 |
 |------|------|------|
 | `role` | 에이전트 유형 (primary/architect/librarian/engineer/qa) | 필수 |
-| `specialty` | Eng/QA의 세부 역할 (backend/frontend/devops/...) | Eng/QA만 |
+| `specialty` | Engineer/QA의 세부 역할 (backend/frontend/devops/...) | Engineer/QA만 |
 | `persona` | 시스템 프롬프트로 주입되는 역할 정의 | 필수 |
-| `llm` | `provider`, `model`, `temperature`, `api_key` (LangChain `BaseChatModel`). A는 `sub_agents.*`로 분리 지정 | 필수. `api_key`는 override에서 env var 참조로 주입 |
-| `code_agent` | `type`(어댑터 구현체 선택) + `opencode.permissions` (read/grep/glob/edit/write/bash = allow·ask·deny) + `opencode.timeout_seconds` | P, L은 생략. [architecture-code-agent](architecture-code-agent.md) 참조 |
+| `llm` | `provider`, `model`, `temperature`, `api_key` (LangChain `BaseChatModel`). Architect는 `sub_agents.*`로 분리 지정 | 필수. `api_key`는 override에서 env var 참조로 주입 |
+| `code_agent` | `type`(어댑터 구현체 선택) + `opencode.permissions` (read/grep/glob/edit/write/bash = allow·ask·deny) + `opencode.timeout_seconds` | Primary, Librarian은 생략. [architecture-code-agent](architecture-code-agent.md) 참조 |
 | `workspace` | 볼륨 마운트된 코드베이스 경로 + 읽기/쓰기 범위 | 코드 다루는 에이전트만 |
 | `mcp_servers` | 연결할 MCP 서버 목록 (공유 + 로컬) | 필수 |
 | `a2a_peers` | **클라이언트 측 설정** — 내가 먼저 호출(initiate)할 피어의 URL 목록 | 필수 (Librarian 제외) |

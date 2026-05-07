@@ -28,7 +28,7 @@ stdout, stderr = proc.communicate(timeout=config.timeout)
 
 ## Tool Permission 제어 (1차 방어)
 
-OpenCode는 `opencode.json`의 `permission` 필드로 도구별 `allow` / `ask` / `deny` 제어를 지원한다. **Eng/QA에서는 탐색 도구(read/grep/glob)를 물리적으로 차단**하여 Atlas가 정제한 컨텍스트만 사용하도록 강제한다.
+OpenCode는 `opencode.json`의 `permission` 필드로 도구별 `allow` / `ask` / `deny` 제어를 지원한다. **Engineer/QA에서는 탐색 도구(read/grep/glob)를 물리적으로 차단**하여 Atlas가 정제한 컨텍스트만 사용하도록 강제한다.
 
 ```json
 // 예: Eng 에이전트의 opencode.json (실행 시 Role Config에서 자동 생성)
@@ -49,13 +49,13 @@ OpenCode는 `opencode.json`의 `permission` 필드로 도구별 `allow` / `ask` 
 
 | 에이전트 | read | grep | glob | edit | write | bash | 운영 의도 |
 |---------|:----:|:----:|:----:|:----:|:-----:|:----:|----------|
-| **A** (리뷰/검수) | allow | allow | allow | deny | deny | deny | 광범위 읽기 필요, 편집은 설계 문서(docs/design)에만 (Python 래퍼가 경로 가드) |
-| **Eng:*** | **deny** | **deny** | **deny** | allow | allow | deny | Atlas로 정제된 컨텍스트만 사용, 빌드·테스트는 QA 담당 |
+| **Architect** (리뷰/검수) | allow | allow | allow | deny | deny | deny | 광범위 읽기 필요, 편집은 설계 문서(docs/design)에만 (Python 래퍼가 경로 가드) |
+| **Engineer:*** | **deny** | **deny** | **deny** | allow | allow | deny | Atlas로 정제된 컨텍스트만 사용, 빌드·테스트는 QA 담당 |
 | **QA:*** | **deny** | **deny** | **deny** | allow | allow | **allow** | 테스트 작성 + 빌드·테스트 실행 |
 
 ## Context Assembly 흐름
 
-OpenCode 호출 **전에** 에이전트가 정제된 컨텍스트를 수집해 프롬프트를 조립한다. 컨텍스트 수집 경로는 두 가지 — **자기 도메인의 단순 read** (초기 Context Assembly + 개발 중 추가 의존성 탐색 포함) 는 Atlas MCP 직접, **자연어 / 교차 쿼리** (예: 과거 ADR · 논의 / Doc Store 와의 결합) 는 Librarian 에 자연어 위임 (분담 모델 — [shared-memory](architecture-shared-memory.md) 참조). **작업 완료 후** 에는 자기 변경의 OO 구조를 Atlas MCP 에 직접 색인 update — Eng 자체 색인 패턴 (`#63` L 역할 정리 시점에 확정).
+OpenCode 호출 **전에** 에이전트가 정제된 컨텍스트를 수집해 프롬프트를 조립한다. 컨텍스트 수집 경로는 두 가지 — **자기 도메인의 단순 read** (초기 Context Assembly + 개발 중 추가 의존성 탐색 포함) 는 Atlas MCP 직접, **자연어 / 교차 쿼리** (예: 과거 ADR · 논의 / Doc Store 와의 결합) 는 Librarian 에 자연어 위임 (분담 모델 — [shared-memory](architecture-shared-memory.md) 참조). **작업 완료 후** 에는 자기 변경의 OO 구조를 Atlas MCP 에 직접 색인 update — Engineer 자체 색인 패턴 (`#63` Librarian 역할 정리 시점에 확정).
 
 ```mermaid
 sequenceDiagram
@@ -112,12 +112,12 @@ sequenceDiagram
 **다이어그램 보강 노트:**
 
 - **컨텍스트 수집 분기 기준** — 식별자 (task_id / interface_id / class_id 등) 를 알고 있는 deterministic 그래프 탐색은 "자기 도메인 단순 read" 로 분류해 Atlas MCP 직접 호출. 자연어 표현 / 교차 쿼리 / Doc Store 와의 결합이 필요한 경우만 Librarian 에 자연어 위임 (LLM ReAct 매핑).
-- **개발 중 추가 의존성 탐색** — Eng 이 구현 중 새로 필요한 인터페이스 / 클래스를 발견했을 때, **두 경로 모두 적용**:
+- **개발 중 추가 의존성 탐색** — Engineer 이 구현 중 새로 필요한 인터페이스 / 클래스를 발견했을 때, **두 경로 모두 적용**:
     - 식별자가 명시된 lookup (예: "Y interface 의 시그니처 / 의존 관계") → "자기 도메인 단순 read" 경로 (Atlas MCP 직접)
     - 식별자 모호 / 자연어 / 교차 쿼리 (예: "이 기능 관련 과거 ADR · 논의", "이 인터페이스를 쓰는 다른 클래스의 구현 패턴") → "자연어 / 교차 쿼리" 경로 (Librarian 자연어 위임)
     - Context Assembly 단계 이후에도 동일 분기 재사용
-- **`허용 범위 벗어남` 처리** — 1차 방어 (OpenCode `permission`) 와 2차 방어 (`git diff --name-only` 로 `workspace.write_scope` 검증) 의 조합. 위반 시 전체 롤백 (`git restore`) + 에러로 brain 에 반환. **단, 변경이 꼭 필요하다고 판단되면 Eng 이 Architect 에 설계 수정 건의 (스코프 자체 조정 / 페어 구조 변경 등 다자간 논의로 이어질 수 있음).** 일방적으로 스코프를 우회하지 않는다.
-- **작업 완료 후 색인** — diff 채택 직후 Eng 이 자기 변경의 OO 구조를 Atlas MCP 에 직접 update. **Eng 자체 색인 패턴 (#63 L 역할 정리 시점에 확정)** — 다른 에이전트의 역할 (A / Pairs / QA) 도 동일하게 자기 산출물을 직접 영속.
+- **`허용 범위 벗어남` 처리** — 1차 방어 (OpenCode `permission`) 와 2차 방어 (`git diff --name-only` 로 `workspace.write_scope` 검증) 의 조합. 위반 시 전체 롤백 (`git restore`) + 에러로 brain 에 반환. **단, 변경이 꼭 필요하다고 판단되면 Engineer 이 Architect 에 설계 수정 건의 (스코프 자체 조정 / 페어 구조 변경 등 다자간 논의로 이어질 수 있음).** 일방적으로 스코프를 우회하지 않는다.
+- **작업 완료 후 색인** — diff 채택 직후 Engineer 이 자기 변경의 OO 구조를 Atlas MCP 에 직접 update. **Engineer 자체 색인 패턴 (#63 Librarian 역할 정리 시점에 확정)** — 다른 에이전트의 역할 (Architect / Pairs / QA) 도 동일하게 자기 산출물을 직접 영속.
 
 ## 프롬프트 구조 (OpenCode에 전달)
 
@@ -158,11 +158,11 @@ OpenCode 의 자율 동작을 신뢰하지 않고 **두 단계로 차단**:
 
 **1차 의도** — OpenCode 가 [Atlas 로 정제된 컨텍스트](#context-assembly-흐름) 만 사용하도록 강제. 자유 탐색이 허용되면 (a) Atlas 기반 컨텍스트 효율 설계 자체가 무력화되고, (b) OpenCode 가 무관한 코드를 자기 LLM 컨텍스트에 부풀려 정확도가 떨어진다. 즉 차단 대상은 "편집 행위" 가 아니라 "편집 전 탐색 행위".
 
-**2차 의도** — 1차 가 우회되거나 (LLM 의 창의적 우회 / OpenCode 동작 버그) 부수효과 (포매터 / linter 가 인접 파일 변경) 로 의도치 않은 파일이 변경된 경우를 **git 으로 사후 검증**. atomicity 가 깨진 상황이므로 부분 복구가 아닌 **전체 롤백** 후 재시도. **꼭 필요한 변경이라 판단되면 Eng 이 Architect 에 스코프 조정 / 설계 수정 건의** — 일방적으로 우회하지 않는다.
+**2차 의도** — 1차 가 우회되거나 (LLM 의 창의적 우회 / OpenCode 동작 버그) 부수효과 (포매터 / linter 가 인접 파일 변경) 로 의도치 않은 파일이 변경된 경우를 **git 으로 사후 검증**. atomicity 가 깨진 상황이므로 부분 복구가 아닌 **전체 롤백** 후 재시도. **꼭 필요한 변경이라 판단되면 Engineer 이 Architect 에 스코프 조정 / 설계 수정 건의** — 일방적으로 우회하지 않는다.
 
 ## 컨테이너 이미지 구성
 
-Code Agent를 쓰는 에이전트 이미지(A, Eng, QA)는 Bun + OpenCode CLI를 포함한다.
+Code Agent를 쓰는 에이전트 이미지(Architect, Engineer, QA)는 Bun + OpenCode CLI를 포함한다.
 
 ```dockerfile
 # 예: agents/engineer/Dockerfile
@@ -182,4 +182,4 @@ COPY configs/ ./configs/
 CMD ["python", "-m", "engineer_agent.main"]
 ```
 
-P와 Librarian 이미지는 Code Agent 불필요 → Bun/OpenCode 미설치.
+Primary와 Librarian 이미지는 Code Agent 불필요 → Bun/OpenCode 미설치.

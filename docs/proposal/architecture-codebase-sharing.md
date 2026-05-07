@@ -22,10 +22,10 @@ graph TD
 ```
 
 - 모든 에이전트 컨테이너는 프로젝트 루트를 **같은 경로**(예: `/workspace`)로 마운트
-- Eng은 코드베이스 전반에 쓰기 권한 보유
-- A는 코드 읽기 가능, 설계 문서 디렉토리(예: `docs/design/`)에 쓰기 권한
+- Engineer은 코드베이스 전반에 쓰기 권한 보유
+- Architect는 코드 읽기 가능, 설계 문서 디렉토리(예: `docs/design/`)에 쓰기 권한
 - QA는 코드 읽기 가능, 테스트 디렉토리(예: `tests/`)에 쓰기 권한
-- P, Librarian은 코드베이스 접근 불필요 (Librarian은 Diff를 받기만 함)
+- Primary, Librarian은 코드베이스 접근 불필요 (Librarian은 Diff를 받기만 함)
 
 ## 산출물의 2가지 저장 위치
 
@@ -34,7 +34,7 @@ graph TD
 | 실제 코드 | 프로젝트 코드베이스 (마운트된 볼륨) | `.py`, `.ts`, `.tsx` 등 구현 파일 |
 | **채택된 설계 문서** | 프로젝트 코드베이스 (마운트된 볼륨) | `docs/design/TASK-001-payment-gateway.md` |
 | 테스트 코드 | 프로젝트 코드베이스 (마운트된 볼륨) | `tests/...` |
-| 미채택 설계안 | Doc Store | 대안 설계 A, B의 상세 내용 |
+| 미채택 설계안 | Doc Store | 대안 설계 Architect, B의 상세 내용 |
 | 대화 이력 (Task/Session/Item) | Doc Store | A2A 이벤트 publish 수집 결과 |
 | OO 구조 그래프 | Atlas | Interface/Class/PublicMethod 노드 |
 | PRD | Doc Store + 외부 PM 도구 | 기획 내용 전문 |
@@ -46,7 +46,7 @@ graph TD
 
 ## 설계안 채택 프로세스
 
-A가 복수 설계안을 도출하면 **사용자가 선택**한다:
+Architect가 복수 설계안을 도출하면 **사용자가 선택**한다:
 
 ```mermaid
 sequenceDiagram

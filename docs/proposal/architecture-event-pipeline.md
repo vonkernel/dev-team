@@ -56,9 +56,9 @@ graph TD
 ```
 
 **계층 정의:**
-- **Task**: 프로젝트의 단위 과업 (A가 Eng+QA 페어에게 배분한 구현 과제 단위)
+- **Task**: 프로젝트의 단위 과업 (Architect가 Engineer+QA 페어에게 배분한 구현 과제 단위)
 - **Session**: 하나의 태스크 내에서 진행되는 **개별 대화 흐름**. 주제별/상황별로 구분됨
-    - 예: "Eng:BE가 A에게 인터페이스 설계 변경 제안한 대화", "A가 QA:FE에게 테스트 보완 지시한 대화"
+    - 예: "Engineer:BE가 Architect에게 인터페이스 설계 변경 제안한 대화", "Architect가 QA:FE에게 테스트 보완 지시한 대화"
 - **Item**: Session 하위의 **개별 메시지**. `prev_item_id`로 대화 순서 추적
 
 **조회 API (Librarian 제공):**

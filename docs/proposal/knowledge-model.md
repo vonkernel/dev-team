@@ -57,7 +57,7 @@ graph LR
     Task -->|REALIZED_IN| Refund
 ```
 
-이 그래프 위에서 Eng / QA 가 task_id 로 시작해 `Task → AFFECTS → Interface → IMPLEMENTS → Class → 파일 경로` 를 따라가며 **편집 대상 + 의존 시그니처** 만 정제해 받는다. 코드베이스 전체를 읽지 않고도 작업에 필요한 컨텍스트를 정확히 추출 — [code-agent §Context Assembly](architecture-code-agent.md#context-assembly-흐름) 참조.
+이 그래프 위에서 Engineer / QA 가 task_id 로 시작해 `Task → AFFECTS → Interface → IMPLEMENTS → Class → 파일 경로` 를 따라가며 **편집 대상 + 의존 시그니처** 만 정제해 받는다. 코드베이스 전체를 읽지 않고도 작업에 필요한 컨텍스트를 정확히 추출 — [code-agent §Context Assembly](architecture-code-agent.md#context-assembly-흐름) 참조.
 
 ## 4.2. Episodic Layer (Doc Store)
 
@@ -66,7 +66,7 @@ Doc Store 는 **시간 흐름의 사실 (episode)** — 대화 / 결정 / 산출
 | 컬렉션 분류 | 책임 / 호출자 | 용도 |
 |---|---|---|
 | A2A 대화 흐름 | Chronicler (자동 영속) | 에이전트 간 통신 로그 |
-| 기술 노트 | Eng / QA (직접 write) | 개발 / 검증 중 기술 기록 |
+| 기술 노트 | Engineer / QA (직접 write) | 개발 / 검증 중 기술 기록 |
 | 설계안 | Architect (직접 write) | 채택 / 미채택 설계 |
 | 이슈 | Primary (직접 write + 외부 PM 동기화) | PM 작업 추적 |
 | PRD | Primary (직접 write + 외부 PM 동기화) | 기획 산출물 |
@@ -113,9 +113,9 @@ Doc Store 는 **시간 흐름의 사실 (episode)** — 대화 / 결정 / 산출
 }
 ```
 
-### 기술 노트 컬렉션 — Eng / QA 개발 기록
+### 기술 노트 컬렉션 — Engineer / QA 개발 기록
 
-Eng / QA 가 개발 / 검증 중 남긴 기술적 기록. 설계 결정 / 구현 특이점 / 주의사항 / TODO 등. 구현 산출물 영속과 함께 **각 에이전트가 직접 write** ([architecture-shared-memory](architecture-shared-memory.md)).
+Engineer / QA 가 개발 / 검증 중 남긴 기술적 기록. 설계 결정 / 구현 특이점 / 주의사항 / TODO 등. 구현 산출물 영속과 함께 **각 에이전트가 직접 write** ([architecture-shared-memory](architecture-shared-memory.md)).
 
 ```json
 // technical_notes
@@ -164,7 +164,7 @@ Architect 가 도출한 복수 설계안. **채택 / 미채택 모두 본 컬렉
 
 ### 이슈 컬렉션 — Primary 의 작업 추적
 
-P 가 프로젝트 작업을 issue 단위로 분해해 추적. **외부 PM (GitHub Issue 등) 와 양방향 동기화** — Doc Store 가 SoT, 외부 시스템은 mirror. 동기화는 P 가 직접 IssueTracker MCP 호출로 수행 ([architecture-shared-memory](architecture-shared-memory.md)).
+Primary 가 프로젝트 작업을 issue 단위로 분해해 추적. **외부 PM (GitHub Issue 등) 와 양방향 동기화** — Doc Store 가 SoT, 외부 시스템은 mirror. 동기화는 Primary 가 직접 IssueTracker MCP 호출로 수행 ([architecture-shared-memory](architecture-shared-memory.md)).
 
 ```json
 // issues
@@ -184,11 +184,11 @@ P 가 프로젝트 작업을 issue 단위로 분해해 추적. **외부 PM (GitH
 }
 ```
 
-> 외부 도구의 status / type 등 운영 메타데이터는 매 프로젝트 컨텍스트에 맞춰 P 가 자기 판단으로 결정 / 운영 (root [`CLAUDE.md`](../../CLAUDE.md) "에이전트 ↔ 외부 도구 운영 원칙").
+> 외부 도구의 status / type 등 운영 메타데이터는 매 프로젝트 컨텍스트에 맞춰 Primary 가 자기 판단으로 결정 / 운영 (root [`CLAUDE.md`](../../CLAUDE.md) "에이전트 ↔ 외부 도구 운영 원칙").
 
 ### PRD 컬렉션 — Primary 의 기획 산출물
 
-사용자 ↔ P 협의 결과로 정제된 제품 요구 문서. **외부 PM 의 wiki 와도 동기화** (이중 저장 — proposal-main §8 #21).
+사용자 ↔ Primary 협의 결과로 정제된 제품 요구 문서. **외부 PM 의 wiki 와도 동기화** (이중 저장 — proposal-main §8 #21).
 
 ```json
 // prds

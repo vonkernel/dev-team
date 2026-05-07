@@ -131,9 +131,9 @@ primary:
 ```
 
 **볼륨 마운트 원칙:**
-- 코드 작업이 필요한 에이전트(A, Eng, QA)는 **같은 호스트 경로**를 `/workspace`에 마운트 → 동일 코드베이스 공유
+- 코드 작업이 필요한 에이전트(Architect, Engineer, QA)는 **같은 호스트 경로**를 `/workspace`에 마운트 → 동일 코드베이스 공유
 - 쓰기 범위는 에이전트 내부 로직 + Role Config에서 허용 디렉토리를 명시하여 제한
-- P와 Librarian은 코드베이스를 마운트하지 않음 (불필요)
+- Primary와 Librarian은 코드베이스를 마운트하지 않음 (불필요)
 
 ## 6.2. A2A 통신 (A2A Protocol v1.0)
 
@@ -160,8 +160,8 @@ A2A v1.0 스펙의 공식 메서드명은 PascalCase:
 | State (JSON 값) | 분류 | 우리 시스템 매핑 예 |
 |----------------|------|-------------------|
 | `TASK_STATE_SUBMITTED` | 진행 | 태스크 배분 직후 |
-| `TASK_STATE_WORKING` | 진행 | Eng 구현 중, QA 테스트 중 |
-| `TASK_STATE_INPUT_REQUIRED` | **인터럽트** | Eng 이 Architect 에게 설계 수정 건의 후 응답 대기 / 사용자 기술 조율 요청 대기 / 다자간 논의 소집 중 |
+| `TASK_STATE_WORKING` | 진행 | Engineer 구현 중, QA 테스트 중 |
+| `TASK_STATE_INPUT_REQUIRED` | **인터럽트** | Engineer 이 Architect 에게 설계 수정 건의 후 응답 대기 / 사용자 기술 조율 요청 대기 / 다자간 논의 소집 중 |
 | `TASK_STATE_AUTH_REQUIRED` | 인터럽트 | (예비) 외부 시스템 인증 요구 시 |
 | `TASK_STATE_COMPLETED` | 종단 | 정상 종료 |
 | `TASK_STATE_FAILED` | 종단 | 빌드 실패, 예외 등 |
@@ -264,17 +264,17 @@ MCP 서버는 두 종류로 나뉜다:
 
 | 에이전트 | Shared Memory MCP (write) | Shared Memory MCP (read) | External PM MCP | 역할별 MCP 도구 |
 |----------|:------------------------:|:-----------------------:|:---------------:|---------------|
-| P | **O** (직접 — wiki_pages / issues) | O (직접) + 정보 검색·외부 조사 → L | **O** (단독 창구 — IssueTracker / Wiki) | — |
-| A | **O** (직접 — atlas / wiki_pages ADR 등) | O (직접) + 정보 검색·외부 조사 → L | X (P 에게 위임) | 코드 읽기/검색, 리뷰 도구 |
-| L | minimal (M4+ 옵션 C 시 색인 추천만) | O — 사서 (정보 검색 + 외부 리소스 조사) | X | 없음 |
-| Eng:* | **O** (직접 — atlas 색인) | O (직접) + 정보 검색·외부 조사 → L | X (A→P) | 코드 편집/빌드/테스트 |
-| QA:* | **O** (직접 — wiki_pages / 테스트 결과) | O (직접) + 정보 검색·외부 조사 → L | X (A→P) | 테스트 실행/리포트 |
+| Primary | **O** (직접 — wiki_pages / issues) | O (직접) + 정보 검색·외부 조사 → Librarian | **O** (단독 창구 — IssueTracker / Wiki) | — |
+| Architect | **O** (직접 — atlas / wiki_pages ADR 등) | O (직접) + 정보 검색·외부 조사 → Librarian | X (Primary 에게 위임) | 코드 읽기/검색, 리뷰 도구 |
+| Librarian | minimal (M4+ 옵션 C 시 색인 추천만) | O — 사서 (정보 검색 + 외부 리소스 조사) | X | 없음 |
+| Engineer:* | **O** (직접 — atlas 색인) | O (직접) + 정보 검색·외부 조사 → Librarian | X (Architect→Primary) | 코드 편집/빌드/테스트 |
+| QA:* | **O** (직접 — wiki_pages / 테스트 결과) | O (직접) + 정보 검색·외부 조사 → Librarian | X (Architect→Primary) | 테스트 실행/리포트 |
 
 **정정된 원칙** ([architecture-shared-memory](architecture-shared-memory.md) 분담 모델 참조):
 - **write 직접**: 자기 도메인 데이터는 자기 MCP 호출 — schema 노출 / dispatch 비용 ↓ / traceability ↑
-- **정보 검색 사서 (L)**: DB 안의 자연어 / 교차 쿼리는 L 의 LLM 매핑 활용
-- **외부 리소스 조사 전담 (L)**: 라이브러리 docs / URL / web search 는 L 단독 ([architecture-external-research](architecture-external-research.md))
-- **외부 PM 단독 창구 (P)**: Doc Store ↔ GitHub Issues / Wiki sync 는 P 가 직접 IssueTracker / Wiki MCP 호출. A / ENG / QA 가 외부 반영 필요하면 A→P 위임.
+- **정보 검색 사서 (Librarian)**: DB 안의 자연어 / 교차 쿼리는 Librarian 의 LLM 매핑 활용
+- **외부 리소스 조사 전담 (Librarian)**: 라이브러리 docs / URL / web search 는 Librarian 단독 ([architecture-external-research](architecture-external-research.md))
+- **외부 PM 단독 창구 (Primary)**: Doc Store ↔ GitHub Issues / Wiki sync 는 Primary 가 직접 IssueTracker / Wiki MCP 호출. Architect / Engineer / QA 가 외부 반영 필요하면 Architect→Primary 위임.
 
 ## 6.4. 추상화 레이어 (OCP 원칙)
 

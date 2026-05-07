@@ -67,15 +67,15 @@ graph TD
 - Role Config에 따라 페르소나, 워크플로우 확장, 사용 도구, A2A 피어가 결정된다
 - 공통: LangGraph 베이스 워크플로우, LLM 어댑터, A2A 서버/클라이언트, 역할별 MCP 도구
 - 역할에 따라 달라짐:
-    - **Code Agent Adapter**: P, L 은 비활성 / 그 외는 활성
+    - **Code Agent Adapter**: Primary, Librarian 은 비활성 / 그 외는 활성
     - **Shared Memory MCP 클라이언트**: 전 에이전트 활성 (write / read 직접 — [architecture-shared-memory](architecture-shared-memory.md) 분담 모델 정정)
-    - **External PM MCP 클라이언트**: P 만 활성
-    - **외부 리소스 조사 MCP 클라이언트** (context7 / web-fetch): L 만 활성 ([architecture-external-research](architecture-external-research.md))
+    - **External PM MCP 클라이언트**: Primary 만 활성
+    - **외부 리소스 조사 MCP 클라이언트** (context7 / web-fetch): Librarian 만 활성 ([architecture-external-research](architecture-external-research.md))
     - **워크플로우 확장**: 역할별로 공통 베이스 그래프 위에 sub-graph 모듈을 얹는 구조. 대표 예:
-        - **P** — `user_chat` (사용자 상시 채팅) / `prd_authoring` (PRD 작성·관리) / `external_pm_sync` (외부 PM 동기화)
-        - **A** (M4+) — `three_stage_design` (메인 설계 → 검증 → 최종 컨펌 3 서브 에이전트 루프) / `multi_proposal` (복수 설계안 도출) / `design_adoption` (채택 md 저장 + 미채택 Doc Store 영속) / `multi_party_mediation` (다자간 논의 소집)
-        - **L** — `nl_query_answering` (자연어 정보 검색) / `external_research_dispatch` (3 트랙 외부 조사 dispatch)
-        - **Eng** (M5+) — `self_design_loop` (세부 설계 자율 루프) / `context_assembly` (Atlas 컨텍스트 정제) / `design_escalation` (A 에 상위 설계 수정 건의) / `atlas_indexing` (자기 변경 직접 색인)
+        - **Primary** — `user_chat` (사용자 상시 채팅) / `prd_authoring` (PRD 작성·관리) / `external_pm_sync` (외부 PM 동기화)
+        - **Architect** (M4+) — `three_stage_design` (메인 설계 → 검증 → 최종 컨펌 3 서브 에이전트 루프) / `multi_proposal` (복수 설계안 도출) / `design_adoption` (채택 md 저장 + 미채택 Doc Store 영속) / `multi_party_mediation` (다자간 논의 소집)
+        - **Librarian** — `nl_query_answering` (자연어 정보 검색) / `external_research_dispatch` (3 트랙 외부 조사 dispatch)
+        - **Engineer** (M5+) — `self_design_loop` (세부 설계 자율 루프) / `context_assembly` (Atlas 컨텍스트 정제) / `design_escalation` (Architect 에 상위 설계 수정 건의) / `atlas_indexing` (자기 변경 직접 색인)
         - **QA** (M5+) — `context_assembly` / `independent_test_authoring` (설계 기반 독립 테스트) / `build_and_test_execution` (빌드/테스트 실행) / `design_update_adaptation` (설계 변경 시 재작성)
         - 전체 yaml 정의 / 디테일은 [architecture-role-config](architecture-role-config.md) 참조
 
@@ -83,12 +83,12 @@ graph TD
 
 | 에이전트 | 두뇌 (판단) | 손 (실행) | 비고 |
 |----------|-----------|----------|------|
-| P | LLM API | 없음 | 판단/소통만 수행 |
-| A | LLM API | OpenCode CLI | 리뷰/검수 시 코드 조작 |
-| L | LLM API | 없음 | 사서 — DB 정보 검색 + 외부 리소스 조사 (전담). 자연어 요청을 도구 호출로 매핑 |
-| Eng:* | LLM API | OpenCode CLI | 코드 구현 |
+| Primary | LLM API | 없음 | 판단/소통만 수행 |
+| Architect | LLM API | OpenCode CLI | 리뷰/검수 시 코드 조작 |
+| Librarian | LLM API | 없음 | 사서 — DB 정보 검색 + 외부 리소스 조사 (전담). 자연어 요청을 도구 호출로 매핑 |
+| Engineer:* | LLM API | OpenCode CLI | 코드 구현 |
 | QA:* | LLM API | OpenCode CLI | 테스트 작성/실행 |
 
-- **P만 예외적으로 OpenCode CLI 없이 동작** — 코드를 직접 다루지 않으므로
+- **Primary만 예외적으로 OpenCode CLI 없이 동작** — 코드를 직접 다루지 않으므로
 - 판단/검증 노드는 가벼운 LLM API, 실행 노드만 OpenCode CLI 호출
 - LangGraph가 내부 상태 머신을 관리하여 단순 1회 응답이 아닌 단계적 과업 수행
