@@ -130,8 +130,8 @@ services:
     ports: ["7474:7474", "7687:7687"]
 
   # 단일 Postgres 인스턴스에 2개 DB 분리 운영 (§6.5 참조)
-  #   - langgraph : langgraph-api 프레임워크 전용
-  #   - dev_team  : 애플리케이션 document storage (JSONB)
+  #   - langgraph : langgraph-checkpoint-postgres (AsyncPostgresSaver) 전용
+  #   - dev_team  : 애플리케이션 (Doc Store) — 정형 RDB 스키마 + 일부 JSONB
   postgres:
     image: postgres:17
     ports: ["5432:5432"]
@@ -178,7 +178,9 @@ primary:
 
 ## 6.3. A2A 통신 (A2A Protocol v1.0)
 
-에이전트 간 통신은 **[A2A Protocol v1.0](https://a2a-protocol.org/latest/)** (Linux Foundation 표준) 을 따른다. 구현은 **`langgraph-api` ≥ 0.4.21** 이 내장 제공하는 A2A 서버를 활용하며, 각 에이전트의 LangGraph 인스턴스가 `/a2a/{assistant_id}` 엔드포인트를 직접 노출하므로 별도의 A2A Gateway 구축은 불필요하다.
+에이전트 간 통신은 **[A2A Protocol v1.0](https://a2a-protocol.org/latest/)** (Linux Foundation 표준) 을 따른다. 구현은 **자체 FastAPI** 라우트 (`shared.a2a` 패키지) 위에 직접 구성 — 각 에이전트가 `/a2a/{role}` 엔드포인트로 JSON-RPC 2.0 메서드를 노출하고 `/.well-known/agent-card.json` 으로 Agent Card 를 공개. 별도의 A2A Gateway 컨테이너 / 게이트웨이 라이브러리는 불필요. 자세한 와이어링은 [`agent-runtime.md`](../agent-runtime.md) 참조.
+
+> **이력**: 초기 후보였던 `langgraph-api` (구 v0.4.x 의 내장 A2A 서버) 는 `langgraph-storage-postgres` (상업 라이센스) 의존 때문에 OSS 자체 호스팅 경로와 충돌해 **#6 에서 폐기**. 현재는 `langgraph-checkpoint-postgres` (체크포인터) + 자체 FastAPI A2A 라우트 조합.
 
 **JSON 직렬화 규약** ([spec §5.5](https://a2a-protocol.org/latest/specification/)): 필드는 **camelCase**, enum은 proto 이름 그대로 SCREAMING_SNAKE_CASE 문자열 (예: `"TASK_STATE_SUBMITTED"`, `"ROLE_USER"`).
 
@@ -192,7 +194,7 @@ A2A v1.0 스펙의 공식 메서드명은 PascalCase:
 | `SendStreamingMessage` | SSE 스트리밍 — 초기 `Task`/`Message` 후 `TaskStatusUpdateEvent` / `TaskArtifactUpdateEvent` 전달 | **User Gateway ↔ Primary** 사용자 채팅 실시간 렌더링, 장시간 응답 점진 전달 |
 | `GetTask` | 이전 task 상태·아티팩트·history 조회 | 비동기 긴 작업 상태 추적 |
 
-> **참고:** `langgraph-api` 초기 버전의 A2A 엔드포인트는 구(舊) 명세 기반 `message/send` / `message/stream` / `tasks/get` (슬래시 형식) 메서드명을 노출한다. A2A v1.0 으로의 메서드명 일치는 `langgraph-api` 후속 릴리스에서 정렬 예상 — 실구현 시 버전별 호환성 확인 필요.
+> **이력 (참고):** `langgraph-api` 초기 버전의 내장 A2A 엔드포인트는 구(舊) 명세 기반 `message/send` / `message/stream` / `tasks/get` (슬래시 형식) 메서드명을 노출했다. 본 시스템은 `langgraph-api` 폐기 (#6) 후 자체 FastAPI 위에 v1.0 PascalCase 메서드명을 직접 구현 — 의존 없는 깔끔한 정렬.
 
 ### Task Lifecycle
 
@@ -333,21 +335,21 @@ MCP 서버는 두 종류로 나뉜다:
 
 ### 저장소 선택 맥락 — 왜 PostgreSQL 인가 (Doc Store 기본 구현)
 
-초기 설계에서는 Doc Store 의 기본 구현을 MongoDB 로 두었으나, 다음 이유로 **PostgreSQL + JSONB** 로 전환한다 (이슈 #20):
+초기 설계에서는 Doc Store 의 기본 구현을 MongoDB 로 두었으나, 다음 이유로 **PostgreSQL** (정형 RDB 스키마, 일부 필드 JSONB) 로 전환한다 (이슈 #20):
 
-1. **워크플로우 엔진의 본질적 요구 — 영속 체크포인트** — LangGraph 는 에이전트 워크플로우 엔진이므로 **노드 실행 사이사이에 상태 스냅샷(체크포인트) 을 저장** 해야 한다. 이 영속 저장이 있어야 프로세스 중단 / 재기동 / 오류 복구 시 **직전 체크포인트부터 이어서 진행** 할 수 있다 (장시간 에이전트 작업의 정상화 보장). LangGraph 공식 프로덕션 런타임은 이 요구를 **PostgreSQL 위에 구현** 해 두었고, 그래서 `langgraph-api` 컨테이너가 `DATABASE_URI` 를 필수 요구한다. 별도 Doc Store 를 두면 저장소 종류가 중복되고 운영 부담이 증가한다.
-2. **JSONB 가 문서형 유연성을 충분히 제공** — MongoDB BSON 과 동등한 스키마리스 저장 + 부분 업데이트 + 중첩 경로 인덱싱 지원. PRD/Session/Item 처럼 구조가 느슨한 데이터도 문제 없이 표현 가능.
-3. **관계형 보증과의 양립** — PRD 와 Task, Session 과 Item 간에는 명확한 관계가 존재하므로, 트랜잭션/외래키/조인을 활용할 수 있으면 무결성 유지가 쉬워진다. JSONB 는 관계형 기반 위에서 문서형을 얹어 두 관점을 모두 수용한다.
+1. **워크플로우 엔진의 본질적 요구 — 영속 체크포인트** — LangGraph 는 에이전트 워크플로우 엔진이므로 **노드 실행 사이사이에 상태 스냅샷(체크포인트) 을 저장** 해야 한다. 이 영속 저장이 있어야 프로세스 중단 / 재기동 / 오류 복구 시 **직전 체크포인트부터 이어서 진행** 할 수 있다 (장시간 에이전트 작업의 정상화 보장). 본 시스템은 `langgraph-checkpoint-postgres` 의 `AsyncPostgresSaver` 를 그래프 컴파일 시 wiring — `DATABASE_URI` 가 필수. 별도 Doc Store 를 두면 저장소 종류가 중복되고 운영 부담이 증가한다.
+2. **정형 RDB + JSONB 보조** — 5 collection 모두 정형 스키마 (UUID PK / FK / CHECK / UNIQUE / 정형 컬럼) + JSONB 는 `metadata` / `external_refs` / `agent_items.content` / `wiki_pages.structured` 같은 일부 자유 필드만. 관계 무결성 + 전형적 RDB 도구 (트랜잭션 / 외래키 / 인덱스) 그대로 + JSONB 의 스키마리스 유연성도 확보.
+3. **관계형 보증과의 양립** — PRD 와 Task, Session 과 Item 간에는 명확한 관계가 존재하므로, 트랜잭션/외래키/조인을 활용할 수 있으면 무결성 유지가 쉬워진다. JSONB 는 관계형 기반 위에서 보조 데이터를 얹어 두 관점을 모두 수용한다.
 4. **운영 단순화** — 저장소 종류를 하나 줄여 백업/모니터링/마이그레이션 관리 대상 감소.
 
 운영 형태는 **단일 Postgres 인스턴스 + 2개 DB 분리** 다:
 
 | DB | 소유자 | 용도 |
 |---|---|---|
-| `langgraph` | langgraph-api 프레임워크 | 체크포인트, 스레드, 런, 태스크 상태. **프레임워크가 직접 스키마/마이그레이션 관리** |
-| `dev_team` | 애플리케이션 | PRD, Session/Task/Item, 대화 이벤트 로그 등. 우리가 스키마 설계·관리 |
+| `langgraph` | `langgraph-checkpoint-postgres` (AsyncPostgresSaver) | 체크포인트, 스레드, 런, 태스크 상태. **라이브러리가 직접 스키마/마이그레이션 관리** |
+| `dev_team` | 애플리케이션 (Doc Store MCP) | wiki_pages / issues / agent_tasks / agent_sessions / agent_items. 우리가 스키마 설계·관리 |
 
-같은 DB 에 섞지 않는 이유: langgraph-api 버전업 시 자체 마이그레이션이 애플리케이션 테이블을 건드릴 위험 제거 + 권한/백업 경계 분리. 인스턴스는 하나라 운영 복잡도는 거의 증가하지 않는다.
+같은 DB 에 섞지 않는 이유: `langgraph-checkpoint-postgres` 버전업 시 자체 마이그레이션이 애플리케이션 테이블을 건드릴 위험 제거 + 권한/백업 경계 분리. 인스턴스는 하나라 운영 복잡도는 거의 증가하지 않는다.
 
 `Doc Store` 라는 **추상화 인터페이스 자체는 유지** 되므로, 향후 MongoDB / CouchDB / Elasticsearch 등 다른 document-oriented 구현체로 교체하고 싶어지면 Doc Store MCP 서버 구현체만 바꿔치우면 된다.
 
