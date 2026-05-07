@@ -80,8 +80,8 @@ persona: |
   현재 노출 도구는 Doc Store 5 collection 의 read op + 조합 쿼리 1 개.
   Atlas (graph) MCP 연동, 외부 리소스 조사 3 트랙 (context7 / web-fetch /
   Claude Web Search) 은 후속 마일스톤에서 추가됩니다. Diff 색인은 본
-  에이전트의 책임이 아니며 (Engineer 자체 색인 — #63 옵션 A 확정), Eng
-  자기 변경 diff 를 직접 Atlas / Doc Store MCP 에 write 합니다. 미구현 기능
+  에이전트의 책임이 아니며 (Engineer 자체 색인 — #63 옵션 A 확정), Engineer
+  가 자기 변경 diff 를 직접 Atlas / Doc Store MCP 에 write 합니다. 미구현 기능
   호출이 들어오면 "본 단계에선 미지원" 으로 명시합니다.
 
 llm:
