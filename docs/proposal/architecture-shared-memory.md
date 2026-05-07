@@ -26,17 +26,18 @@ Shared Memory(Doc Store + Atlas)는 **공유 MCP 서버**가 thin CRUD 계층으
 |------|------|------|------|
 | **DB 정보 검색** | 에이전트의 자연어 질의 | Atlas + Doc Store 교차 쿼리 (LLM ReAct) | 자연어로 정리된 답변 |
 | **조합 쿼리** | "context X 의 대화 로그" 같은 multi-collection 쿼리 | 여러 도구 순차 호출 후 정리 | 통합 결과 |
-| **외부 리소스 조사** | 라이브러리 docs / 사용자 URL 페이지 / 일반 web 조회 | 3 트랙 도구 (§2.9) 호출 후 정리 | 조사 결과 자연어 응답 |
+| **외부 리소스 조사** | 라이브러리 docs / 사용자 URL 페이지 / 일반 web 조회 | 3 트랙 도구 ([architecture-external-research](architecture-external-research.md)) 호출 후 정리 | 조사 결과 자연어 응답 |
 | **(M5+) 자연어 / 의미 기반 검색** | 페이지 / 이슈 본문 검색 | full-text / semantic | 매칭 결과 |
 
 > **L 은 write 도구를 노출하지 않는다.** 각 에이전트가 자기 도메인 데이터를
-> 직접 MCP 로 write. Diff 색인 같은 후처리도 호출자가 수행 (M4+ 별 결정).
+> 직접 MCP 로 write. **Diff 색인은 Eng 자체 색인 (옵션 A)** 으로 `#63` 시점에
+> 확정 — 호출자 (Eng) 가 자기 변경 diff 분석 → Atlas / Doc Store MCP 직접 write.
 
 > **외부 리소스 조사는 L 전담**. 다른 에이전트는 context7 / web-fetch / web_search
-> 트랙을 직접 호출하지 않고 L 에게 자연어 위임. L 은 §2.9 의 3 트랙을 단독으로
-> 다룬다.
+> 트랙을 직접 호출하지 않고 L 에게 자연어 위임. L 은 [architecture-external-research](architecture-external-research.md)
+> 의 3 트랙을 단독으로 다룬다.
 
-> **대화 로그 수집은 Librarian의 역할이 아니다.** 별도의 경량 Consumer인 Chronicler가 Valkey Streams 브로커를 통해 수집·저장한다. (섹션 2.6 참조)
+> **대화 로그 수집은 Librarian의 역할이 아니다.** 별도의 경량 Consumer인 Chronicler가 Valkey Streams 브로커를 통해 수집·저장한다. ([architecture-event-pipeline](architecture-event-pipeline.md) 참조)
 
 ## 접근 경로
 
@@ -44,25 +45,26 @@ Shared Memory(Doc Store + Atlas)는 **공유 MCP 서버**가 thin CRUD 계층으
 |------|------|------|
 | **자기 도메인 write** | 에이전트 → MCP → DB | 직접 — wiki_pages / issues / atlas 등 |
 | **정보 검색** | 에이전트 → A2A → Librarian → MCP → DB | 자연어 질의, 교차 참조 |
-| **외부 리소스 조사** | 에이전트 → A2A → Librarian → 3 트랙 (§2.9) | 라이브러리 docs / URL / web search |
+| **외부 리소스 조사** | 에이전트 → A2A → Librarian → 3 트랙 ([architecture-external-research](architecture-external-research.md)) | 라이브러리 docs / URL / web search |
 | **Task Context 조립** | Eng/QA → A2A → Librarian → Atlas | Code Agent 호출 전 필요한 파일/참조 시그니처 |
 | **대화 로그 기록** | 에이전트 → Valkey Streams → Chronicler → MCP → Doc Store | A2A 대화 이력 수집 (Librarian 경유 X) |
 | **외부 도구 sync** | 에이전트 → 외부 MCP (IssueTracker/Wiki 등) | Doc Store 의 데이터를 외부에 push |
 
-## Diff 기반 색인 워크플로우 (TBD — M4+ Architect 도입 시 결정)
+## Diff 기반 색인 워크플로우
 
-> Diff → Atlas 매핑 자체는 LLM 추론. 새 분담 모델 (write 직접) 위에서 호출
-> 주체가 정정될 예정. 후보:
-> - A. Eng 직접 — 자기 코드 변경의 atlas 매핑 + write
-> - B. Architect 가 매핑 (설계 책임자) — A 가 자기 영역 write
-> - C. L 이 read-side 분석만 (추천 노드/관계 제안) — Eng/A 가 최종 결정 + write
-> M4+ 의 Architect 도입 (#45) 시점에 호출 주체 결정 + 워크플로우 갱신.
+> **Eng 자체 색인 (옵션 A) — `#63` 시점에 확정** (정정: 2026-05).
+> Eng 이 자기 변경 diff 를 분석해 Atlas / Doc Store MCP 에 직접 write.
+> Diff → Atlas 매핑 자체는 LLM 추론으로 수행. 다른 에이전트 (A / Pairs / QA)
+> 도 동일하게 자기 산출물을 직접 영속.
+>
+> 자세한 흐름은 [architecture-code-agent §Context Assembly](architecture-code-agent.md#context-assembly-흐름) 의 sequence diagram 참조 —
+> Engineer Agent 가 diff 채택 후 변경된 OO 구조를 추출해 Atlas MCP 에 직접 update 한다.
 
 ## 접근 권한 매트릭스 (정정 — 2026-05)
 
 | 주체 | MCP 직접 read | MCP 직접 write | A2A → L (정보 검색 / 외부 조사) | Broker publish |
 |------|:------------:|:------------:|:---------------:|:--------------:|
-| **Librarian** | O | minimal (M4+ 의 옵션 C 시 색인 추천) | — | X |
+| **Librarian** | O | X — write 도구 미노출 (옵션 A 확정 — `#63`) | — | X |
 | **Chronicler** | — | O (Doc DB, 대화 영속) | — | X (구독만) |
 | **P** | O (자기 도메인 — wiki_pages / issues) | **O** (wiki_pages / issues + 외부 sync) | 정보 검색 + 외부 조사 | O |
 | **A** (M4+) | O (atlas / wiki_pages) | **O** (atlas / wiki_pages — ADR 등) | 정보 검색 + 외부 조사 | O |
@@ -74,7 +76,7 @@ Shared Memory(Doc Store + Atlas)는 **공유 MCP 서버**가 thin CRUD 계층으
   자기 데이터의 schema 는 자기가 가장 잘 앎.
 - **정보 검색 = Librarian 통과** — DB 안에서 데이터를 찾아오는 것이 사서 역할.
   자기 데이터의 단순 read 는 직접도 가능하지만, 자연어 / 교차 쿼리는 L 의 사서 역할 활용.
-- **외부 리소스 조사 = Librarian 전담** — 라이브러리 docs / 사용자 URL / 일반 web search 모두 L 단독 (§2.9).
+- **외부 리소스 조사 = Librarian 전담** — 라이브러리 docs / 사용자 URL / 일반 web search 모두 L 단독 ([architecture-external-research](architecture-external-research.md)).
 - **CHR 의 직접 패턴이 reference** — 결정론적 worker 도, LLM 에이전트도 일관.
 
 **설계 원칙:**

@@ -89,7 +89,7 @@ llm:
 | `specialty` | Eng/QA의 세부 역할 (backend/frontend/devops/...) | Eng/QA만 |
 | `persona` | 시스템 프롬프트로 주입되는 역할 정의 | 필수 |
 | `llm` | `provider`, `model`, `temperature`, `api_key` (LangChain `BaseChatModel`). A는 `sub_agents.*`로 분리 지정 | 필수. `api_key`는 override에서 env var 참조로 주입 |
-| `code_agent` | `type`(어댑터 구현체 선택) + `opencode.permissions` (read/grep/glob/edit/write/bash = allow·ask·deny) + `opencode.timeout_seconds` | P, L은 생략. 섹션 2.8 참조 |
+| `code_agent` | `type`(어댑터 구현체 선택) + `opencode.permissions` (read/grep/glob/edit/write/bash = allow·ask·deny) + `opencode.timeout_seconds` | P, L은 생략. [architecture-code-agent](architecture-code-agent.md) 참조 |
 | `workspace` | 볼륨 마운트된 코드베이스 경로 + 읽기/쓰기 범위 | 코드 다루는 에이전트만 |
 | `mcp_servers` | 연결할 MCP 서버 목록 (공유 + 로컬) | 필수 |
 | `a2a_peers` | **클라이언트 측 설정** — 내가 먼저 호출(initiate)할 피어의 URL 목록 | 필수 (Librarian 제외) |
@@ -107,7 +107,7 @@ persona: |
   당신은 프로젝트 매니저(PM)입니다.
   사용자와 기획을 논의하여 PRD를 작성·관리하고,
   Architect에게 기술 설계를 의뢰하며, 외부 PM 도구와 동기화합니다.
-  PM 영역의 데이터(PRD / Epic / Story / wiki_pages / issues)는 Doc Store MCP에 **직접 write** 합니다 (§2.5).
+  PM 영역의 데이터(PRD / Epic / Story / wiki_pages / issues)는 Doc Store MCP에 **직접 write** 합니다 (분담 모델).
   외부 PM 도구 동기화도 본인이 직접 수행하며, 다른 에이전트의 외부 상태 업데이트 요청을 대리 수행합니다.
   정보 검색이 필요한 경우 Librarian에게 자연어로 위임합니다.
 
@@ -159,7 +159,7 @@ persona: |
   객체지향 관점의 1차 설계를 주도하며, 설계 결정권을 보유합니다.
   복수 설계안을 도출하여 사용자 선택을 받고, Eng+QA 페어에 동시 배포합니다.
   상위 설계 수정 시 유관 Eng을 소집하여 다자간 논의를 주관합니다.
-  설계 산출물(채택안 ADR / wiki_pages, OO 구조 그래프)은 Atlas / Doc Store MCP에 **직접 write** 합니다 (§2.5).
+  설계 산출물(채택안 ADR / wiki_pages, OO 구조 그래프)은 Atlas / Doc Store MCP에 **직접 write** 합니다 (분담 모델).
   정보 검색이 필요한 경우 Librarian에게 자연어로 위임합니다.
 
 # A는 내부에 3개의 서브 에이전트를 두며 각각 다른 모델을 쓸 수 있음
@@ -248,12 +248,12 @@ workflow:
 role: librarian
 
 persona: |
-  당신은 팀의 사서(Librarian)입니다. 두 책임을 전담합니다 (§2.5 / §2.9).
+  당신은 팀의 사서(Librarian)입니다. 두 책임을 전담합니다 (분담 모델 / 외부 리소스 조사 3 트랙).
 
   [정보 검색]
   다른 에이전트(P / A / Eng / QA)의 자연어 질의를 받아 Atlas + Doc Store 교차 조회로
   답변을 구성하여 반환합니다. write 는 본 에이전트의 책임이 아니며, 각 에이전트가
-  자기 도메인 데이터를 MCP로 직접 write 합니다 (§2.5 분담 모델).
+  자기 도메인 데이터를 MCP로 직접 write 합니다 (분담 모델).
   자연어 → 도구 호출 매핑은 LLM ReAct 로 결정합니다.
 
   [외부 리소스 조사 — 단독 전담]
@@ -310,7 +310,7 @@ workflow:
   base: default
   extensions:
     - nl_query_answering         # 자연어 질의 응답 (Atlas + Doc Store 교차 조회)
-    - external_research_dispatch # 외부 리소스 조사 3 트랙 dispatch (§2.9)
+    - external_research_dispatch # 외부 리소스 조사 3 트랙 dispatch
 ```
 
 ### Engineer:BE (`configs/eng-be.yaml`)
@@ -324,7 +324,7 @@ persona: |
   API 설계, 서버 로직, DB 스키마, 인증/인가를 담당합니다.
   Architect의 객체지향 1차 설계를 받아 클래스/메소드 레벨의 세부 설계와 구현을 자율 수행합니다.
   상위 설계 수정이 필요하면 Architect에게 건의합니다(결정권은 Architect에게 있음).
-  구현 산출물(OO 구조 색인, 작업 산출물 wiki_pages)은 Atlas / Doc Store MCP에 **직접 write** 합니다 (§2.5).
+  구현 산출물(OO 구조 색인, 작업 산출물 wiki_pages)은 Atlas / Doc Store MCP에 **직접 write** 합니다 (분담 모델).
   정보 검색이 필요한 경우 Librarian에게 자연어로 위임합니다.
   빌드/테스트 실행은 페어 QA의 책임이므로 직접 수행하지 않습니다.
 
@@ -403,7 +403,7 @@ persona: |
   Architect의 객체지향 1차 설계를 Engineer와 동시에 수신하여,
   Interface/Class/PublicMethod 계약을 근거로 독립적으로 테스트 코드를 작성합니다.
   Engineer 구현 완료 시 빌드를 실행하고, 준비한 테스트로 검증하여 Architect에게 보고합니다.
-  검증 산출물(테스트 결과, 커버리지 리포트)은 Doc Store / Atlas MCP에 **직접 write** 합니다 (§2.5).
+  검증 산출물(테스트 결과, 커버리지 리포트)은 Doc Store / Atlas MCP에 **직접 write** 합니다 (분담 모델).
   정보 검색이 필요한 경우 Librarian에게 자연어로 위임합니다.
   설계가 수정되면 테스트 코드도 재작성합니다.
 

@@ -37,7 +37,7 @@ persona: |
   4. Doc Store / 외부 PM 도구의 단독 창구
      - PM 영역의 데이터 (PRD / Epic / Story / Wiki 페이지) 는 Doc Store MCP
        (wiki_pages / issues collection) 에 **직접 write** 합니다 (정정된
-       분담 모델 — proposal §2.5 참조).
+       분담 모델 — docs/proposal/architecture-shared-memory.md).
      - GitHub Wiki/Issue 등 외부 PM 도구와의 동기화도 **본인이 직접**
        수행합니다 (IssueTracker / Wiki MCP 호출).
      - 다른 에이전트가 외부 상태 업데이트(이슈 코멘트, 상태 변경 등) 를
@@ -110,7 +110,7 @@ agent_card:
   protocol_binding: JSONRPC
   capabilities:
     streaming: true                              # SSE SendStreamingMessage 지원 (server.py)
-    pushNotifications: false                     # 웹훅 기반 비동기 통보 — 미채택 (proposal §9)
+    pushNotifications: false                     # 웹훅 기반 비동기 통보 — 미채택 (proposal-main §9 / 부록)
   default_input_modes: [text/plain]
   default_output_modes: [text/plain]
   provider:

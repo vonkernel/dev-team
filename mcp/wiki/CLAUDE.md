@@ -8,7 +8,7 @@
 ## 1. 본 모듈의 역할
 
 외부 wiki backend (현재 GitHub Wiki) 의 thin bridge. 매핑 / 정규화 / 결정 로직
-0 (mcp/CLAUDE.md §0). 호출자 = P (proposal §6.1단계 — P 가 PRD 작성 후
+0 (mcp/CLAUDE.md §0). 호출자 = P (workflow 1단계 — P 가 PRD 작성 후
 doc-store + GitHub Wiki 양쪽 동기화).
 
 | 항목 | 값 |

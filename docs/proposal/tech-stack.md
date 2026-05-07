@@ -270,10 +270,10 @@ MCP 서버는 두 종류로 나뉜다:
 | Eng:* | **O** (직접 — atlas 색인) | O (직접) + 정보 검색·외부 조사 → L | X (A→P) | 코드 편집/빌드/테스트 |
 | QA:* | **O** (직접 — wiki_pages / 테스트 결과) | O (직접) + 정보 검색·외부 조사 → L | X (A→P) | 테스트 실행/리포트 |
 
-**정정된 원칙 (§2.5 참조):**
+**정정된 원칙** ([architecture-shared-memory](architecture-shared-memory.md) 분담 모델 참조):
 - **write 직접**: 자기 도메인 데이터는 자기 MCP 호출 — schema 노출 / dispatch 비용 ↓ / traceability ↑
 - **정보 검색 사서 (L)**: DB 안의 자연어 / 교차 쿼리는 L 의 LLM 매핑 활용
-- **외부 리소스 조사 전담 (L)**: 라이브러리 docs / URL / web search 는 L 단독 (§2.9)
+- **외부 리소스 조사 전담 (L)**: 라이브러리 docs / URL / web search 는 L 단독 ([architecture-external-research](architecture-external-research.md))
 - **외부 PM 단독 창구 (P)**: Doc Store ↔ GitHub Issues / Wiki sync 는 P 가 직접 IssueTracker / Wiki MCP 호출. A / ENG / QA 가 외부 반영 필요하면 A→P 위임.
 
 ## 6.4. 추상화 레이어 (OCP 원칙)

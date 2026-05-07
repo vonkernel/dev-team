@@ -58,9 +58,9 @@ graph TD
 - 공통: LangGraph 베이스 워크플로우, LLM 어댑터, A2A 서버/클라이언트, 역할별 MCP 도구
 - 역할에 따라 달라짐:
     - **Code Agent Adapter**: P, L 은 비활성 / 그 외는 활성
-    - **Shared Memory MCP 클라이언트**: 전 에이전트 활성 (write / read 직접 — §2.5 정정)
+    - **Shared Memory MCP 클라이언트**: 전 에이전트 활성 (write / read 직접 — [architecture-shared-memory](architecture-shared-memory.md) 분담 모델 정정)
     - **External PM MCP 클라이언트**: P 만 활성
-    - **외부 리소스 조사 MCP 클라이언트** (context7 / web-fetch): L 만 활성 (§2.9)
+    - **외부 리소스 조사 MCP 클라이언트** (context7 / web-fetch): L 만 활성 ([architecture-external-research](architecture-external-research.md))
     - **워크플로우 확장**: A의 3-서브 에이전트 루프, Eng의 자체 루프 등 역할별 서브그래프
 
 ## 에이전트 유형별 구성
