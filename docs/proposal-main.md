@@ -297,7 +297,7 @@ L 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 URL Playw
 | 5-3 | 스트리밍 | User Gateway ↔ Primary 사용자 채팅은 `SendStreamingMessage` 기반 SSE. 초기 `Task`/`Message` 이후 `TaskStatusUpdateEvent` / `TaskArtifactUpdateEvent` 이벤트 전달 |
 | 6 | Shared Memory 관리 | **각 에이전트가 자기 도메인 데이터를 MCP 직접 write** (CHR 의 직접 패턴 일관 적용). L 은 사서 — 정보 검색 + 외부 리소스 조사 (전담). (정정: 2026-05) |
 | 7 | Shared Memory 접근 구조 | write: 에이전트 → MCP → DB / 단순 read: 에이전트 → MCP → DB / 정보 검색 (자연어): 에이전트 → A2A → L → MCP → DB |
-| 8 | Librarian 책임 | 사서 — DB 정보 검색 + 외부 리소스 조사 (3 트랙, [external-research](proposal/architecture-external-research.md)). write 도구 미노출 (M4+ Diff 색인 옵션 C 시 추천만). DB 직접 접근 X — MCP 경유 일관 |
+| 8 | Librarian 책임 | 사서 — DB 정보 검색 + 외부 리소스 조사 (3 트랙, [external-research](proposal/architecture-external-research.md)). write 도구 미노출. DB 직접 접근 X — MCP 경유 일관 |
 | 9 | Eng+QA 페어 구조 | 역할별 Eng+QA 1:1 페어, 프로젝트별 동적 구성, 1 Agent = 1 Container |
 | 10 | Eng-QA 협업 방식 | A의 설계를 동시 수신하여 **병렬** 작업 (Eng 구현 / QA 독립 테스트 코드 작성) |
 | 11 | Eng 자율성 | 클래스/메소드/서브 패키지 레벨의 세부 설계는 Eng 자율, 상위 설계 수정은 A 주도 |
@@ -305,7 +305,7 @@ L 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 URL Playw
 | 13 | 대화 이력 구조 | Task → Session → Item 3계층, `prev_item_id`로 대화 쓰레드 추적 |
 | 14 | 이벤트 수집 파이프라인 | Valkey Streams 브로커 + **Chronicler** 경량 Consumer가 Doc Store에 영속화 (Librarian 책임 아님) |
 | 14-1 | Chronicler 정체성 | 에이전트가 아닌 인프라 모듈 — LLM/LangGraph/Role Config 미사용, 단순 Python 스크립트 수준 |
-| 15 | Diff 기반 색인 (TBD M4+) | M4+ 의 A 도입 시 호출 주체 결정. 후보: A. Eng 직접 / B. Architect 가 매핑 / C. L 이 read-side 추천 + Eng/A 가 final write |
+| 15 | Diff 기반 색인 | **Eng 자체 색인** — Eng 이 자기 변경 diff 분석 → Atlas / Doc Store MCP 직접 write. (정정: 2026-05 — `#63` L 역할 정리 시점에 옵션 A 확정. 다른 에이전트 (A / QA) 도 동일하게 자기 산출물 직접 영속) |
 | 16 | 코드베이스 공유 | 호스트 프로젝트 디렉토리를 전 에이전트 컨테이너에 `/workspace`로 bind mount |
 | 17 | 설계안 채택 UX | A가 복수 설계안 제시 → 사용자 선택 → 채택안은 코드베이스 `docs/design/`에 md로 저장, 미채택안은 Doc Store |
 | 18 | 추상화 (OCP) | Code Agent, Atlas, Doc Store, External PM Tool, LLM Provider 모두 인터페이스로 추상화 |

@@ -47,7 +47,7 @@
 - Eng+QA 페어의 최종 보고서 검수 (Quality Gate). 정보 검색이 필요하면 Librarian 자연어 위임
 - 채택 설계의 ADR / OO 구조는 Atlas / Doc Store MCP 에 **직접 write**
 
-> **Diff 색인 호출 주체는 M4+ TBD** — 현 시점에는 후보 A (Eng 직접) / B (A 매핑) / C (L read-side 추천 + Eng/A final write) 가 열려있음. [proposal-main §9 #15](../proposal-main.md#9-미결정-사항-open-questions) 참조.
+> **Diff 색인은 Eng 자체 색인 (옵션 A) — `#63` 시점에 확정** — Eng 이 자기 변경 diff 분석 → Atlas / Doc Store MCP 직접 write. [proposal-main §8 #15](../proposal-main.md#8-확정-사항-decisions-made) 참조.
 
 **A의 내부 서브 에이전트 구조 (자체 피드백 루프):**
 
@@ -92,7 +92,7 @@ graph LR
 **책임 아닌 것:**
 - **write** — 각 에이전트가 자기 도메인 데이터를 MCP 통해 직접 write (CHR 의 직접 패턴 일관 적용)
 - **A2A 대화 로그 수집** — Chronicler 의 책임 (인프라 모듈)
-- **Diff 색인** — M4+ TBD ([proposal-main §9 #15](../proposal-main.md#9-미결정-사항-open-questions))
+- **Diff 색인 — Eng 자체 색인 (옵션 A)** 으로 `#63` 시점에 확정. 다른 에이전트도 자기 산출물 직접 영속. ([proposal-main §8 #15](../proposal-main.md#8-확정-사항-decisions-made))
 
 **기술적 제약:**
 - DB 직접 접근 X — MCP 경유 (다른 에이전트와 일관된 접근 패턴)
@@ -126,7 +126,7 @@ Eng와 QA는 **역할별로 1:1 페어**를 이루지만, A의 1차 설계를 **
 - **구현 산출물 영속:**
     - 구현 산출물 (코드 변경의 OO 구조 색인, 작업 산출물 wiki_pages, 기술 노트) 을 Atlas / Doc Store MCP 에 **직접 write** (분담 모델 — [architecture-shared-memory](architecture-shared-memory.md))
     - 정보 검색 / 외부 리소스 조사가 필요하면 Librarian 에게 A2A 자연어 위임
-    - 구현 완료 시 A 에게 보고. **Diff 색인의 호출 주체는 M4+ TBD** ([proposal-main §9 #15](../proposal-main.md#9-미결정-사항-open-questions))
+    - 구현 완료 시 A 에게 보고. **Diff 색인은 Eng 자체 색인 (옵션 A 확정 — `#63`)**, [proposal-main §8 #15](../proposal-main.md#8-확정-사항-decisions-made) 참조
 
 **QA (QA:{역할})의 책임:**
 

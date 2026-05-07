@@ -8,7 +8,7 @@
 |------|------|-------------|-----------|
 | 1단계 | 기획 구체화 | 사용자, P | 사용자-P 대화, PRD 작성, P 가 Doc Store 직접 write + 외부 PM 동기화 |
 | 2단계 | OO 설계 | P, A, 사용자, (필요 시 L) | A의 서브 에이전트 루프, 사용자 기술 개입 수용, OO 1차 설계 확정 (정보 검색 / 외부 조사 시 L 위임) |
-| 3단계 | 병렬 구현·검증 | A, Eng+QA 페어들, (필요 시 L) | Eng 자체 루프 + QA 독립 테스트. 산출물은 각자 직접 write. Diff 색인 호출 주체는 M4+ TBD |
+| 3단계 | 병렬 구현·검증 | A, Eng+QA 페어들, (필요 시 L) | Eng 자체 루프 + QA 독립 테스트. 산출물은 각자 직접 write. Eng 자체 Atlas 색인 (옵션 A 확정 — `#63`) |
 | 4단계 | 검수/종료 | A, P | A 검수 → P 결과 보고 |
 
 **인간 개입 지점:** 사용자는 단계와 무관하게 언제든 P(기획) 또는 A(기술)에게 직접 메시지를 보낼 수 있다. 개입 시점은 Task/Session/Item으로 기록되어 추적 가능하다.
@@ -102,7 +102,7 @@ sequenceDiagram
     end
 
     Eng->>Eng: 구현 산출물 Atlas / Doc Store MCP 직접 write
-    Note over Eng,L: Diff 색인의 호출 주체는 M4+ TBD<br/>(proposal-main §9 #15)
+    Note over Eng,L: Diff 색인은 Eng 자체 색인 (옵션 A 확정 — #63)<br/>diff 분석 → Atlas / Doc Store MCP 직접 write
     Eng->>A: 구현 완료 보고
 
     QA->>QA: 빌드 실행 (컴파일/빌드 에러 확인)
@@ -137,7 +137,7 @@ sequenceDiagram
         - **단독 영향**: A가 판단 후 수정 통보
         - **유관 Eng 영향**: A가 유관 Eng을 소집하여 **다자간 논의** (Session으로 기록)
     - 확정된 수정안은 A가 QA에게도 동시 통보 → QA 테스트 코드 재작성 (Context Assembly 재실행)
-5. **구현 산출물 영속**: Eng 구현 완료 시 Atlas / Doc Store MCP 직접 write (분담 모델). Diff 색인의 호출 주체는 M4+ TBD ([proposal-main §9 #15](../proposal-main.md#9-미결정-사항-open-questions))
+5. **구현 산출물 영속**: Eng 구현 완료 시 자기 변경 diff 를 분석해 Atlas / Doc Store MCP 에 **직접 write** (Eng 자체 색인 — 옵션 A 확정, `#63` / [proposal-main §8 #15](../proposal-main.md#8-확정-사항-decisions-made))
 6. **QA 빌드/테스트 실행**:
     - 빌드 에러 확인 (인터프리터 언어는 필요 시 스킵)
     - 준비한 테스트 실행 → 통과/실패 판정
