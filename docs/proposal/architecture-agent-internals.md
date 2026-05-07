@@ -2,7 +2,7 @@
 
 > 본 문서는 [`proposal-main.md`](../proposal-main.md) §2.3 에서 분리. (#66)
 
-모든 에이전트는 **"LLM API로 사고하고, 필요할 때만 OpenCode CLI로 행동한다"**는 원칙을 따른다.
+모든 에이전트는 "**LLM API로 사고하고, 필요할 때만 OpenCode CLI로 행동한다**"는 원칙을 따른다.
 
 ```mermaid
 graph TD
