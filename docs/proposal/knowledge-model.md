@@ -2,7 +2,7 @@
 
 > 본 문서는 [`proposal-main.md`](../proposal-main.md) §4 에서 분리. (#66)
 
-## 4.1. Semantic Layer (Neo4j)
+## 4.1. Semantic Layer (Atlas)
 
 ### 인터페이스 중심 구현 모델
 
