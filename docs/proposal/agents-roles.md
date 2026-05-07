@@ -7,13 +7,13 @@
 | 에이전트 | 코드명 | 핵심 역할 | 페르소나 | 주요 상호작용 |
 |----------|--------|-----------|----------|--------------|
 | **Primary** | **P** | 사용자와 기획 협의, PRD 작성, 외부 PM 도구 동기화, 프로젝트 전체 관리 | PM | 사용자, A, L, 외부 PM 도구 |
-| **Architect** | **A** | 사용자와 기술 설계 협의, OO 설계 주도, 설계 결정권 보유, Diff 검증 | 시스템 아키텍트 | 사용자, P, L, 각 Eng+QA 페어 |
-| **Librarian** | **L** | Diff 색인, 복잡한 질의 응답, 그래프 무결성 보장 | 지식 관리자 | 전 에이전트 |
-| **Engineer** | **Eng:{역할}** | A의 1차 설계 기반 세부 설계·구현·검증 자율 수행, Diff를 L에게 전달 | 역할별 SW 엔지니어 | A, 페어 QA, L, 유관 Eng |
-| **QA** | **QA:{역할}** | A의 설계 수신 → 독립적 테스트 코드 작성, 빌드/테스트 실행, 검증 | 역할별 테스트 엔지니어 | A, 페어 Eng, L |
+| **Architect** | **A** | 사용자와 기술 설계 협의, OO 설계 주도, 설계 결정권 보유, ADR / Atlas 직접 write | 시스템 아키텍트 | 사용자, P, L, 각 Eng+QA 페어 |
+| **Librarian** | **L** | DB 정보 검색 (자연어 / 교차 쿼리) + 외부 리소스 조사 (3 트랙) 전담 | 사서 | 전 에이전트 |
+| **Engineer** | **Eng:{역할}** | A의 1차 설계 기반 세부 설계·구현 자율 수행, 구현 산출물 Atlas / Doc Store 직접 write | 역할별 SW 엔지니어 | A, 페어 QA, L, 유관 Eng |
+| **QA** | **QA:{역할}** | A의 설계 수신 → 독립적 테스트 코드 작성, 빌드/테스트 실행, 검증 산출물 직접 write | 역할별 테스트 엔지니어 | A, 페어 Eng, L |
 
 > **에이전트가 아닌 보조 모듈:**
-> **Chronicler** — Valkey Streams를 구독하여 A2A 대화 이벤트를 Doc Store에 영속화하는 경량 Consumer. LLM, LangGraph, Role Config를 사용하지 않는 단순 Python 스크립트 수준의 모듈. 에이전트 역할 정의에서 다루지 않으며, 인프라로 취급. (섹션 2.6 참조)
+> **Chronicler** — Valkey Streams를 구독하여 A2A 대화 이벤트를 Doc Store에 영속화하는 경량 Consumer. LLM, LangGraph, Role Config를 사용하지 않는 단순 Python 스크립트 수준의 모듈. 에이전트 역할 정의에서 다루지 않으며, 인프라로 취급. ([architecture-event-pipeline](architecture-event-pipeline.md) 참조)
 
 ## 3.2. 에이전트별 상세 책임
 
@@ -25,9 +25,9 @@
 - PRD 변경이 발생하면 A와 재협의
 
 **프로젝트 관리:**
-- PRD를 Doc Store에 기록 + 외부 PM 도구(GitHub Wiki/Issue 등)에도 동기화
+- PRD / Epic / Story / wiki_pages / issues 를 Doc Store MCP 에 **직접 write** + 외부 PM 도구 (GitHub Wiki/Issue 등) 도 본인이 직접 동기화
 - 태스크 분해 후 우선순위 결정
-- 전체 진행 상황 추적 (Librarian 조회를 통해 Task/Session/Item 확인)
+- 전체 진행 상황 추적 — 자기 도메인 데이터는 MCP 직접 read, 정보 검색 / 교차 쿼리는 Librarian 자연어 위임
 - 최종 결과물 취합 및 사용자 보고
 
 ### Architect (A) - 시스템 아키텍트
@@ -44,8 +44,10 @@
 **조율 및 검증:**
 - Eng이 상위 설계 수정을 제안할 경우 영향 범위 분석
 - 수정이 다른 Eng의 작업에 영향을 미칠 경우 **유관 Eng과 함께 다자간 논의** 주관
-- Eng의 Diff 제출 시 L의 색인 결과를 기반으로 설계 적합성 검증
-- Eng+QA 페어의 최종 보고서 검수 (Quality Gate)
+- Eng+QA 페어의 최종 보고서 검수 (Quality Gate). 정보 검색이 필요하면 Librarian 자연어 위임
+- 채택 설계의 ADR / OO 구조는 Atlas / Doc Store MCP 에 **직접 write**
+
+> **Diff 색인 호출 주체는 M4+ TBD** — 현 시점에는 후보 A (Eng 직접) / B (A 매핑) / C (L read-side 추천 + Eng/A final write) 가 열려있음. [proposal-main §9 #15](../proposal-main.md#9-미결정-사항-open-questions) 참조.
 
 **A의 내부 서브 에이전트 구조 (자체 피드백 루프):**
 
@@ -73,32 +75,28 @@ graph LR
 | 검증 | 요구사항 충족 여부 + OO 원칙(SOLID 등) 준수 여부 검증 | 추론 특화 모델 |
 | 최종 컨펌 | 두 결과를 종합하여 최종 판단 | 균형 잡힌 고성능 모델 |
 
-### Librarian (L) - 지식 관리자
+### Librarian (L) - 사서
 
-**Diff 색인 (핵심 책임):**
-- Eng의 diff(파일 목록 + 변경 내역 + 기술 노트) 수신
-- OO 관점 분석 → Atlas의 Interface/Class/PublicMethod 노드/관계 업데이트
-- 기술적 개념/아이디어/주의사항/TODO 추출 → Doc Store 색인
-- **Eng은 diff만 전달하면 됨** — 색인 해석 책임은 Librarian에 있음
+> **분담 모델 정정 (2026-05, [#63](https://github.com/vonkernel/dev-team/issues/63))** — L 은 **read 사서** 이며 write 책임은 각 에이전트가 직접 갖는다. 자세한 분담은 [architecture-shared-memory](architecture-shared-memory.md) 참조.
 
-**지식 기록:**
-- 다른 에이전트가 전달한 태스크 정보(목표, 기능, 진행 상태, 히스토리) 기록
-- 기술 사항(설계 결정, 구현 특이점) 문서화
+**DB 정보 검색 (핵심 책임 1):**
+- 다른 에이전트의 자연어 질의 수신 → Atlas + Doc Store 교차 쿼리 (LLM ReAct 매핑)
+- 자기 데이터의 단순 read (식별자 알 때) 는 호출자가 직접 MCP 호출 — L 은 자연어 / 교차 쿼리만 담당
+- Chronicler 가 저장한 대화 이력 포함 교차 조회
 
-**질의 응답:**
-- 자연어 질의 수신 → Atlas + Doc Store 교차 쿼리 (Chronicler가 저장한 대화 이력 포함)
-- `by_task`, `by_session`, `by_item`, `thread` 등 조회 API 제공
-- **`get_task_context(task_id)` — Code Agent 컨텍스트 조립 전용 API**
-    - Atlas 쿼리: Task → AFFECTS → Interface → IMPLEMENTS → Class → 파일 경로
-    - 반환: `{ targets: [편집 대상 파일 경로], references: [의존 인터페이스/클래스의 시그니처 수준 메타] }`
-    - Eng/QA가 OpenCode 호출 전에 사용 (섹션 2.8 참조)
+**외부 리소스 조사 (핵심 책임 2 — 단독 전담):**
+- 라이브러리 / 프레임워크 docs (context7), 사용자 제공 URL 페이지 (mcp/web-fetch — Playwright), 일반 web 검색 (Anthropic web_search) 3 트랙
+- 다른 에이전트는 외부 정보 필요 시 A2A 자연어로 L 에 위임 — L 이 LLM 추론으로 적절한 트랙 선택
+- 자세한 트랙 / backend 분담은 [architecture-external-research](architecture-external-research.md) 참조
 
 **책임 아닌 것:**
-- A2A 대화 로그 수집은 **Librarian의 책임이 아니다**. Chronicler가 전담.
+- **write** — 각 에이전트가 자기 도메인 데이터를 MCP 통해 직접 write (CHR 의 직접 패턴 일관 적용)
+- **A2A 대화 로그 수집** — Chronicler 의 책임 (인프라 모듈)
+- **Diff 색인** — M4+ TBD ([proposal-main §9 #15](../proposal-main.md#9-미결정-사항-open-questions))
 
 **기술적 제약:**
-- Atlas의 쓰기 권한자 (+ technical_notes 등 구조화된 문서 쓰기)
-- 자신도 MCP를 통해 DB에 접근 (직접 연결 아님) → 다른 에이전트와 일관된 접근 패턴 유지
+- DB 직접 접근 X — MCP 경유 (다른 에이전트와 일관된 접근 패턴)
+- 노출 도구는 read 위주 (`*_get` / `*_list` / 조합 쿼리). M3 단계 도구 인터페이스는 [#64](https://github.com/vonkernel/dev-team/issues/64) 에서 read-centric 으로 재정의 예정
 
 ### Eng+QA 페어 - 구현/검증 단위
 
@@ -125,10 +123,10 @@ Eng와 QA는 **역할별로 1:1 페어**를 이루지만, A의 1차 설계를 **
     - 세부 구현 중 상위 설계 변경이 불가피하다고 판단되면 A에게 **의견 전달**
     - 설계 수정의 주도권과 결정권은 A에 있음 (Eng은 건의자)
     - A가 다자간 논의를 소집하면 유관 Eng으로 참여
-- **Diff 제출:**
-    - 구현 단계 완료 시 Librarian에게 **diff(파일 목록 + 파일별 변경)** 전달
-    - 기술적 개념/설계 결정/주의사항/TODO를 함께 첨부
-    - Librarian이 색인을 마치면 A에게 구현 완료 보고
+- **구현 산출물 영속:**
+    - 구현 산출물 (코드 변경의 OO 구조 색인, 작업 산출물 wiki_pages, 기술 노트) 을 Atlas / Doc Store MCP 에 **직접 write** (분담 모델 — [architecture-shared-memory](architecture-shared-memory.md))
+    - 정보 검색 / 외부 리소스 조사가 필요하면 Librarian 에게 A2A 자연어 위임
+    - 구현 완료 시 A 에게 보고. **Diff 색인의 호출 주체는 M4+ TBD** ([proposal-main §9 #15](../proposal-main.md#9-미결정-사항-open-questions))
 
 **QA (QA:{역할})의 책임:**
 
