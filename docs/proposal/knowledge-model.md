@@ -2,9 +2,9 @@
 
 > 본 문서는 [`proposal-main.md`](../proposal-main.md) §4 에서 분리. (#66)
 
-### 4.1. Semantic Layer (Neo4j)
+## 4.1. Semantic Layer (Neo4j)
 
-## 인터페이스 중심 구현 모델
+### 인터페이스 중심 구현 모델
 
 ```
 (Class)-[:IMPLEMENTS]->(Interface)
@@ -17,7 +17,7 @@
 - 에이전트가 특정 구현체에 종속되지 않고 유연하게 설계 논의
 - 인터페이스 매개 객체 간 참조 관계로 변경 영향 범위 즉각 파악
 
-## 과업-코드 추적성 모델
+### 과업-코드 추적성 모델
 
 ```
 (Task)-[:AFFECTS]->(Interface)
@@ -29,16 +29,16 @@
 - Task, Feature, BugReport 노드가 독립적으로 존재
 - 과업과 코드 직접 연결로 비즈니스 문맥 유지
 
-### 4.2. Episodic Layer (Doc Store)
+## 4.2. Episodic Layer (Doc Store)
 
-## 저장 대상
+### 저장 대상
 - **Task 정보**: 목표, 기능, 진행 상태, 히스토리
 - **기술 사항**: 설계 결정, 구현 특이점, 주의사항, TODO
 - **설계안**: 채택안(메타 정보, 실제 문서는 코드베이스)/미채택안(전문)
 - **PRD**: 사용자-P 협의 결과
 - **대화 이력**: Task → Session → Item 3계층
 
-## Task/Session/Item 컬렉션
+### Task/Session/Item 컬렉션
 
 **tasks (태스크):**
 ```json
@@ -112,7 +112,7 @@
 }
 ```
 
-## 조회 쿼리 예시
+### 조회 쿼리 예시
 
 | 목적 | 쿼리 |
 |------|------|

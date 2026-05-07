@@ -2,7 +2,7 @@
 
 > 본 문서는 [`proposal-main.md`](../proposal-main.md) §6 에서 분리. (#66)
 
-### 6.1. 컨테이너 구성
+## 6.1. 컨테이너 구성
 
 ```yaml
 # 예시: docker-compose 구조
@@ -135,13 +135,13 @@ primary:
 - 쓰기 범위는 에이전트 내부 로직 + Role Config에서 허용 디렉토리를 명시하여 제한
 - P와 Librarian은 코드베이스를 마운트하지 않음 (불필요)
 
-### 6.2. A2A 통신 (A2A Protocol v1.0)
+## 6.2. A2A 통신 (A2A Protocol v1.0)
 
 에이전트 간 통신은 **[A2A Protocol v1.0](https://a2a-protocol.org/latest/)** (Linux Foundation 표준) 을 따른다. 구현은 **`langgraph-api` ≥ 0.4.21** 이 내장 제공하는 A2A 서버를 활용하며, 각 에이전트의 LangGraph 인스턴스가 `/a2a/{assistant_id}` 엔드포인트를 직접 노출하므로 별도의 A2A Gateway 구축은 불필요하다.
 
 **JSON 직렬화 규약** ([spec §5.5](https://a2a-protocol.org/latest/specification/)): 필드는 **camelCase**, enum은 proto 이름 그대로 SCREAMING_SNAKE_CASE 문자열 (예: `"TASK_STATE_SUBMITTED"`, `"ROLE_USER"`).
 
-## 지원 RPC 메서드 (JSON-RPC 2.0)
+### 지원 RPC 메서드 (JSON-RPC 2.0)
 
 A2A v1.0 스펙의 공식 메서드명은 PascalCase:
 
@@ -153,7 +153,7 @@ A2A v1.0 스펙의 공식 메서드명은 PascalCase:
 
 > **참고:** `langgraph-api` 초기 버전의 A2A 엔드포인트는 구(舊) 명세 기반 `message/send` / `message/stream` / `tasks/get` (슬래시 형식) 메서드명을 노출한다. A2A v1.0 으로의 메서드명 일치는 `langgraph-api` 후속 릴리스에서 정렬 예상 — 실구현 시 버전별 호환성 확인 필요.
 
-## Task Lifecycle
+### Task Lifecycle
 
 [spec §4.1.1 TaskState](https://a2a-protocol.org/latest/specification/) enum 값(JSON 직렬화 값) 과 우리 시나리오 매핑:
 
@@ -170,7 +170,7 @@ A2A v1.0 스펙의 공식 메서드명은 PascalCase:
 
 `TASK_STATE_INPUT_REQUIRED` 를 적극 활용하여 LangGraph 내부 상태가 외부 인터럽션 때문에 블로킹되지 않도록 한다.
 
-## Agent Card
+### Agent Card
 
 각 에이전트는 `/.well-known/agent-card.json` 경로에 **AgentCard** 를 노출한다. Role Config 의 공개 가능한 부분을 [spec §4.4.1](https://a2a-protocol.org/latest/specification/) 정의에 맞는 JSON 포맷으로 제공:
 
@@ -217,7 +217,7 @@ A2A v1.0 스펙의 공식 메서드명은 PascalCase:
 
 **시그니처**(`signatures[]`, [spec §4.4.7](https://a2a-protocol.org/latest/specification/) AgentCardSignature) 는 미채택 — 부록 참조.
 
-## A2A 메시지 포맷 (JSON-RPC 2.0)
+### A2A 메시지 포맷 (JSON-RPC 2.0)
 
 `SendMessage` 요청 예:
 
@@ -252,7 +252,7 @@ A2A v1.0 스펙의 공식 메서드명은 PascalCase:
 
 응답은 짧은 작업이면 `Message`, 긴 작업이면 `Task`(`status.state`가 `TASK_STATE_SUBMITTED`/`TASK_STATE_WORKING`)를 반환. 후자는 `GetTask` 폴링 또는 `SendStreamingMessage` SSE 구독으로 진행.
 
-### 6.3. MCP 연동 계획
+## 6.3. MCP 연동 계획
 
 MCP 서버는 두 종류로 나뉜다:
 
@@ -276,7 +276,7 @@ MCP 서버는 두 종류로 나뉜다:
 - **외부 리소스 조사 전담 (L)**: 라이브러리 docs / URL / web search 는 L 단독 (§2.9)
 - **외부 PM 단독 창구 (P)**: Doc Store ↔ GitHub Issues / Wiki sync 는 P 가 직접 IssueTracker / Wiki MCP 호출. A / ENG / QA 가 외부 반영 필요하면 A→P 위임.
 
-### 6.4. 추상화 레이어 (OCP 원칙)
+## 6.4. 추상화 레이어 (OCP 원칙)
 
 시스템의 핵심 외부 의존성은 **인터페이스 계약**을 먼저 정의하고, 실제 구현체는 교체 가능하도록 구성한다. **초기 구현체**는 아래 "기본 구현" 컬럼을 따르되, 인터페이스를 통해 추후 다른 구현을 추가할 수 있도록 한다(Open-Closed Principle).
 
@@ -290,7 +290,7 @@ MCP 서버는 두 종류로 나뉜다:
 
 **DB/외부 도구 연동 통일:** Shared Memory(Graph/Doc Store)뿐 아니라 External PM Tool도 **공유 MCP 서버**로 래핑한다. 에이전트 입장에서는 모든 외부 시스템이 MCP라는 동일 인터페이스로 추상화되며, 구현체 교체는 MCP 서버를 바꿔치기하는 것으로 끝난다.
 
-## 저장소 선택 맥락 — 왜 PostgreSQL 인가 (Doc Store 기본 구현)
+### 저장소 선택 맥락 — 왜 PostgreSQL 인가 (Doc Store 기본 구현)
 
 초기 설계에서는 Doc Store 의 기본 구현을 MongoDB 로 두었으나, 다음 이유로 **PostgreSQL + JSONB** 로 전환한다 (이슈 #20):
 
@@ -310,7 +310,7 @@ MCP 서버는 두 종류로 나뉜다:
 
 `Doc Store` 라는 **추상화 인터페이스 자체는 유지** 되므로, 향후 MongoDB / CouchDB / Elasticsearch 등 다른 document-oriented 구현체로 교체하고 싶어지면 Doc Store MCP 서버 구현체만 바꿔치우면 된다.
 
-## 인터페이스 예시
+### 인터페이스 예시
 
 **CodeAgent 인터페이스 (의사 코드):**
 ```python
@@ -346,7 +346,7 @@ tools:
 
 구현체는 `github-wiki-issue-mcp`, `jira-confluence-mcp`, `linear-mcp` 등으로 별도 컨테이너로 빌드된다. 에이전트는 config에서 MCP URL만 지정하면 된다.
 
-## 구현체 선택 메커니즘
+### 구현체 선택 메커니즘
 
 - Role Config의 각 추상화 필드(`code_agent.type`, `external_pm.type` 등)에서 구현체 이름을 지정
 - 에이전트 기동 시 팩토리가 해당 구현체를 로드
