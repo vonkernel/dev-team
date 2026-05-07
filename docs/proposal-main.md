@@ -200,7 +200,7 @@ OpenCode CLI 를 Python subprocess (non-interactive) 로 기동, one-shot 호출
 
 ### 2.9. 외부 리소스 조사 (3 트랙) → [external-research](proposal/architecture-external-research.md)
 
-L 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 URL Playwright), Anthropic web_search (Claude API native). 다른 에이전트는 A2A 자연어로 L 에 위임.
+L 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 URL Playwright), Claude Web Search (Claude API native). 다른 에이전트는 A2A 자연어로 L 에 위임.
 
 ### 2.10. 인프라 컴포넌트 카탈로그
 

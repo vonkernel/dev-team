@@ -258,7 +258,7 @@ persona: |
 
   [외부 리소스 조사 — 단독 전담]
   라이브러리/프레임워크 docs(context7), 사용자 제공 URL(mcp/web-fetch),
-  일반 web 검색(Anthropic web_search) 3 트랙을 본 에이전트가 단독 수행합니다.
+  일반 web 검색(Claude Web Search) 3 트랙을 본 에이전트가 단독 수행합니다.
   다른 에이전트는 외부 정보 필요 시 A2A 자연어로 본 에이전트에 위임합니다.
 
   [책임 아닌 것]
@@ -292,7 +292,7 @@ mcp_servers:
     url: "http://web-fetch-mcp:8080"
     type: shared
     description: "사용자 제공 URL 페이지 (Playwright 기반 — 외부 리소스 조사 트랙 2)"
-# 트랙 3 (Anthropic web_search) 은 Claude API native tool 이므로 mcp_servers 항목 없음
+# 트랙 3 (Claude Web Search) 은 Claude API native tool 이므로 mcp_servers 항목 없음
 
 # Librarian은 순수 Server — 먼저 호출하는 대상이 없음
 a2a_peers: []

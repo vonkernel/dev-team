@@ -12,14 +12,14 @@ flowchart LR
     OtherAgents -->|자연어 위임| L["Librarian (L)"]
     L -->|MCP| C7["트랙 1: context7<br/>(라이브러리 docs SaaS, 외부 MCP)"]
     L -->|MCP| WF["트랙 2: web-fetch<br/>(자체 mcp/web-fetch — Playwright)"]
-    L -.LLM API tool.-> WS["트랙 3: Anthropic web_search<br/>(Claude API native — backend 0)"]
+    L -.LLM API tool.-> WS["트랙 3: Claude Web Search<br/>(Claude API native — backend 0)"]
 ```
 
 | 트랙 | backend | 용도 | L 의 호출 방식 |
 |------|---------|------|----------|
 | **1. context7** | Upstash SaaS (이미 MCP 노출, `https://mcp.context7.com/mcp`) | 라이브러리 / 프레임워크 공식 docs | L 의 lifespan 에서 외부 MCP 에 connect (wrapper 0) |
 | **2. web-fetch (Playwright)** | 자체 컨테이너 `mcp/web-fetch/` — chromium headless + trafilatura | 사용자 제공 URL 의 페이지 내용 파악 (JS-heavy / SPA 까지) | L 의 lifespan 에서 connect, LangChain tool 로 노출 |
-| **3. Anthropic web_search** | Anthropic SaaS — Claude API 의 [`web_search_20250305`](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool) tool | 일반 web search (사용자 의도 / 시장 조사 / 외부 정보) | L 의 LLM 호출 시 `tools` 배열에 추가 — backend 0 |
+| **3. Claude Web Search** | Claude API 의 [`web_search_20250305`](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool) tool (Anthropic SaaS) | 일반 web search (사용자 의도 / 시장 조사 / 외부 정보) | L 의 LLM 호출 시 `tools` 배열에 추가 — backend 0 |
 
 **호출 주체**: L 단독. 다른 에이전트 (P / A / ENG / QA) 가 외부 정보 필요하면
 A2A 자연어로 L 에게 위임 — L 이 LLM 추론으로 적절한 트랙 선택 + 호출 + 응답 정리.

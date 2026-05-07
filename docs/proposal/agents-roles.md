@@ -85,7 +85,7 @@ graph LR
 - Chronicler 가 저장한 대화 이력 포함 교차 조회
 
 **외부 리소스 조사 (핵심 책임 2 — 단독 전담):**
-- 라이브러리 / 프레임워크 docs (context7), 사용자 제공 URL 페이지 (mcp/web-fetch — Playwright), 일반 web 검색 (Anthropic web_search) 3 트랙
+- 라이브러리 / 프레임워크 docs (context7), 사용자 제공 URL 페이지 (mcp/web-fetch — Playwright), 일반 web 검색 (Claude Web Search) 3 트랙
 - 다른 에이전트는 외부 정보 필요 시 A2A 자연어로 L 에 위임 — L 이 LLM 추론으로 적절한 트랙 선택
 - 자세한 트랙 / backend 분담은 [architecture-external-research](architecture-external-research.md) 참조
 
