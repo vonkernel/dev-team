@@ -18,6 +18,7 @@ from dev_team_shared.a2a.client import A2AClient, A2AClientError
 from dev_team_shared.a2a.decision import (
     DEFAULT_RESPONSE_DECISION_PROMPT,
     A2AResponseDecision,
+    make_classify_response_node,
 )
 from dev_team_shared.a2a.tracing import TRACE_ID_HEADER
 from dev_team_shared.a2a.types import Message, Part, TaskState
@@ -35,4 +36,5 @@ __all__ = [
     "TRACE_ID_HEADER",
     "TaskState",
     "build_agent_card",
+    "make_classify_response_node",
 ]
