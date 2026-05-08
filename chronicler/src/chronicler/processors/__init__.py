@@ -21,14 +21,12 @@ from chronicler.processors.assignment_create import AssignmentCreateProcessor
 from chronicler.processors.assignment_update import AssignmentUpdateProcessor
 from chronicler.processors.base import EventProcessor
 from chronicler.processors.chat_append import ChatAppendProcessor
-from chronicler.processors.session_end import SessionEndProcessor
 from chronicler.processors.session_start import SessionStartProcessor
 
 ALL_PROCESSORS: list[EventProcessor] = [
-    # Chat layer
+    # Chat layer (session 은 종료 개념 없음 — SessionEndProcessor 폐기)
     SessionStartProcessor(),
     ChatAppendProcessor(),
-    SessionEndProcessor(),
     # Assignment layer
     AssignmentCreateProcessor(),
     AssignmentUpdateProcessor(),
@@ -55,6 +53,5 @@ __all__ = [
     "AssignmentUpdateProcessor",
     "ChatAppendProcessor",
     "EventProcessor",
-    "SessionEndProcessor",
     "SessionStartProcessor",
 ]

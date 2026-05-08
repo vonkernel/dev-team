@@ -1,4 +1,9 @@
-"""sessions Pydantic 모델 — UG↔P/A 한 대화창 (chat tier)."""
+"""sessions Pydantic 모델 — UG↔P/A 한 대화창 (chat tier).
+
+#75 PR 3: session 은 종료 개념 없음 (사용자가 언제든 재개) — `ended_at`
+필드 / `SessionEndEvent` / `SessionEndProcessor` 모두 폐기. archive 가
+필요해지면 별도 컬럼 (예: `archived_at`) 으로.
+"""
 
 from __future__ import annotations
 
@@ -20,12 +25,11 @@ class SessionCreate(BaseModel):
 
 
 class SessionUpdate(BaseModel):
-    """주로 ended_at / metadata 갱신용."""
+    """metadata 갱신용 (ended_at 폐기됨)."""
 
     model_config = ConfigDict(extra="forbid")
 
     metadata: dict[str, Any] | None = None
-    ended_at: datetime | None = None
 
 
 class SessionRead(BaseModel):
@@ -37,4 +41,3 @@ class SessionRead(BaseModel):
     counterpart: str
     metadata: dict[str, Any]
     started_at: datetime
-    ended_at: datetime | None

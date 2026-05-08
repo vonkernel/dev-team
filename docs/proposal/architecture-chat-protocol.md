@@ -167,13 +167,17 @@ persona 가이드 (P / A 공통 패턴):
 
 ## 7. 영속 / Chronicler
 
-UG 가 chat lifecycle 이벤트를 Valkey Streams 로 publish:
+UG / agent 가 chat lifecycle 이벤트를 Valkey Streams 로 publish:
 
-| 이벤트 | 트리거 |
-|---|---|
-| `chat.session.start` | 사용자가 새 chat session 시작 |
-| `chat.append` | 사용자 / agent 의 발화 |
-| `chat.session.end` | session 닫힘 (페이지 떠남 / 명시 종료 / TTL) |
+| 이벤트 | 트리거 | publisher |
+|---|---|---|
+| `session.start` | 사용자가 새 chat session 시작 (또는 첫 message 도착) | UG |
+| `chat.append` | 사용자 / agent 의 발화 | UG (user 발화) / agent (agent 발화) |
+
+**session 은 종료 개념이 없다.** chat 대화창은 사용자가 언제든 재개할 수
+있는 namespace (Slack DM / ChatGPT 류) — `session.end` 이벤트 / `sessions.
+ended_at` 컬럼 모두 두지 않는다. archive / delete 가 필요해지면 그땐 별도
+컬럼 (예: `archived_at`) 으로.
 
 Chronicler 가 consume 해 Doc Store `sessions` / `chats` 컬렉션에 영속화
 ([architecture-event-pipeline](architecture-event-pipeline.md)).
@@ -189,7 +193,7 @@ P/A 의 Assignment 발급은 별도 이벤트 (`assignment.create` / `assignment
 | 식별자 | `session_id` (서버 발급 UUID) | `contextId` (A2A wire), `traceId` (트리 join) |
 | 메시지 객체 | Chat (Doc Store `chats`) | A2A Message (Doc Store `a2a_messages`) |
 | 작업 단위 | Assignment (Doc Store `assignments`) | A2A Task (Doc Store `a2a_tasks`) |
-| Lifecycle | Session start/end + Chat append | A2A Context start/end + Task SUBMITTED→COMPLETED |
+| Lifecycle | Session start (종료 없음) + Chat append | A2A Context start/end (agent 결정) + Task SUBMITTED→COMPLETED |
 | Spec | 자체 정의 (본 문서) | [A2A v1.0](https://a2a-protocol.org/latest/specification/) |
 
 A2A Context 가 chat session 에서 비롯되는 경우 `a2a_contexts.parent_session_id` /

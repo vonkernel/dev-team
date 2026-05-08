@@ -91,7 +91,8 @@ shared/src/dev_team_shared/<name>/
 
 | 서브패키지 | 패턴 | 비고 |
 |---|---|---|
-| `a2a/` | B | FastAPI 라우터 + JSON-RPC + SSE wrapper |
+| `a2a/` | B | FastAPI 라우터 + JSON-RPC + SSE wrapper. `decision.py` 는 A2A 응답 shape 결정 (Task wrap vs Message) building blocks |
+| `agent_graph/` | B | LangGraph agent 그래프의 공통 building blocks (ReAct llm_call / tool_node / should_continue / serialize). 각 agent graph.py 가 import 해 조립 |
 | `config_loader/` | B | Role config / overrides 로딩 |
 | `doc_store/` | A | server: `mcp/doc-store/` |
 | `event_bus/` | B | Valkey Streams ABC + concrete |

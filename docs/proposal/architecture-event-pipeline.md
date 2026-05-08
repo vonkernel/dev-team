@@ -45,13 +45,16 @@ processor 로 분기 (OCP — 새 layer 추가 = 새 processor + 등록 1줄).
 
 ### 1. Chat layer (UG↔P/A 영역)
 
-UG 가 publish.
+UG 와 agent (P/A) 양쪽이 publish — 자기 발화는 자기가.
 
-| 이벤트 | 트리거 | 적재처 |
-|---|---|---|
-| `chat.session.start` | 사용자가 새 chat session 시작 | `sessions` row 생성 |
-| `chat.append` | 사용자 / agent 의 발화 | `chats` row 생성 |
-| `chat.session.end` | session 닫힘 (페이지 떠남 / 명시 종료 / TTL) | `sessions.ended_at` 갱신 |
+| 이벤트 | 트리거 | publisher | 적재처 |
+|---|---|---|---|
+| `session.start` | 사용자가 새 chat session 시작 | UG | `sessions` row 생성 |
+| `chat.append` (role=user) | 사용자 발화 | UG | `chats` row 생성 |
+| `chat.append` (role=agent) | agent 발화 | agent (P/A) | `chats` row 생성 |
+
+**session 은 종료 개념 없음.** chat 대화창은 사용자가 언제든 재개할 수 있는
+namespace — `session.end` 이벤트 / `sessions.ended_at` 컬럼 두지 않는다.
 
 ### 2. Assignment layer (도메인 work item)
 
@@ -73,7 +76,12 @@ Primary / Architect 가 publish (chat 중 합의 시점).
 | `a2a.task.create` | A2A Task 생성 (stateful 작업 응답 시) | `a2a_tasks` row 생성 |
 | `a2a.task.status_update` | Task state 전환 | `a2a_task_status_updates` row 생성 + `a2a_tasks.state` 갱신 |
 | `a2a.task.artifact` | Task 산출물 추가 | `a2a_task_artifacts` row 생성 |
-| `a2a.context.end` | A2A 호출 트리 종료 (정상 / 에러) | `a2a_contexts.ended_at` 갱신 |
+| `a2a.context.end` | **agent 가 inter-agent 대화 마무리 판단 시** (계속 대기 X / 작업 완료 등) | `a2a_contexts.ended_at` 갱신 |
+
+`a2a.context.end` 트리거는 RPC 라이프사이클이 아니다 — 한 contextId 위에
+여러 RPC (Task / Message) 가 누적되며, agent 가 자기 판단으로 "이 두 에이전트
+사이 대화는 끝" 이라고 결정한 시점에만 발화. 발화 위치는 agent 의 graph /
+handler 안 (시점은 agent 통합 PR 에서 결정).
 
 ## 어휘 / 객체 모델
 
