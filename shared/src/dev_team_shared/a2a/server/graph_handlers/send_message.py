@@ -27,11 +27,12 @@ from dev_team_shared.a2a.server.graph_handlers.parse import (
     parse_request_or_error,
 )
 from dev_team_shared.a2a.server.graph_handlers.publish import (
+    publish_a2a_context_start,
     publish_a2a_message_append,
     publish_a2a_task_create,
     publish_a2a_task_status_update,
 )
-from dev_team_shared.a2a.server.graph_handlers.session import ChatContext, log_session
+from dev_team_shared.a2a.server.graph_handlers.rpc import RPCContext, log_rpc
 from dev_team_shared.a2a.server.handler import MethodHandler
 
 logger = logging.getLogger(__name__)
@@ -51,17 +52,26 @@ class GraphSendMessageHandler(MethodHandler):
             return parsed
         a2a_msg, human_text = parsed
 
-        ctx = ChatContext.create(
+        ctx = RPCContext.create(
             request,
             rpc_id=rpc_id,
             method=self.method_name,
             context_id=a2a_msg.context_id or str(uuid.uuid4()),
         )
 
-        async with log_session(ctx):
-            # 이벤트 순서: Task commit 먼저 → user Message (Task.history) →
-            # WORKING 전이. 현재 구현은 모든 SendMessage 응답을 Task wrap
-            # (PR 3 에서 trivial / stateful 분기로 정정 예정).
+        async with log_rpc(ctx):
+            # 이벤트 순서: a2a.context.start (idempotent — CHR 가 dedup) →
+            # Task commit → user Message (Task.history) → WORKING 전이.
+            # 현재 구현은 모든 SendMessage 응답을 Task wrap (PR 3 에서
+            # trivial / stateful 분기로 정정 예정).
+            await publish_a2a_context_start(
+                request,
+                context_id=ctx.context_id,
+                trace_id=ctx.trace_id,
+                initiator_agent="user",   # PR 4 에서 chat tier 분리 시 정확화
+                counterpart_agent=ctx.assistant,
+                topic=ctx.method,
+            )
             await publish_a2a_task_create(
                 request,
                 context_id=ctx.context_id,

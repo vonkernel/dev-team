@@ -4,9 +4,9 @@
 각 에이전트의 `server.py` 가 lifespan 에서 그래프 / agent_card 를 준비한 뒤
 아래 핸들러를 `make_a2a_router(handlers=[...])` 로 등록하면 된다.
 
-한 RPC 세션은 식별자 묶음(`ChatContext`) + lifecycle 스코프(`log_session`)
-위에서 흐른다. 핸들러는 ctx 를 만들고 lifecycle 스코프 안에서 graph 를 호출한
-뒤, 그 결과를 A2A Task / Event 모델로 조립(`factories`)해 envelope 헬퍼
+한 RPC 호출은 식별자 묶음(`RPCContext`) + lifecycle 스코프(`log_rpc`) 위에서
+흐른다. 핸들러는 ctx 를 만들고 lifecycle 스코프 안에서 graph 를 호출한 뒤,
+그 결과를 A2A Task / Event 모델로 조립(`factories`)해 envelope 헬퍼
 (`envelope`)로 직렬화해 내보낸다. 스트리밍 경로는 `stream` 모듈이
 graph.astream 을 SSE 라인으로 번역하면서 client disconnect 폴링과 keepalive
 sentinel 처리를 함께 수행한다.
@@ -14,7 +14,7 @@ sentinel 처리를 함께 수행한다.
 서브모듈 구성:
 
   config            env 기반 자원 관리 튜닝 (timeout / keepalive)
-  session           ChatContext + log_session
+  rpc               RPCContext + log_rpc
   parse             요청 파싱 / LLM 응답 텍스트 추출
   factories         A2A Task / 이벤트 모델 조립 + 에러 텍스트
   envelope          JSON-RPC / SSE envelope 직렬화

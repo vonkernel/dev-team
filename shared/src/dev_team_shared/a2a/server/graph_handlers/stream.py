@@ -21,7 +21,7 @@ from dev_team_shared.a2a.server.graph_handlers.config import SSE_KEEPALIVE_S
 from dev_team_shared.a2a.server.graph_handlers.envelope import sse
 from dev_team_shared.a2a.server.graph_handlers.factories import make_artifact_event
 from dev_team_shared.a2a.server.graph_handlers.parse import stringify_ai_content
-from dev_team_shared.a2a.server.graph_handlers.session import ChatContext
+from dev_team_shared.a2a.server.graph_handlers.rpc import RPCContext
 
 
 async def _is_disconnected(request: Request) -> bool:
@@ -35,7 +35,7 @@ async def _is_disconnected(request: Request) -> bool:
 async def stream_artifact_events(
     graph: Any,
     human_text: str,
-    ctx: ChatContext,
+    ctx: RPCContext,
 ) -> AsyncIterator[str]:
     """graph.astream 소비 → keepalive comment / artifact-update SSE 라인 yield."""
     async for item in aiter_with_keepalive(

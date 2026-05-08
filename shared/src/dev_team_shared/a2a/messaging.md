@@ -92,7 +92,7 @@ sequenceDiagram
     Agent-->>Client: Task(state=COMPLETED, history=[...])
 ```
 
-본 구현은 `graph_handlers/send_message.py:GraphSendMessageHandler`. 핸들러 본문은 *parse → ChatContext.create → graph.ainvoke (`anyio.fail_after` 로 S4 timeout 적용) → make_completed_task / make_failed_task* 의 얇은 오케스트레이터.
+본 구현은 `graph_handlers/send_message.py:GraphSendMessageHandler`. 핸들러 본문은 *parse → RPCContext.create → graph.ainvoke (`anyio.fail_after` 로 S4 timeout 적용) → make_completed_task / make_failed_task* 의 얇은 오케스트레이터.
 
 ### 3.2. `SendStreamingMessage` — SSE 스트림 (spec §9.4.2)
 
@@ -247,12 +247,12 @@ sequenceDiagram
 | Wire 위치 | HTTP 헤더 `X-A2A-Trace-Id` |
 | 부재 시 | 서버 (`router.py`) 가 새 UUID 발급 → `request.state.trace_id` 에 보관 |
 | 위임 시 forward | 위임자가 받은 traceId 를 `A2AClient.send_message(..., trace_id=...)` 인자로 그대로 forward |
-| 로그 | `sse_session.start/cancel/end` 모든 로그에 `trace_id=...` 포함 (`session.py:log_session`) |
+| 로그 | `a2a_rpc.start/cancel/end` 모든 로그에 `trace_id=...` 포함 (`rpc.py:log_rpc`) |
 
 코드 매핑:
 
 - 서버 수신 — `router.py` 가 헤더 읽음 → `request.state.trace_id` 보관
-- 핸들러 — `ChatContext.create()` 가 자동으로 읽어 `ctx.trace_id` 에 저장
+- 핸들러 — `RPCContext.create()` 가 자동으로 읽어 `ctx.trace_id` 에 저장
 - 클라이언트 송신 — `A2AClient(trace_id=...)` (생성자 default) 또는 메서드 인자 `send_message(trace_id=...)` (per-call override)
 
 추후 OpenTelemetry `traceparent` 헤더 도입 시 `tracing.py` 가 두 헤더를 모두 인식하도록 확장하면 된다.
