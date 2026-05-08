@@ -73,6 +73,22 @@ trivial 응답은 Message 만, stateful 만 Task — 후속 작업으로 분기 
 
 ⚠️ `contextId` 는 **에이전트 쌍 사이의 conversation 식별자**이지 시스템 전체 trace 식별자가 아니다. Primary ↔ Engineer 의 contextId 와 Primary ↔ QA 의 contextId 는 다른 값이어야 한다 (각각 다른 두 당사자의 대화). 시스템 전체를 묶어 추적하려면 **`traceId`** (§5.x) 를 쓴다.
 
+#### Context lifecycle — start / end
+
+| 시점 | 트리거 | publish |
+|---|---|---|
+| start | 새 contextId 의 첫 RPC 도착 시 | `a2a.context.start` (CHR idempotency 가 dedup) |
+| end | **agent 가 "이 inter-agent 대화 마무리" 라 판단한 시점** | `a2a.context.end` |
+
+end 는 RPC 라이프사이클이 아니다. 한 contextId 위에 여러 RPC (Task / Message)
+가 누적될 수 있고, agent 가 자기 graph / handler 안에서 "더 이상 대화 이어
+받을 일 없음" 이라 결정한 시점에만 발화. publish 위치 / 결정 로직은 agent
+통합 PR 에서.
+
+session (chat tier) 과 다르게 a2a_context 는 종료 개념이 있다 — agent 가
+관리하는 대화로 명시적 끝맺음이 의미를 가짐 (반면 session 은 사용자가
+언제든 재개하는 namespace 라 종료 개념 없음).
+
 > ※ 사용자 ↔ Primary / Architect 의 chat 통신은 A2A 가 아니므로 contextId 가 아닌 **session_id** (chat protocol 의 식별자) 를 사용한다. A2A Context 가 chat session 에서 비롯되는 경우 (예: Primary 가 사용자 chat 중 Architect 에게 위임) 새 contextId 를 만들고, Doc Store 의 `a2a_contexts.parent_session_id` 로 source session 을 backlink ([knowledge-model](../../../../../docs/proposal/knowledge-model.md) §4.2).
 
 ---
@@ -127,7 +143,26 @@ sequenceDiagram
 | `SendStreamingMessage` | ✅ | ✅ (SSE) | ❌ |
 | `GetTask` | ❌ | ❌ | ✅ |
 
-`SendMessage` / `SendStreamingMessage` 는 **새 Task 를 만드는** 동사 (둘 중 하나 선택), `GetTask` 는 **기존 Task 를 들여다보는** 동사.
+`SendMessage` / `SendStreamingMessage` 는 **새 Task 또는 Message 를 만드는** 동사, `GetTask` 는 **기존 Task 를 들여다보는** 동사.
+
+### 3.4. Task wrap vs Message-only — method-level 분기 (#75 PR 3)
+
+A2A 공식 가이드: *"Messages for Trivial Interactions, Tasks for Stateful Interactions"*. 응답을 항상 Task 로 감싸지 않고 **trivial 응답은 Message 만**, **stateful 작업만 Task wrap** 한다. 분기 로직은 호출자 (caller) 가 method 선택으로 표현:
+
+| Method | 응답 형식 | 의미 |
+|---|---|---|
+| `SendMessage` | `Message` (trivial) | 호출자가 "단순 응답이면 됨" 으로 결정한 경로. Task 라이프사이클 없음. a2a_messages 에 row 1개 |
+| `SendStreamingMessage` | `Task` (stateful) | 호출자가 "long-running / stateful 작업" 으로 결정한 경로. Task SUBMITTED → WORKING → COMPLETED 거침. a2a_tasks + a2a_messages (history) + a2a_task_status_updates row 누적 |
+
+> 분기 결정을 **server / graph 안에서 LLM 으로 분류** 하지 않는다. 호출자가 method 선택으로 명시 — spec 정신과 정합 (streaming = stateful, send_message = trivial). server 측 룰 / 분류 LLM 도입 시 의미가 fragile 해짐.
+
+#### 영향
+
+- **publish 패턴 (server 측)**:
+  - `SendMessage` → `a2a.context.start` (idempotent) + `a2a.message.append` (task_id=NULL) 만
+  - `SendStreamingMessage` → `a2a.context.start` + `a2a.task.create` + `a2a.message.append` (task_id 채움) + `a2a.task.status_update` (WORKING→COMPLETED) + agent reply `a2a.message.append`
+- 같은 contextId 위에 `SendMessage` / `SendStreamingMessage` 가 섞여도 모두 같은 a2a_context 에 누적 (contextId 가 grouping key, method 무관)
+- LangGraph thread (`thread_id = contextId`) 도 동일 thread 위 history 이어짐
 
 ---
 
@@ -238,7 +273,17 @@ sequenceDiagram
 
 ### 5.x. `traceId` — 시스템 전체 추적
 
-`contextId` 가 boundary 안의 대화라면, `traceId` 는 boundary 를 **가로지르는** 추적 ID. 사용자가 UG chat 으로 시작한 한 의도가 Primary → Engineer → QA 까지 흐를 때 같은 traceId 가 따라다녀 **한 trace 로 묶여 로그 추적이 가능**.
+`contextId` 가 boundary 안의 대화라면, `traceId` 는 boundary 를 **가로지르는** 추적 ID — 한 의도가 시스템 전체로 퍼진 흔적. 같은 traceId 의 모든 a2a_context / 로그를 묶으면 그 의도의 전체 흐름이 복원된다.
+
+trace 의 시작점은 셋:
+
+| 시작점 | 예 |
+|---|---|
+| 사용자 | UG chat 으로 시작한 의도 (UG → Primary → Engineer → QA …) |
+| agent autonomous | scheduled task / cron / agent 자체 판단으로 다른 agent 호출 |
+| 외부 system trigger | webhook / external event |
+
+> ⚠️ trace 는 **사용자 의도에서만 시작하지 않는다**. agent 가 자력으로 시작한 일도 trace 가 붙어 boundary 가로지르는 추적이 가능하다. 시작점에 따라 `a2a_contexts` 의 source link (`parent_session_id` / `parent_assignment_id` / 둘 다 NULL) 가 달라질 뿐, traceId 매핑은 동일하다.
 
 규약 (`tracing.py:TRACE_ID_HEADER`):
 
