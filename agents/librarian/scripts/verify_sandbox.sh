@@ -12,7 +12,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-COMPOSE_FILE="$REPO_ROOT/infra/docker-compose.yml"
+COMPOSE_FILE="$REPO_ROOT/docker-compose.yml"
 AGENT_DIR="$REPO_ROOT/agents/librarian"
 
 if ! awk -F= '$1=="ANTHROPIC_API_KEY" && length($2)>0 {found=1} END{exit !found}' "$REPO_ROOT/.env"; then

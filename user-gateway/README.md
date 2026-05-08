@@ -70,7 +70,7 @@ UG 가 간단화한 이벤트(`meta` / `chunk` / `done` / `error`) 로 번역해
 
 ### 1. 인프라 + Primary 먼저
 ```bash
-docker compose -f infra/docker-compose.yml --env-file .env --profile agents up -d postgres postgres-init valkey primary
+docker compose --profile agents up -d postgres postgres-init valkey primary
 ```
 
 ### 2. UG backend (호스트 uvicorn, 핫리로드)
@@ -101,7 +101,7 @@ npm run dev
 
 전체 스택 기동:
 ```bash
-docker compose -f infra/docker-compose.yml --env-file .env --profile agents up -d --build
+docker compose --profile agents up -d --build
 ```
 
 접속: **http://localhost:8080**

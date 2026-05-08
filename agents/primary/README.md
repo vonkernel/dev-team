@@ -72,7 +72,7 @@ curl -X POST http://localhost:8001/a2a/primary \
 Postgres 연동까지 로컬에서 확인하려면:
 ```bash
 # postgres 만 먼저 띄우기
-docker compose -f infra/docker-compose.yml --env-file .env up -d postgres postgres-init
+docker compose up -d postgres postgres-init
 
 # DATABASE_URI 를 export 후 uvicorn 재기동
 export DATABASE_URI="postgres://devteam:devteam_postgres@localhost:5432/langgraph"
@@ -85,7 +85,7 @@ export DATABASE_URI="postgres://devteam:devteam_postgres@localhost:5432/langgrap
 
 ```bash
 # 전체 스택 (infra + agents) 기동
-docker compose -f infra/docker-compose.yml --env-file .env --profile agents up -d --build
+docker compose --profile agents up -d --build
 
 # 상태 확인
 docker ps --filter "name=dev-team"

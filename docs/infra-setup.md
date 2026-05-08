@@ -38,13 +38,13 @@ cp .env.example .env
 ### 기동
 
 ```bash
-docker compose -f infra/docker-compose.yml --env-file .env up -d
+docker compose up -d
 ```
 
 ### 상태 확인
 
 ```bash
-docker compose -f infra/docker-compose.yml --env-file .env ps
+docker compose ps
 ```
 
 3개 컨테이너(`neo4j`, `postgres`, `valkey`)가 `healthy` 로 표시되고, init one-shot 서비스 2개(`neo4j-init`, `postgres-init`)가 `Exited (0)` 이면 정상.
@@ -53,10 +53,10 @@ docker compose -f infra/docker-compose.yml --env-file .env ps
 
 ```bash
 # 컨테이너만 제거 (볼륨 = 데이터 유지)
-docker compose -f infra/docker-compose.yml --env-file .env down
+docker compose down
 
 # 컨테이너 + 볼륨 모두 제거 (완전 초기화)
-docker compose -f infra/docker-compose.yml --env-file .env down -v
+docker compose down -v
 ```
 
 ---
@@ -174,7 +174,7 @@ Consumer group 은 Chronicler 가 기동하면서 생성하는 설계이므로, 
 
 ### 컨테이너가 `unhealthy` 로 잡힐 때
 ```bash
-docker compose -f infra/docker-compose.yml --env-file .env logs <service>
+docker compose logs <service>
 ```
 
 ### init 컨테이너가 실패(exit code ≠ 0)로 끝날 때
@@ -191,13 +191,13 @@ docker start -a dev-team-postgres-init
 ### 포트가 이미 점유되어 바인딩 실패
 `.env` 에서 해당 포트 변수를 다른 값으로 변경하고 재기동:
 ```bash
-docker compose -f infra/docker-compose.yml --env-file .env down
+docker compose down
 # .env 에서 NEO4J_HTTP_PORT, POSTGRES_PORT, VALKEY_PORT 등 수정
-docker compose -f infra/docker-compose.yml --env-file .env up -d
+docker compose up -d
 ```
 
 ### 완전 초기화
 ```bash
-docker compose -f infra/docker-compose.yml --env-file .env down -v
-docker compose -f infra/docker-compose.yml --env-file .env up -d
+docker compose down -v
+docker compose up -d
 ```
