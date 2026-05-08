@@ -94,9 +94,16 @@ llm:
 | `mcp_servers` | 연결할 MCP 서버 목록 (공유 + 로컬) | 필수 |
 | `a2a_peers` | **클라이언트 측 설정** — 내가 먼저 호출(initiate)할 피어의 URL 목록 | 필수 (Librarian 제외) |
 | `allowed_clients` | **서버 측 설정** — 내 A2A 서버로의 호출을 허용할 주체 목록 | 필수 |
-| `workflow` | LangGraph 서브그래프 선택 — `base`는 공통 그래프, `extensions`는 역할별 서브그래프 모듈 식별자 목록 (`agent/src/graph/extensions/` 아래 코드와 대응) | 필수 |
+| `workflow` | (현재 미사용) — graph 토폴로지는 각 agent 의 `graph.py` 가 `shared/agent_graph/` 의 building blocks 를 명시적으로 조립 (옵션 D, #75 PR 3). config 의 `workflow` 필드는 향후 base/extensions 분리가 정말 필요해질 때 재도입 검토 (현재는 코드가 곧 워크플로 정의) | 미사용 (override denylist 만 등록) |
 
 ## 역할별 Role Config 예시
+
+> **`workflow` 필드 정정** (#75 PR 3, 2026-05): 아래 예시들의 `workflow.base
+> + extensions` 블록은 **초기 디자인 의도 기록** 으로만 남겨두며 현재 코드
+> 는 사용하지 않는다. graph 토폴로지는 각 agent 의 `graph.py` 가
+> `shared/agent_graph/` 의 building blocks 를 명시적으로 조립 (옵션 D).
+> 아래 extensions 목록은 *agent 가 가져야 할 능력* 을 나열한 의도 기록 — 향후
+> base/extensions 분리가 정말 필요해질 때 재구조화 검토.
 
 ### Primary (`configs/primary.yaml`)
 

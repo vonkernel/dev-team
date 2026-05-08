@@ -75,13 +75,22 @@ graph TD
     - **Shared Memory MCP 클라이언트**: 전 에이전트 활성 (write / read 직접 — [architecture-shared-memory](architecture-shared-memory.md) 분담 모델 정정)
     - **External PM MCP 클라이언트**: Primary 만 활성
     - **외부 리소스 조사 MCP 클라이언트** (context7 / web-fetch): Librarian 만 활성 ([architecture-external-research](architecture-external-research.md))
-    - **워크플로우 확장**: 역할별로 공통 베이스 그래프 위에 sub-graph 모듈을 얹는 구조. 대표 예:
-        - **Primary** — `user_chat` (사용자 상시 채팅) / `prd_authoring` (PRD 작성·관리) / `external_pm_sync` (외부 PM 동기화)
-        - **Architect** (M4+) — `three_stage_design` (메인 설계 → 검증 → 최종 컨펌 3 서브 에이전트 루프) / `multi_proposal` (복수 설계안 도출) / `design_adoption` (채택 md 저장 + 미채택 Doc Store 영속) / `multi_party_mediation` (다자간 논의 소집)
-        - **Librarian** — `nl_query_answering` (자연어 정보 검색) / `external_research_dispatch` (3 트랙 외부 조사 dispatch)
-        - **Engineer** (M5+) — `self_design_loop` (세부 설계 자율 루프) / `context_assembly` (Atlas 컨텍스트 정제) / `design_escalation` (Architect 에 상위 설계 수정 건의) / `atlas_indexing` (자기 변경 직접 색인)
-        - **QA** (M5+) — `context_assembly` / `independent_test_authoring` (설계 기반 독립 테스트) / `build_and_test_execution` (빌드/테스트 실행) / `design_update_adaptation` (설계 변경 시 재작성)
-        - 전체 yaml 정의 / 디테일은 [architecture-role-config](architecture-role-config.md) 참조
+    - **그래프 토폴로지 — building blocks 조립** (#75 PR 3 정정): 각 agent 의
+      `graph.py` 가 `shared/agent_graph/` (ReAct llm_call / tool_node /
+      should_continue) + `shared/a2a/decision.py` (A2A 응답 shape 결정)
+      의 building blocks 를 import 해 자기 그래프를 명시적으로 조립.
+      옛 디자인의 "공통 베이스 그래프 위에 sub-graph 모듈을 얹는" (workflow.base
+      + extensions) 방식은 채택하지 않음 — 추상화 과잉 위험. agent 별 차별화
+      는 graph.py 의 `add_node` 호출 (어떤 노드 / edge 로 구성할지) 로 표현.
+    - **agent 별 능력 (추후 노드로 분화될 책임 영역)**: 정체성 / 행동 원칙은
+      `config/base.yaml` 의 `persona`, 도메인 워크플로 가이드는
+      `agents/<name>/resources/*.md`. 대표 책임:
+        - **Primary** — 사용자 chat, PRD 작성·관리, 외부 PM 동기화
+        - **Architect** (M4+) — 3-stage design (설계 → 검증 → 컨펌), 복수 설계안, 채택 / 미채택 영속, 다자간 논의 소집
+        - **Librarian** — 자연어 질의 응답, 외부 리소스 조사 3 트랙 dispatch
+        - **Engineer** (M5+) — 세부 설계 자율 루프, 컨텍스트 정제, 상위 설계 escalation, atlas 색인
+        - **QA** (M5+) — 컨텍스트 정제, 독립 테스트 작성, 빌드 / 테스트 실행, 설계 변경 적응
+        - 책임이 별 그래프 노드로 분화될 필요가 명확해지면 그때 graph.py 에 노드 추가. 지금은 persona 가이드 + ReAct 루프로 흡수
 
 ## 에이전트 유형별 구성
 
