@@ -52,7 +52,12 @@ async def stream_artifact_events(
         if item is KEEPALIVE_SENTINEL:
             yield ":keepalive\n\n"
             continue
-        msg_chunk, _metadata = item
+        msg_chunk, metadata = item
+        # classify_response 노드 (#75 PR 3 의 A2A 응답 shape 결정 LLM) 의
+        # structured output token 은 stream 에서 제외 — 사용자에게 노출되지
+        # 않도록. 메인 응답 노드 (`llm_call`) 의 token 만 통과.
+        if metadata.get("langgraph_node") == "classify_response":
+            continue
         if not isinstance(msg_chunk, AIMessage):
             continue
         text = stringify_ai_content(msg_chunk.content)

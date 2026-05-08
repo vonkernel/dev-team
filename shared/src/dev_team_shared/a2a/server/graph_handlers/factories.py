@@ -136,9 +136,40 @@ def make_artifact_event(
     )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Message-only 팩토리 (#75 PR 3) — Task wrap 안 하는 경로
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def make_agent_reply_message(ctx: RPCContext, text: str) -> Message:
+    """Task wrap 없이 trivial 응답을 보낼 때 사용 — task_id 비움."""
+    return Message(
+        message_id=f"{ctx.assistant}-msg-{uuid.uuid4()}",
+        role=Role.AGENT,
+        parts=[Part(text=text)],
+        context_id=ctx.context_id,
+    )
+
+
+def make_agent_error_message(ctx: RPCContext, error_text: str) -> Message:
+    """Message-only 경로의 에러 응답 — task_id 비움."""
+    return _error_message_no_task(ctx, error_text)
+
+
+def _error_message_no_task(ctx: RPCContext, text: str) -> Message:
+    return Message(
+        message_id=f"err-{uuid.uuid4()}",
+        role=Role.AGENT,
+        parts=[Part(text=text)],
+        context_id=ctx.context_id,
+    )
+
+
 __all__ = [
     "agent_timeout_text",
     "error_detail",
+    "make_agent_error_message",
+    "make_agent_reply_message",
     "make_artifact_event",
     "make_completed_status_event",
     "make_completed_task",

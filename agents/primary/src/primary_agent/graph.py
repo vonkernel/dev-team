@@ -25,12 +25,19 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, NotRequired, TypedDict
 
+from dev_team_shared.a2a import A2AResponseDecision
 from dev_team_shared.config_loader import load_config
 from dev_team_shared.llm import LLMSpec, create_chat_model
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AnyMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
@@ -52,9 +59,14 @@ class State(TypedDict):
     부분 업데이트를 append 로 누적. 컨펌 / draft / sync 진행 상태도 messages
     안의 AIMessage / ToolMessage 로 자연스럽게 추적되므로 별도 키 추가 X
     (단순 우선 — 추후 필요 시 확장).
+
+    `requires_task` 는 #75 PR 3 의 A2A 응답 shape 결정 — `classify_response`
+    노드가 LLM 추론으로 채움. handler 가 stream / invoke 종료 후 graph state
+    에서 읽어 Task wrap / Message only 분기 결정.
     """
 
     messages: Annotated[list[AnyMessage], add_messages]
+    requires_task: NotRequired[bool]
 
 
 def load_runtime_config() -> dict[str, Any]:
@@ -148,10 +160,98 @@ def _make_tool_node(tools: list[BaseTool]):
 
 
 def _should_continue(state: State) -> str:
-    """tool_calls 가 있으면 'tools' 노드로, 없으면 END."""
+    """tool_calls 가 있으면 'tools' 노드로, 없으면 classify_response 로."""
     last = state["messages"][-1]
     tool_calls = getattr(last, "tool_calls", None) or []
-    return "tools" if tool_calls else END
+    return "tools" if tool_calls else "classify_response"
+
+
+_CLASSIFY_PROMPT = (
+    "You are reviewing the agent's final response to a peer agent's request "
+    "(A2A inter-agent communication). Decide whether the response should be "
+    "wrapped as an A2A Task or sent as a plain Message.\n\n"
+    "requires_task=true when:\n"
+    "  - the response delegates work to another agent or starts a long-running operation\n"
+    "  - the caller will need to follow up referencing this work (track progress, fetch artifacts)\n"
+    "  - stateful outputs (artifacts, status transitions) are produced or expected\n\n"
+    "requires_task=false when:\n"
+    "  - the response is a simple answer, opinion, or fact lookup\n"
+    "  - no follow-up tracking is required by the caller\n\n"
+    "Look at the final assistant message and the request that prompted it to decide."
+)
+
+
+def _format_conversation_for_classifier(messages: list[AnyMessage]) -> str:
+    """state.messages 를 classifier 가 볼 수 있는 한 덩어리 텍스트로 직렬화.
+
+    이유: 일부 LLM provider (Anthropic) 는 대화가 user message 로 끝나야 함을
+    강제. classifier 는 직전 AIMessage 까지 포함한 전체 대화를 평가해야 하므로,
+    원본 메시지 리스트 그대로는 마지막이 AIMessage 로 끝나 거절됨. 모든 turn
+    을 한 user message 안 plain text 로 직렬화해 회피.
+    """
+    lines: list[str] = []
+    for msg in messages:
+        if isinstance(msg, HumanMessage):
+            lines.append(f"[user]\n{msg.content}")
+        elif isinstance(msg, AIMessage):
+            content = msg.content if isinstance(msg.content, str) else str(msg.content)
+            tool_calls = getattr(msg, "tool_calls", None) or []
+            if tool_calls:
+                names = ", ".join(tc.get("name", "?") for tc in tool_calls)
+                lines.append(f"[assistant]\n{content}\n(tool calls: {names})")
+            else:
+                lines.append(f"[assistant]\n{content}")
+        elif isinstance(msg, ToolMessage):
+            lines.append(f"[tool:{msg.name or '?'}]\n{msg.content}")
+    return "\n\n".join(lines)
+
+
+def _make_classify_response_node(llm: BaseChatModel):
+    """최종 응답이 Task wrap 대상인지 LLM 추론으로 결정 (#75 PR 3).
+
+    structured output 으로 `A2AResponseDecision` 강제 — LLM 이 자기 응답
+    의도 (단순 조회 / 위임 / long-running) 를 보고 `requires_task` 채움.
+    handler 는 graph state 에서 hint 만 읽어 wrap 분기.
+
+    실패 시 (LLM 호출 / 파싱 에러) 보수적 default — `requires_task=False`
+    (Message only). Task 는 LLM 이 명시한 경우만 발화.
+    """
+    classifier = llm.with_structured_output(A2AResponseDecision)
+
+    async def _classify(state: State) -> dict[str, Any]:
+        convo = _format_conversation_for_classifier(state["messages"])
+        prompt = (
+            "Below is the conversation between an A2A peer (caller) and this "
+            "agent (assistant). The final [assistant] message is the response "
+            "we are about to send back. Decide whether to wrap it as an A2A "
+            "Task or send it as a Message.\n\n"
+            "<conversation>\n"
+            f"{convo}\n"
+            "</conversation>"
+        )
+        try:
+            decision = await classifier.ainvoke([
+                SystemMessage(content=_CLASSIFY_PROMPT),
+                HumanMessage(content=prompt),
+            ])
+        except Exception:
+            logger.exception(
+                "classify_response failed — defaulting to Message only",
+            )
+            return {"requires_task": False}
+        if not isinstance(decision, A2AResponseDecision):
+            logger.warning(
+                "classify_response unexpected output type=%s — default Message only",
+                type(decision).__name__,
+            )
+            return {"requires_task": False}
+        logger.info(
+            "classify_response requires_task=%s reason=%s",
+            decision.requires_task, decision.reason,
+        )
+        return {"requires_task": decision.requires_task}
+
+    return _classify
 
 
 def _serialize(value: Any) -> str:
@@ -196,6 +296,7 @@ def build_graph(
 
     builder = StateGraph(State)
     builder.add_node("llm_call", _make_llm_call_node(persona, llm_with_tools))
+    builder.add_node("classify_response", _make_classify_response_node(llm))
     builder.add_edge(START, "llm_call")
 
     if tools:
@@ -203,13 +304,13 @@ def build_graph(
         builder.add_conditional_edges(
             "llm_call",
             _should_continue,
-            {"tools": "tools", END: END},
+            {"tools": "tools", "classify_response": "classify_response"},
         )
         builder.add_edge("tools", "llm_call")
     else:
-        # tools 없으면 단순 1-노드 (M2 호환).
-        builder.add_edge("llm_call", END)
+        builder.add_edge("llm_call", "classify_response")
 
+    builder.add_edge("classify_response", END)
     return builder.compile(checkpointer=checkpointer)
 
 
