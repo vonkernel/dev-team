@@ -1,4 +1,4 @@
-"""agent_sessions Pydantic 모델."""
+"""sessions Pydantic 모델 — UG↔P/A 한 대화창 (chat tier)."""
 
 from __future__ import annotations
 
@@ -9,39 +9,31 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class AgentSessionCreate(BaseModel):
+class SessionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    agent_task_id: UUID
-    initiator: str
+    agent_endpoint: str                              # 'primary' | 'architect'
+    initiator: str = "user"
     counterpart: str
-    context_id: str
-    trace_id: str | None = None
-    topic: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class AgentSessionUpdate(BaseModel):
-    """주로 ended_at / topic / metadata 갱신용."""
+class SessionUpdate(BaseModel):
+    """주로 ended_at / metadata 갱신용."""
 
     model_config = ConfigDict(extra="forbid")
 
-    topic: str | None = None
-    trace_id: str | None = None
     metadata: dict[str, Any] | None = None
     ended_at: datetime | None = None
 
 
-class AgentSessionRead(BaseModel):
+class SessionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    agent_task_id: UUID
+    agent_endpoint: str
     initiator: str
     counterpart: str
-    context_id: str
-    trace_id: str | None
-    topic: str | None
     metadata: dict[str, Any]
     started_at: datetime
     ended_at: datetime | None

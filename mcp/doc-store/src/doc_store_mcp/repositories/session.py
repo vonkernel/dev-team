@@ -1,4 +1,4 @@
-"""AgentTaskRepository — agent_tasks CRUD."""
+"""SessionRepository — chat tier 의 sessions CRUD."""
 
 from __future__ import annotations
 
@@ -7,48 +7,45 @@ from uuid import UUID
 
 import asyncpg
 
-from doc_store_mcp.repositories.base import PostgresRepositoryBase
-from dev_team_shared.doc_store.schemas.agent_task import (
-    AgentTaskCreate,
-    AgentTaskRead,
-    AgentTaskUpdate,
+from dev_team_shared.doc_store.schemas.session import (
+    SessionCreate,
+    SessionRead,
+    SessionUpdate,
 )
+from doc_store_mcp.repositories.base import PostgresRepositoryBase
 
 
-class AgentTaskRepository(
-    PostgresRepositoryBase[AgentTaskCreate, AgentTaskUpdate, AgentTaskRead],
+class SessionRepository(
+    PostgresRepositoryBase[SessionCreate, SessionUpdate, SessionRead],
 ):
     @property
     def collection_name(self) -> str:
-        return "agent_tasks"
+        return "sessions"
 
-    def _to_read(self, row: asyncpg.Record) -> AgentTaskRead:
+    def _to_read(self, row: asyncpg.Record) -> SessionRead:
         d = dict(row)
-        # asyncpg 가 jsonb 를 str 로 반환하는 경우 (driver 버전 / type codec 미설정)
         if isinstance(d.get("metadata"), str):
             d["metadata"] = json.loads(d["metadata"])
-        return AgentTaskRead.model_validate(d)
+        return SessionRead.model_validate(d)
 
-    async def create(self, doc: AgentTaskCreate) -> AgentTaskRead:
+    async def create(self, doc: SessionCreate) -> SessionRead:
         sql = """
-            INSERT INTO agent_tasks (title, description, status, owner_agent, issue_refs, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+            INSERT INTO sessions
+                (agent_endpoint, initiator, counterpart, metadata)
+            VALUES ($1, $2, $3, $4::jsonb)
             RETURNING *
         """
         row = await self._pool.fetchrow(
             sql,
-            doc.title,
-            doc.description,
-            doc.status,
-            doc.owner_agent,
-            doc.issue_refs,
+            doc.agent_endpoint,
+            doc.initiator,
+            doc.counterpart,
             self._to_jsonb(doc.metadata),
         )
         assert row is not None
         return self._to_read(row)
 
-    async def update(self, id: UUID, patch: AgentTaskUpdate) -> AgentTaskRead | None:
-        # 명시된 필드만 patch
+    async def update(self, id: UUID, patch: SessionUpdate) -> SessionRead | None:
         fields = patch.model_dump(exclude_unset=True)
         if not fields:
             return await self.get(id)
@@ -61,9 +58,8 @@ class AgentTaskRepository(
             else:
                 set_clauses.append(f"{col} = ${i}")
                 params.append(val)
-        set_clauses.append("updated_at = NOW()")
         sql = (
-            f"UPDATE agent_tasks SET {', '.join(set_clauses)} "
+            f"UPDATE sessions SET {', '.join(set_clauses)} "
             f"WHERE id = ${len(params) + 1} RETURNING *"
         )
         params.append(id)
@@ -71,4 +67,4 @@ class AgentTaskRepository(
         return self._to_read(row) if row else None
 
 
-__all__ = ["AgentTaskRepository"]
+__all__ = ["SessionRepository"]

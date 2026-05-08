@@ -1,7 +1,10 @@
 """Doc Store MCP 채널 LangChain tools.
 
-Primary 자기 도메인 (PRD / Epic / Story / Wiki) 의 직접 write / read.
-Chronicler 가 영속한 agent_tasks 메타도 read 노출 (자기 도메인 task 추적용).
+Primary 자기 도메인 (PRD / Epic / Story / Wiki + Assignment) 의 직접 write /
+read. #75 재설계로 agent_tasks 가 assignments 로 재정의됨.
+
+Assignment 의 명시 발급 / 관리는 chat protocol 도입 (PR 4) 시점에 추가될
+예정. PR 1 단계에선 Doc Store 9 op (wiki_pages 5 + issues 4) 만 노출.
 """
 
 from __future__ import annotations
@@ -10,7 +13,6 @@ from typing import Any
 from uuid import UUID
 
 from dev_team_shared.doc_store import (
-    AgentTaskRead,
     DocStoreClient,
     IssueCreate,
     IssueRead,
@@ -23,7 +25,7 @@ from langchain_core.tools import BaseTool, tool
 
 
 def build_doc_store_tools(client: DocStoreClient) -> list[BaseTool]:
-    """Doc Store 채널의 11 op LangChain tool 묶음."""
+    """Doc Store 채널의 LangChain tool 묶음."""
 
     @tool
     async def wiki_pages_create(doc: WikiPageCreate) -> WikiPageRead:
@@ -84,23 +86,6 @@ def build_doc_store_tools(client: DocStoreClient) -> list[BaseTool]:
             where=where, limit=limit, offset=offset, order_by=order_by,
         )
 
-    @tool
-    async def agent_tasks_get(id: str) -> AgentTaskRead | None:
-        """Doc Store 의 agent_task 조회 (UUID). Chronicler 가 영속한 작업 메타. 미존재 시 null."""
-        return await client.agent_task_get(UUID(id))
-
-    @tool
-    async def agent_tasks_list(
-        where: dict[str, Any] | None = None,
-        limit: int = 100,
-        offset: int = 0,
-        order_by: str = "created_at DESC",
-    ) -> list[AgentTaskRead]:
-        """Doc Store 의 agent_tasks 리스트."""
-        return await client.agent_task_list(
-            where=where, limit=limit, offset=offset, order_by=order_by,
-        )
-
     return [
         wiki_pages_create,
         wiki_pages_update,
@@ -111,8 +96,6 @@ def build_doc_store_tools(client: DocStoreClient) -> list[BaseTool]:
         issues_update,
         issues_get,
         issues_list,
-        agent_tasks_get,
-        agent_tasks_list,
     ]
 
 

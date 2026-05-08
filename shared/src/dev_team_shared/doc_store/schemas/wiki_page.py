@@ -19,7 +19,7 @@ WikiPageStatus = Literal["draft", "confirmed", "cancelled"]
 class WikiPageCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    agent_task_id: UUID | None = None
+    assignment_id: UUID | None = None
     page_type: WikiPageType
     slug: str
     title: str
@@ -51,7 +51,7 @@ class WikiPageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    agent_task_id: UUID | None
+    assignment_id: UUID | None
     page_type: WikiPageType
     slug: str
     title: str

@@ -5,31 +5,126 @@ from __future__ import annotations
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
-
 from dev_team_shared.doc_store.schemas import (
-    AgentItemCreate,
-    AgentSessionCreate,
-    AgentTaskCreate,
+    A2AContextCreate,
+    A2AMessageCreate,
+    A2ATaskCreate,
+    AssignmentCreate,
+    ChatCreate,
     IssueCreate,
+    SessionCreate,
     WikiPageCreate,
 )
+from pydantic import ValidationError
 
 
-class TestAgentTaskCreate:
+# ──────────────────────────────────────────────────────────────────────────
+# Chat tier
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class TestSessionCreate:
     def test_minimal(self) -> None:
-        doc = AgentTaskCreate(title="hello")
+        doc = SessionCreate(agent_endpoint="primary", counterpart="primary")
+        assert doc.initiator == "user"
+        assert doc.metadata == {}
+
+    def test_extra_field_forbidden(self) -> None:
+        with pytest.raises(ValidationError):
+            SessionCreate(  # type: ignore[call-arg]
+                agent_endpoint="primary", counterpart="primary", unknown=1,
+            )
+
+
+class TestChatCreate:
+    def test_role_validation(self) -> None:
+        for r in ("user", "agent", "system"):
+            ChatCreate(
+                session_id=uuid4(),
+                role=r,  # type: ignore[arg-type]
+                sender="primary",
+                content=[{"text": "hi"}],
+            )
+
+    def test_invalid_role(self) -> None:
+        with pytest.raises(ValidationError):
+            ChatCreate(
+                session_id=uuid4(),
+                role="bot",  # type: ignore[arg-type]
+                sender="x",
+                content={},
+            )
+
+
+class TestAssignmentCreate:
+    def test_minimal(self) -> None:
+        doc = AssignmentCreate(title="hello")
         assert doc.status == "open"
         assert doc.metadata == {}
         assert doc.issue_refs == []
 
     def test_invalid_status(self) -> None:
         with pytest.raises(ValidationError):
-            AgentTaskCreate(title="x", status="bogus")  # type: ignore[arg-type]
+            AssignmentCreate(title="x", status="bogus")  # type: ignore[arg-type]
 
-    def test_extra_field_forbidden(self) -> None:
+
+# ──────────────────────────────────────────────────────────────────────────
+# A2A tier
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class TestA2AContextCreate:
+    def test_minimal(self) -> None:
+        doc = A2AContextCreate(
+            context_id="ctx-1",
+            initiator_agent="primary",
+            counterpart_agent="engineer",
+        )
+        assert doc.trace_id is None
+        assert doc.parent_session_id is None
+        assert doc.parent_assignment_id is None
+
+
+class TestA2AMessageCreate:
+    def test_role_validation(self) -> None:
+        for r in ("user", "agent", "system"):
+            A2AMessageCreate(
+                message_id="msg-1",
+                a2a_context_id=uuid4(),
+                role=r,  # type: ignore[arg-type]
+                sender="primary",
+                parts=[{"kind": "text", "text": "hi"}],
+            )
+
+    def test_optional_task_id(self) -> None:
+        # standalone Message — a2a_task_id 없음
+        doc = A2AMessageCreate(
+            message_id="msg-1",
+            a2a_context_id=uuid4(),
+            role="agent",
+            sender="primary",
+            parts=[],
+        )
+        assert doc.a2a_task_id is None
+
+
+class TestA2ATaskCreate:
+    def test_default_state(self) -> None:
+        doc = A2ATaskCreate(task_id="task-1", a2a_context_id=uuid4())
+        assert doc.state == "SUBMITTED"
+
+    def test_invalid_state(self) -> None:
         with pytest.raises(ValidationError):
-            AgentTaskCreate(title="x", unknown_field=1)  # type: ignore[call-arg]
+            A2ATaskCreate(
+                task_id="task-1",
+                a2a_context_id=uuid4(),
+                state="DRAFT",  # type: ignore[arg-type]
+            )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# 도메인 산출물
+# ──────────────────────────────────────────────────────────────────────────
 
 
 class TestIssueCreate:
@@ -69,35 +164,4 @@ class TestWikiPageCreate:
                 slug="x",
                 title="t",
                 content_md="b",
-            )
-
-
-class TestAgentSessionCreate:
-    def test_minimal(self) -> None:
-        doc = AgentSessionCreate(
-            agent_task_id=uuid4(),
-            initiator="user",
-            counterpart="primary",
-            context_id="ctx-1",
-        )
-        assert doc.trace_id is None
-
-
-class TestAgentItemCreate:
-    def test_role_validation(self) -> None:
-        for r in ("user", "agent", "system"):
-            AgentItemCreate(
-                agent_session_id=uuid4(),
-                role=r,  # type: ignore[arg-type]
-                sender="primary",
-                content={"text": "hi"},
-            )
-
-    def test_invalid_role(self) -> None:
-        with pytest.raises(ValidationError):
-            AgentItemCreate(
-                agent_session_id=uuid4(),
-                role="bot",  # type: ignore[arg-type]
-                sender="x",
-                content={},
             )

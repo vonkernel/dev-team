@@ -15,7 +15,7 @@ IssueStatus = Literal["draft", "confirmed", "cancelled"]
 class IssueCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    agent_task_id: UUID | None = None
+    assignment_id: UUID | None = None
     type: IssueType
     title: str
     body_md: str
@@ -45,7 +45,7 @@ class IssueRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    agent_task_id: UUID | None
+    assignment_id: UUID | None
     type: IssueType
     title: str
     body_md: str

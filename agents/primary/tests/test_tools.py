@@ -25,7 +25,7 @@ def _now() -> datetime:
 def _wiki_page_read(slug: str = "prd-x") -> DocWikiPageRead:
     return DocWikiPageRead(
         id=UUID("00000000-0000-0000-0000-000000000001"),
-        agent_task_id=UUID("00000000-0000-0000-0000-000000000099"),
+        assignment_id=UUID("00000000-0000-0000-0000-000000000099"),
         page_type="prd",
         slug=slug,
         title="PRD X",
@@ -47,7 +47,7 @@ def _wiki_page_read(slug: str = "prd-x") -> DocWikiPageRead:
 def _issue_read() -> DocIssueRead:
     return DocIssueRead(
         id=UUID("00000000-0000-0000-0000-000000000002"),
-        agent_task_id=UUID("00000000-0000-0000-0000-000000000099"),
+        assignment_id=UUID("00000000-0000-0000-0000-000000000099"),
         type="epic",
         title="Epic 1",
         body_md="...",
@@ -104,7 +104,7 @@ def test_only_doc_store_when_others_off(doc_store) -> None:
         doc_store=doc_store, issue_tracker=None, wiki=None, librarian=None,
     )
     names = {t.name for t in tools}
-    # Doc Store 채널 11 op
+    # Doc Store 채널 9 op (#75 재설계 후 — agent_tasks_* 제거)
     assert "wiki_pages_create" in names
     assert "wiki_pages_update" in names
     assert "wiki_pages_get" in names
@@ -114,8 +114,6 @@ def test_only_doc_store_when_others_off(doc_store) -> None:
     assert "issues_update" in names
     assert "issues_get" in names
     assert "issues_list" in names
-    assert "agent_tasks_get" in names
-    assert "agent_tasks_list" in names
     # 다른 채널 미노출
     assert not any(n.startswith("external_") for n in names)
     assert "librarian_query" not in names
@@ -127,7 +125,7 @@ def test_all_channels_on(doc_store, issue_tracker, wiki, librarian) -> None:
     )
     names = {t.name for t in tools}
     # Doc Store
-    assert {"wiki_pages_create", "issues_create", "agent_tasks_list"} <= names
+    assert {"wiki_pages_create", "issues_create", "wiki_pages_list"} <= names
     # IssueTracker (외부)
     assert {
         "external_issue_create", "external_issue_update", "external_issue_list",
@@ -157,7 +155,7 @@ async def test_wiki_pages_create_forwards(doc_store) -> None:
     doc_store.wiki_page_create = AsyncMock(return_value=expected)
 
     doc = DocWikiPageCreate(
-        agent_task_id=UUID("00000000-0000-0000-0000-000000000099"),
+        assignment_id=UUID("00000000-0000-0000-0000-000000000099"),
         page_type="prd",
         slug="prd-x",
         title="PRD X",
@@ -178,7 +176,7 @@ async def test_issues_create_forwards(doc_store) -> None:
     doc_store.issue_create = AsyncMock(return_value=expected)
 
     doc = DocIssueCreate(
-        agent_task_id=UUID("00000000-0000-0000-0000-000000000099"),
+        assignment_id=UUID("00000000-0000-0000-0000-000000000099"),
         type="epic",
         title="Epic 1",
         body_md="...",

@@ -1,64 +1,27 @@
 """EventHandler + Processors 단위 테스트.
 
-DocStoreClient 를 mock 으로 주입 — wire-level (도구명 / dict / JSON parse) 은
-client 안에 격리되어 본 테스트는 typed 메서드만 검증.
+#75 PR 1 cut-over 후: 모든 processor 가 stub (no-op) 상태. 본 테스트는 dispatch
+구조만 검증 (stub 의 실제 처리 로직은 PR 2 에서 재작성).
 """
 
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
-
-from chronicler.handler import EventHandler
-from chronicler.processors import ALL_PROCESSORS, EventProcessor
-from chronicler.processors.session_start import SessionStartProcessor
-from dev_team_shared.doc_store import (
-    AgentSessionRead,
-    AgentTaskRead,
-)
 from dev_team_shared.event_bus.events import (
     ItemAppendEvent,
     SessionEndEvent,
     SessionStartEvent,
 )
 
+from chronicler.handler import EventHandler
+from chronicler.processors import ALL_PROCESSORS, EventProcessor
+from chronicler.processors.session_start import SessionStartProcessor
+
 
 def _make_handler(db_mock: MagicMock) -> EventHandler:
     return EventHandler(ALL_PROCESSORS, db_mock)
-
-
-def _fake_task() -> AgentTaskRead:
-    now = datetime.now(tz=timezone.utc)
-    return AgentTaskRead(
-        id=uuid.uuid4(),
-        title="t",
-        description=None,
-        status="open",
-        owner_agent="primary",
-        issue_refs=[],
-        metadata={},
-        created_at=now,
-        updated_at=now,
-    )
-
-
-def _fake_session(*, context_id: str = "ctx-1") -> AgentSessionRead:
-    now = datetime.now(tz=timezone.utc)
-    return AgentSessionRead(
-        id=uuid.uuid4(),
-        agent_task_id=uuid.uuid4(),
-        initiator="user",
-        counterpart="primary",
-        context_id=context_id,
-        trace_id=None,
-        topic=None,
-        metadata={},
-        started_at=now,
-        ended_at=None,
-    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -77,7 +40,8 @@ class TestEventHandlerRegistry:
     def test_duplicate_registration_raises(self) -> None:
         class DupeProc(EventProcessor):
             event_type = SessionStartEvent
-            async def process(self, event, db) -> None: ...
+
+            async def process(self, event, db) -> None: ...  # noqa: ARG002
 
         with pytest.raises(ValueError, match="duplicate"):
             EventHandler(
@@ -91,120 +55,49 @@ class TestEventHandlerRegistry:
             context_id="c", initiator="user", counterpart="primary",
             reason="completed",
         )
-        await h.handle(ev)  # 예외 없이 끝나야 함
+        await h.handle(ev)   # 예외 없이 끝나야 함
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  SessionStartProcessor
+#  Stub processors (PR 2 에서 본 처리 로직 재작성)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class TestSessionStartProcessor:
-    @pytest.mark.asyncio
-    async def test_creates_fallback_task_when_missing(self) -> None:
-        db = MagicMock()
-        db.agent_session_find_by_context = AsyncMock(return_value=None)
-        db.agent_task_create = AsyncMock(return_value=_fake_task())
-        db.agent_session_create = AsyncMock(return_value=_fake_session())
-        handler = _make_handler(db)
-
-        await handler.handle(SessionStartEvent(
-            context_id="ctx-1", initiator="user", counterpart="primary",
-        ))
-
-        db.agent_session_find_by_context.assert_awaited_once_with("ctx-1")
-        db.agent_task_create.assert_awaited_once()
-        db.agent_session_create.assert_awaited_once()
+class TestProcessorStubs:
+    """본 PR 의 processors 는 모두 no-op (warn-log only). DB 호출 안 함."""
 
     @pytest.mark.asyncio
-    async def test_skip_when_session_exists(self) -> None:
+    async def test_session_start_is_noop(self) -> None:
+        from chronicler.processors.session_start import SessionStartProcessor
         db = MagicMock()
-        db.agent_session_find_by_context = AsyncMock(return_value=_fake_session())
-        db.agent_task_create = AsyncMock()
-        db.agent_session_create = AsyncMock()
-        handler = _make_handler(db)
-
-        await handler.handle(SessionStartEvent(
-            context_id="ctx-1", initiator="user", counterpart="primary",
-        ))
-
-        db.agent_session_find_by_context.assert_awaited_once()
-        db.agent_task_create.assert_not_awaited()
-        db.agent_session_create.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_uses_provided_task_id(self) -> None:
-        task_id = uuid.uuid4()
-        db = MagicMock()
-        db.agent_session_find_by_context = AsyncMock(return_value=None)
-        db.agent_task_create = AsyncMock()
-        db.agent_session_create = AsyncMock(return_value=_fake_session())
-        handler = _make_handler(db)
-
-        await handler.handle(SessionStartEvent(
-            context_id="ctx-1",
-            initiator="user", counterpart="primary",
-            agent_task_id=task_id,
-        ))
-
-        db.agent_task_create.assert_not_awaited()
-        # session_create 의 doc.agent_task_id 가 전달한 task_id
-        session_doc = db.agent_session_create.call_args.args[0]
-        assert session_doc.agent_task_id == task_id
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  ItemAppendProcessor
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class TestItemAppendProcessor:
-    @pytest.mark.asyncio
-    async def test_skip_duplicate_message_id(self) -> None:
-        session = _fake_session()
-        # message_id dedup — list 가 1건 반환 → create 호출 안 됨
-        existing_item = MagicMock()
-        existing_item.message_id = "m1"
-
-        db = MagicMock()
-        db.agent_session_find_by_context = AsyncMock(return_value=session)
-        db.agent_item_list = AsyncMock(return_value=[existing_item])
-        db.agent_item_create = AsyncMock()
-        handler = _make_handler(db)
-
-        await handler.handle(ItemAppendEvent(
+        proc = SessionStartProcessor()
+        ev = SessionStartEvent(
             context_id="c", initiator="user", counterpart="primary",
-            role="user", sender="user",
-            content={"text": "hi"}, message_id="m1",
-        ))
+        )
+        await proc.process(ev, db)  # 예외 없이
+        # DB call 없음 — stub 이라 어떤 메서드도 안 부름
+        assert not db.method_calls
 
-        db.agent_item_create.assert_not_awaited()
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  SessionEndProcessor
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-class TestSessionEndProcessor:
     @pytest.mark.asyncio
-    async def test_updates_ended_at(self) -> None:
-        session = _fake_session()
+    async def test_item_append_is_noop(self) -> None:
+        from chronicler.processors.item_append import ItemAppendProcessor
         db = MagicMock()
-        db.agent_session_find_by_context = AsyncMock(return_value=session)
-        db.agent_session_update = AsyncMock(return_value=session)
-        handler = _make_handler(db)
-
-        await handler.handle(SessionEndEvent(
+        proc = ItemAppendProcessor()
+        ev = ItemAppendEvent(
             context_id="c", initiator="user", counterpart="primary",
-            reason="completed", duration_ms=42,
-        ))
+            role="user", sender="user", content=[],
+        )
+        await proc.process(ev, db)
+        assert not db.method_calls
 
-        db.agent_session_update.assert_awaited_once()
-        # update 호출 인자: (session_id, AgentSessionUpdate(...))
-        call_args = db.agent_session_update.call_args
-        assert call_args.args[0] == session.id
-        patch = call_args.args[1]
-        assert patch.ended_at is not None
-        assert patch.metadata["end_reason"] == "completed"
-        assert patch.metadata["duration_ms"] == 42
+    @pytest.mark.asyncio
+    async def test_session_end_is_noop(self) -> None:
+        from chronicler.processors.session_end import SessionEndProcessor
+        db = MagicMock()
+        proc = SessionEndProcessor()
+        ev = SessionEndEvent(
+            context_id="c", initiator="user", counterpart="primary",
+            reason="completed",
+        )
+        await proc.process(ev, db)
+        assert not db.method_calls
