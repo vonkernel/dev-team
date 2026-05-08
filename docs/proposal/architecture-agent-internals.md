@@ -79,9 +79,18 @@ graph TD
       `graph.py` 가 `shared/agent_graph/` (ReAct llm_call / tool_node /
       should_continue) + `shared/a2a/decision.py` (A2A 응답 shape 결정)
       의 building blocks 를 import 해 자기 그래프를 명시적으로 조립.
-      옛 디자인의 "공통 베이스 그래프 위에 sub-graph 모듈을 얹는" (workflow.base
-      + extensions) 방식은 채택하지 않음 — 추상화 과잉 위험. agent 별 차별화
-      는 graph.py 의 `add_node` 호출 (어떤 노드 / edge 로 구성할지) 로 표현.
+      옛 디자인의 **config-driven extension dispatch** (`workflow.base +
+      workflow.extensions` 로 config 가 base 그래프 + 얹을 sub-graph 모듈을
+      선언 → 코드가 dynamic compose) 는 채택하지 않음 — 추상화 과잉 위험.
+      agent 별 차별화는 `graph.py` 의 `add_node` 호출 (어떤 노드 / edge 로
+      구성할지) 로 표현.
+    - **LangGraph subgraph feature 는 별 사안 — 사용 가능**: 위 결정은
+      *config 가 dispatch 하는 패턴* 거부일 뿐, LangGraph 자체의 subgraph
+      (`StateGraph` 안 `StateGraph`) composition 은 자유롭게 사용 가능.
+      예: Architect 의 three-stage design (설계 → 검증 → 컨펌) 같이 자연스러운
+      subgraph 단위는 `build_graph()` 안에서 `builder.add_node("stage1",
+      build_stage1_subgraph())` 식으로 명시적으로 끼움. config 가 아닌 **코드
+      가 결정** — 옵션 D 의 정신 그대로.
     - **agent 별 능력 (추후 노드로 분화될 책임 영역)**: 정체성 / 행동 원칙은
       `config/base.yaml` 의 `persona`, 도메인 워크플로 가이드는
       `agents/<name>/resources/*.md`. 대표 책임:
