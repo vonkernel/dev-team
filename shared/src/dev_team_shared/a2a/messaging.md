@@ -145,24 +145,54 @@ sequenceDiagram
 
 `SendMessage` / `SendStreamingMessage` 는 **새 Task 또는 Message 를 만드는** 동사, `GetTask` 는 **기존 Task 를 들여다보는** 동사.
 
-### 3.4. Task wrap vs Message-only — method-level 분기 (#75 PR 3)
+### 3.4. Task wrap vs Message-only — agent 결정 (#75 PR 3)
 
-A2A 공식 가이드: *"Messages for Trivial Interactions, Tasks for Stateful Interactions"*. 응답을 항상 Task 로 감싸지 않고 **trivial 응답은 Message 만**, **stateful 작업만 Task wrap** 한다. 분기 로직은 호출자 (caller) 가 method 선택으로 표현:
+A2A 공식 가이드: *"Messages for Trivial Interactions, Tasks for Stateful Interactions"*. 응답을 항상 Task 로 감싸지 않고 **trivial 응답은 Message 만**, **stateful 작업만 Task wrap**.
 
-| Method | 응답 형식 | 의미 |
+#### 두 axis 는 직교
+
+| Axis | 결정 주체 | 가능한 값 |
 |---|---|---|
-| `SendMessage` | `Message` (trivial) | 호출자가 "단순 응답이면 됨" 으로 결정한 경로. Task 라이프사이클 없음. a2a_messages 에 row 1개 |
-| `SendStreamingMessage` | `Task` (stateful) | 호출자가 "long-running / stateful 작업" 으로 결정한 경로. Task SUBMITTED → WORKING → COMPLETED 거침. a2a_tasks + a2a_messages (history) + a2a_task_status_updates row 누적 |
+| Transport | 호출자 (caller) | `SendMessage` (sync) / `SendStreamingMessage` (stream) |
+| Response shape | **agent** | `Message` only / `Task` wrap |
 
-> 분기 결정을 **server / graph 안에서 LLM 으로 분류** 하지 않는다. 호출자가 method 선택으로 명시 — spec 정신과 정합 (streaming = stateful, send_message = trivial). server 측 룰 / 분류 LLM 도입 시 의미가 fragile 해짐.
+method 이름이 response shape 를 결정하지 않는다 (예: SendStreamingMessage 도 trivial 응답이면 Message stream 만 보내면 됨). spec 상 4가지 조합이 모두 가능:
 
-#### 영향
+| Method | Response | 시나리오 |
+|---|---|---|
+| SendMessage | Message | 짧은 동기 응답 |
+| SendMessage | Task | 동기 호출인데 stateful work — caller 가 task_id 받아 후속 GetTask / 폴링 |
+| SendStreamingMessage | Message stream | streaming 인데 trivial — chunk 단위 텍스트만 |
+| SendStreamingMessage | Task stream | streaming + stateful work (가장 일반적) |
 
-- **publish 패턴 (server 측)**:
-  - `SendMessage` → `a2a.context.start` (idempotent) + `a2a.message.append` (task_id=NULL) 만
-  - `SendStreamingMessage` → `a2a.context.start` + `a2a.task.create` + `a2a.message.append` (task_id 채움) + `a2a.task.status_update` (WORKING→COMPLETED) + agent reply `a2a.message.append`
-- 같은 contextId 위에 `SendMessage` / `SendStreamingMessage` 가 섞여도 모두 같은 a2a_context 에 누적 (contextId 가 grouping key, method 무관)
-- LangGraph thread (`thread_id = contextId`) 도 동일 thread 위 history 이어짐
+#### 결정 메커니즘 — graph hint
+
+agent 의 graph 가 결정. graph state 에 명시적 hint 채움:
+
+```python
+# Primary / Engineer 등의 graph state
+{
+    "messages": [...],
+    "requires_task": bool,           # True 면 Task wrap, False 면 Message only
+    # 또는 더 풍부한 hint:
+    # "task_state": TaskState | None,  # None 이면 Message only
+}
+```
+
+handler 는 hint 보고 wrap 분기. 분류 로직 0 — graph 자기가 ReAct / 룰 / 명시적 노드 출력 등으로 결정.
+
+#### default — hint 안 줄 때
+
+graph 가 hint 미구현이면 보수적으로 둘 다 **Message only**. Task 는 graph 가 명시적으로 opt-in 해야만. 이유: Task wrap 은 a2a_tasks / status_updates / artifacts 까지 publish 하므로 부수 비용 ↑ — graph 가 명시한 경우만.
+
+#### publish 패턴 (server 측)
+
+| 결정 | publish |
+|---|---|
+| Message only | `a2a.context.start` (idempotent) + `a2a.message.append` (task_id=NULL) |
+| Task wrap | 위 + `a2a.task.create` + `a2a.message.append` (task_id 채움) + `a2a.task.status_update` (WORKING→COMPLETED) + agent reply `a2a.message.append` (task_id) |
+
+같은 contextId 위에 두 결정이 섞여도 모두 같은 a2a_context 에 누적 (contextId 가 grouping key, method / shape 무관). LangGraph thread (`thread_id = contextId`) 도 동일 thread 위 history 이어짐.
 
 ---
 
