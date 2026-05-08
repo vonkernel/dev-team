@@ -27,6 +27,7 @@ from dev_team_shared.a2a.server.graph_handlers.parse import (
     parse_request_or_error,
 )
 from dev_team_shared.a2a.server.graph_handlers.publish import publish_item_append
+from dev_team_shared.a2a.server.graph_handlers.sanity import apply_tail_sanity
 from dev_team_shared.a2a.server.graph_handlers.session import ChatContext, log_session
 from dev_team_shared.a2a.server.handler import MethodHandler
 
@@ -66,6 +67,11 @@ class GraphSendMessageHandler(MethodHandler):
                 sender="user",
                 content=[p.model_dump(mode="json") for p in a2a_msg.parts],
                 message_id=a2a_msg.message_id,
+            )
+            # Graph 호출 직전 sanity — send_streaming.py 와 동일 정책.
+            await apply_tail_sanity(
+                request.app.state.graph,
+                {"configurable": {"thread_id": ctx.context_id}},
             )
             try:
                 with anyio.fail_after(AGENT_TOTAL_TIMEOUT_S):  # S4

@@ -33,6 +33,7 @@ from dev_team_shared.a2a.server.graph_handlers.factories import (
 )
 from dev_team_shared.a2a.server.graph_handlers.parse import parse_request_or_error
 from dev_team_shared.a2a.server.graph_handlers.publish import publish_item_append
+from dev_team_shared.a2a.server.graph_handlers.sanity import apply_tail_sanity
 from dev_team_shared.a2a.server.graph_handlers.session import ChatContext, log_session
 from dev_team_shared.a2a.server.graph_handlers.stream import stream_artifact_events
 from dev_team_shared.a2a.server.handler import MethodHandler
@@ -80,6 +81,12 @@ class GraphSendStreamingMessageHandler(MethodHandler):
                     message_id=a2a_msg.message_id,
                 )
                 yield sse(ctx, make_initial_task(ctx, a2a_msg))
+                # Graph 호출 직전 sanity — 직전 turn 이 cancel 로 dangling
+                # 잔재를 남겼다면 marker 를 append (Anthropic API 의 tool_use
+                # ↔ tool_result 형식 검사 hard-fail 회피 + LLM context 정상화).
+                await apply_tail_sanity(
+                    graph, {"configurable": {"thread_id": ctx.context_id}},
+                )
                 try:
                     with anyio.fail_after(AGENT_TOTAL_TIMEOUT_S):  # S4
                         async for line in stream_artifact_events(

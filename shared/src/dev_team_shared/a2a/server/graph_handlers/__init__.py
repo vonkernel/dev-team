@@ -19,6 +19,7 @@ sentinel 처리를 함께 수행한다.
   factories         A2A Task / 이벤트 모델 조립 + 에러 텍스트
   envelope          JSON-RPC / SSE envelope 직렬화
   stream            graph.astream → SSE 라인 번역
+  sanity            graph 호출 전 messages tail dangling 정리 (#73)
   send_message      GraphSendMessageHandler (단방향)
   send_streaming    GraphSendStreamingMessageHandler (SSE)
 
