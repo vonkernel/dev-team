@@ -304,13 +304,13 @@ EXPOSE 8000
 CMD ["python", "-m", "<name>_mcp.server"]
 ```
 
-### compose 등록 (`infra/docker-compose.yml`)
+### compose 등록 (`docker-compose.yml` — repo 루트)
 
 ```yaml
 <name>-mcp:
   profiles: ["mcp", "agents"]
   build:
-    context: ..
+    context: .
     dockerfile: mcp/<name>/Dockerfile
   image: dev-team/<name>-mcp:latest
   container_name: dev-team-<name>-mcp
@@ -340,7 +340,7 @@ CMD ["python", "-m", "<name>_mcp.server"]
 - [ ] **`schemas/` + `[repositories|adapters]/` + `tools/`** — §1 / §2 패턴
 - [ ] **`server.py`** — 얇은 entry point
 - [ ] **테스트** — schemas 단위 + repository / adapter 통합
-- [ ] **compose 등록** — `infra/docker-compose.yml`
+- [ ] **compose 등록** — `docker-compose.yml` (repo 루트)
 - [ ] **컨테이너 build / 부팅 / streamable HTTP 호출 검증**
 - [ ] **CI 파이프라인 (있을 때)** — pyproject 의존 캐시 / 테스트 실행
 

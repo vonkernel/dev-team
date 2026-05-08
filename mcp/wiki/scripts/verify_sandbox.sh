@@ -20,7 +20,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-COMPOSE_FILE="$REPO_ROOT/infra/docker-compose.yml"
+COMPOSE_FILE="$REPO_ROOT/docker-compose.yml"
 ENV_FILE="$REPO_ROOT/.env"
 MCP_DIR="$REPO_ROOT/mcp/wiki"
 

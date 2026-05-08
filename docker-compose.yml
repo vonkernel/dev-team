@@ -2,9 +2,13 @@
 # 로컬에서 GUI 도구(Neo4j Browser, DBeaver/pgAdmin 등 Postgres GUI, ARDM/RedisInsight 등 Valkey-compatible GUI)로
 # 직접 관찰할 수 있도록 호스트 포트를 노출한다.
 #
-# 사용:
-#   cp .env.example .env   # (이슈 #2에서 제공)
-#   docker compose -f infra/docker-compose.yml --env-file .env up -d
+# 사용 (repo 루트에서):
+#   cp .env.example .env
+#   docker compose up -d                       # 인프라만
+#   docker compose --profile mcp up -d         # 인프라 + MCP 서버군
+#   docker compose --profile agents up -d      # 인프라 + MCP + 에이전트
+#
+# `.env` 는 compose 파일과 같은 디렉터리(레포 루트)에서 자동 탐색됨 → --env-file flag 불필요.
 name: dev-team
 
 services:
@@ -65,7 +69,7 @@ services:
       NEO4J_USER: "${NEO4J_USER:-neo4j}"
       NEO4J_PASSWORD: "${NEO4J_PASSWORD:-devteam_neo4j}"
     volumes:
-      - ./init/neo4j-init.sh:/init.sh:ro
+      - ./infra/init/neo4j-init.sh:/init.sh:ro
     entrypoint: ["bash", "/init.sh"]
     restart: "no"
 
@@ -84,7 +88,7 @@ services:
       POSTGRES_DB: "${POSTGRES_DB:-langgraph}"
       APP_DB: "${APP_DB:-dev_team}"
     volumes:
-      - ./init/postgres-init.sh:/init.sh:ro
+      - ./infra/init/postgres-init.sh:/init.sh:ro
     entrypoint: ["bash", "/init.sh"]
     restart: "no"
 
@@ -116,20 +120,20 @@ services:
   #      9000~9099 에이전트 — Primary 9001 / Librarian 9002 / Architect 9003 ...
   #      9100~9199 MCP    — Document DB 9100 / IssueTracker 9101 / Wiki 9102 / Graph DB 9103
   #
-  #  기동:
-  #    docker compose -f infra/docker-compose.yml --env-file .env --profile agents up -d
+  #  기동 (repo 루트에서):
+  #    docker compose --profile agents up -d
   #    (MCP 만:  --profile mcp)
 
   primary:
     profiles: ["agents"]
     build:
-      context: ..                                   # repo root (shared + agents/primary 포함)
+      context: .                                    # repo root (shared + agents/primary 포함)
       dockerfile: agents/primary/Dockerfile
     image: dev-team/primary:latest
     container_name: dev-team-primary
     restart: unless-stopped
     env_file:
-      - ../.env                                     # ANTHROPIC_API_KEY 등 주입
+      - ./.env                                     # ANTHROPIC_API_KEY 등 주입
     environment:
       # AsyncPostgresSaver 가 체크포인트를 저장할 DSN. `langgraph` DB 를 프레임워크 state 전용으로 사용.
       DATABASE_URI: "postgres://${POSTGRES_USER:-devteam}:${POSTGRES_PASSWORD:-devteam_postgres}@postgres:5432/${POSTGRES_DB:-langgraph}"
@@ -146,7 +150,7 @@ services:
       LIBRARIAN_A2A_URL: "http://librarian:8000/a2a/librarian"
     volumes:
       # Override config 마운트 — ${ANTHROPIC_API_KEY} 가 config_loader 단계에서 치환됨
-      - ../overrides/primary.yaml:/app/primary/config/override.yaml:ro
+      - ./overrides/primary.yaml:/app/primary/config/override.yaml:ro
     ports:
       - "9001:8000"                                 # 호스트 9001 ← 컨테이너 8000 (uvicorn)
     depends_on:
@@ -171,20 +175,20 @@ services:
   librarian:
     profiles: ["agents"]
     build:
-      context: ..                                   # repo root (shared + agents/librarian 포함)
+      context: .                                    # repo root (shared + agents/librarian 포함)
       dockerfile: agents/librarian/Dockerfile
     image: dev-team/librarian:latest
     container_name: dev-team-librarian
     restart: unless-stopped
     env_file:
-      - ../.env                                     # ANTHROPIC_API_KEY 등 주입
+      - ./.env                                     # ANTHROPIC_API_KEY 등 주입
     environment:
       # AsyncPostgresSaver 체크포인트 DSN.
       DATABASE_URI: "postgres://${POSTGRES_USER:-devteam}:${POSTGRES_PASSWORD:-devteam_postgres}@postgres:5432/${POSTGRES_DB:-langgraph}"
       # Doc Store MCP — librarian 이 자연어 요청을 받아 호출하는 단일 backend.
       DOC_STORE_MCP_URL: "http://doc-store-mcp:8000/mcp"
     volumes:
-      - ../overrides/librarian.yaml:/app/librarian/config/override.yaml:ro
+      - ./overrides/librarian.yaml:/app/librarian/config/override.yaml:ro
     ports:
       - "9002:8000"                                 # 호스트 9002 ← 컨테이너 8000 (root CLAUDE.md 포트 컨벤션)
     depends_on:
@@ -201,7 +205,7 @@ services:
   doc-store-mcp:
     profiles: ["mcp", "agents"]
     build:
-      context: ..
+      context: .
       dockerfile: mcp/doc-store/Dockerfile
     image: dev-team/doc-store-mcp:latest
     container_name: dev-team-doc-store-mcp
@@ -225,7 +229,7 @@ services:
   issue-tracker-mcp:
     profiles: ["mcp", "agents"]
     build:
-      context: ..
+      context: .
       dockerfile: mcp/issue-tracker/Dockerfile
     image: dev-team/issue-tracker-mcp:latest
     container_name: dev-team-issue-tracker-mcp
@@ -247,7 +251,7 @@ services:
   wiki-mcp:
     profiles: ["mcp", "agents"]
     build:
-      context: ..
+      context: .
       dockerfile: mcp/wiki/Dockerfile
     image: dev-team/wiki-mcp:latest
     container_name: dev-team-wiki-mcp
@@ -267,7 +271,7 @@ services:
   chronicler:
     profiles: ["agents"]
     build:
-      context: ..
+      context: .
       dockerfile: chronicler/Dockerfile
     image: dev-team/chronicler:latest
     container_name: dev-team-chronicler
@@ -286,7 +290,7 @@ services:
   user-gateway:
     profiles: ["agents"]
     build:
-      context: ..                                   # repo root (shared + user-gateway/*)
+      context: .                                    # repo root (shared + user-gateway/*)
       dockerfile: user-gateway/Dockerfile
     image: dev-team/user-gateway:latest
     container_name: dev-team-user-gateway

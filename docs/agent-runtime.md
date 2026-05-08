@@ -59,7 +59,7 @@ uv run uvicorn primary_agent.server:app \
 DATABASE_URI 를 생략하면 **in-memory** 로 동작 (재기동 시 체크포인트 소실). 대화 흐름
 만 빠르게 확인하려는 단계에 적합.
 
-Postgres 와도 붙여서 검증하고 싶으면 `infra/docker-compose.yml` 의 postgres 만
+Postgres 와도 붙여서 검증하고 싶으면 `docker-compose.yml` (repo 루트) 의 postgres 만
 먼저 띄우고 (`docker compose ... up -d postgres postgres-init`), shell 에서
 `DATABASE_URI=postgres://devteam:devteam_postgres@localhost:5432/langgraph` 를 export.
 
