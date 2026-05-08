@@ -86,23 +86,27 @@ async def log_session(ctx: ChatContext) -> AsyncIterator[None]:
     cancel) 발생 시 `reason` 을 `client_disconnect` 로 자동 갱신.
 
     publish 는 `request.app.state.event_bus` 가 있을 때만 (없으면 no-op).
+
+    #75: 새 어휘 — A2AContextStartEvent / A2AContextEndEvent. 본 RPC 의 incoming
+    side (counterpart) 의 관점. 호출자(initiator)는 wire 차원 정확히 알 수
+    없어 보수적으로 "user" 로 표기 (PR 4 에서 chat protocol 분리되면 더 정확).
     """
     # 늦은 import — 순환 의존 회피 (graph_handlers.publish 가 event_bus 의존)
     from dev_team_shared.a2a.server.graph_handlers.publish import (
-        publish_session_end,
-        publish_session_start,
+        publish_a2a_context_end,
+        publish_a2a_context_start,
     )
 
     logger.info(
         "sse_session.start assistant=%s method=%s context_id=%s trace_id=%s",
         ctx.assistant, ctx.method, ctx.context_id, ctx.trace_id,
     )
-    await publish_session_start(
+    await publish_a2a_context_start(
         ctx.request,
         context_id=ctx.context_id,
         trace_id=ctx.trace_id,
-        initiator="user",            # M3: UG → Primary 가 유일 — initiator 는 user
-        counterpart=ctx.assistant,
+        initiator_agent="user",      # PR 4 에서 chat tier 분리 시 정확화
+        counterpart_agent=ctx.assistant,
         topic=ctx.method,
     )
     try:
@@ -123,12 +127,9 @@ async def log_session(ctx: ChatContext) -> AsyncIterator[None]:
             ctx.assistant, ctx.method, ctx.context_id,
             ctx.trace_id, ctx.reason, duration_ms, ctx.chunk_count,
         )
-        await publish_session_end(
+        await publish_a2a_context_end(
             ctx.request,
             context_id=ctx.context_id,
-            trace_id=ctx.trace_id,
-            initiator="user",
-            counterpart=ctx.assistant,
             reason=ctx.reason,
             duration_ms=duration_ms,
             metadata={"chunks": ctx.chunk_count},

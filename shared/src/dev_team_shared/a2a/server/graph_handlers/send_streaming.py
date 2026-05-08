@@ -32,7 +32,11 @@ from dev_team_shared.a2a.server.graph_handlers.factories import (
     make_initial_task,
 )
 from dev_team_shared.a2a.server.graph_handlers.parse import parse_request_or_error
-from dev_team_shared.a2a.server.graph_handlers.publish import publish_item_append
+from dev_team_shared.a2a.server.graph_handlers.publish import (
+    publish_a2a_message_append,
+    publish_a2a_task_create,
+    publish_a2a_task_status_update,
+)
 from dev_team_shared.a2a.server.graph_handlers.session import ChatContext, log_session
 from dev_team_shared.a2a.server.graph_handlers.stream import stream_artifact_events
 from dev_team_shared.a2a.server.handler import MethodHandler
@@ -65,21 +69,30 @@ class GraphSendStreamingMessageHandler(MethodHandler):
 
         async def event_generator() -> AsyncIterator[str]:
             async with log_session(ctx):
-                # 사용자 메시지 publish (item.append role=user). 에이전트 응답
-                # 스트리밍 chunk 별 publish 는 M3 비스코프 — 스트림 누적 후
-                # 단일 item.append 로 합치는 건 향후 enhancement.
-                await publish_item_append(
+                # 이벤트 순서: Task commit 먼저 → Message append (Task.history)
+                # → WORKING 전이. 현재 구현은 모든 SendStreamingMessage 응답을
+                # Task wrap (PR 3 에서 trivial / stateful 분기로 정정 예정).
+                await publish_a2a_task_create(
                     request,
                     context_id=ctx.context_id,
-                    trace_id=ctx.trace_id,
-                    initiator="user",
-                    counterpart=ctx.assistant,
+                    task_id=ctx.task_id,
+                    state="SUBMITTED",
+                )
+                # 사용자 메시지 — Task.history 의 일원 (task_id 채움)
+                await publish_a2a_message_append(
+                    request,
+                    context_id=ctx.context_id,
+                    message_id=a2a_msg.message_id,
+                    task_id=ctx.task_id,
                     role="user",
                     sender="user",
                     content=[p.model_dump(mode="json") for p in a2a_msg.parts],
-                    message_id=a2a_msg.message_id,
                 )
                 yield sse(ctx, make_initial_task(ctx, a2a_msg))
+                # graph 호출 시작 — WORKING 전이
+                await publish_a2a_task_status_update(
+                    request, task_id=ctx.task_id, state="WORKING",
+                )
                 try:
                     with anyio.fail_after(AGENT_TOTAL_TIMEOUT_S):  # S4
                         async for line in stream_artifact_events(
@@ -91,6 +104,10 @@ class GraphSendStreamingMessageHandler(MethodHandler):
                     logger.warning(
                         "graph.astream total timeout (>%ss) in SendStreamingMessage",
                         int(AGENT_TOTAL_TIMEOUT_S),
+                    )
+                    await publish_a2a_task_status_update(
+                        request, task_id=ctx.task_id, state="FAILED",
+                        reason="total_timeout",
                     )
                     yield sse(
                         ctx,
@@ -104,24 +121,31 @@ class GraphSendStreamingMessageHandler(MethodHandler):
                 except Exception as exc:
                     ctx.reason = "graph_error"
                     logger.exception("graph.astream failed in SendStreamingMessage")
+                    await publish_a2a_task_status_update(
+                        request, task_id=ctx.task_id, state="FAILED",
+                        reason="graph_error",
+                    )
                     yield sse(
                         ctx,
                         make_failed_status_event(ctx, error_detail(exc)),
                     )
                     return
-                # 스트림 정상 종료 — 누적 응답 텍스트를 agent item.append 로 publish
+                # 스트림 정상 종료 — 누적 응답 텍스트를 agent message.append 로 publish
                 accumulated = "".join(ctx.accumulated_response)
                 if accumulated:
-                    await publish_item_append(
+                    await publish_a2a_message_append(
                         request,
                         context_id=ctx.context_id,
-                        trace_id=ctx.trace_id,
-                        initiator="user",
-                        counterpart=ctx.assistant,
+                        message_id=f"{ctx.assistant}-msg-{uuid.uuid4()}",
+                        task_id=ctx.task_id,
                         role="agent",
                         sender=ctx.assistant,
                         content=[{"text": accumulated}],
                     )
+                # Task COMPLETED 전이
+                await publish_a2a_task_status_update(
+                    request, task_id=ctx.task_id, state="COMPLETED",
+                )
                 yield sse(ctx, make_completed_status_event(ctx))
 
         return sse_response(event_generator())
