@@ -18,8 +18,10 @@ UG ↔ Primary / Architect 통신은 **A2A 가 아니라 별도 chat protocol** 
 - agent 의 응답 chunk 를 영속 SSE 채널 (`GET /api/stream?session_id=X`) 로
   FE 에 push
 - 사용자 인증 / 세션 관리 (server-side `sessions` 컬렉션)
-- chat lifecycle 이벤트 (chat.session.start / chat.append / chat.session.end)
-  를 Valkey Streams 로 publish — Chronicler 가 Doc Store 에 적재
+- chat lifecycle 이벤트 (`session.start` / `chat.append` role=user) 를
+  Valkey Streams 로 publish — Chronicler 가 Doc Store 에 적재. session 은
+  종료 개념이 없으므로 `session.end` 발화 없음 (대화창 metaphor — 사용자가
+  언제든 재개 가능)
 
 **의미 판단 / batch merge / cancel intent / stop 처리는 UG 책임 아님** —
 agent (Primary / Architect) 의 LLM 영역. UG 는 인터페이스만, agent 가 자기

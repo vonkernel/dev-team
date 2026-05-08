@@ -81,7 +81,7 @@ Doc Store 는 **시간 흐름의 사실 (episode)** — 대화 / 결정 / 산출
 
 사용자가 UG 통해 Primary / Architect 와 chat 한 내용. Chronicler 가 chat 이벤트를 consume 해 영속.
 
-- **sessions (대화창)** — 한 chat 단위. agent_endpoint 별 (`primary` / `architect`). 사용자 측 multi-chat UI 의 단위
+- **sessions (대화창)** — 한 chat 단위. agent_endpoint 별 (`primary` / `architect`). 사용자 측 multi-chat UI 의 단위. **종료 개념 없음** — Slack DM / ChatGPT 류로 사용자가 언제든 재개. `ended_at` 컬럼 두지 않는다 (archive 가 필요해지면 별도 `archived_at` 으로)
 - **chats (메시지)** — session 안의 한 발화. `prev_chat_id` 로 시간순 chain
 
 ```json
@@ -129,7 +129,7 @@ Chat 중 사용자와 합의해 정의된 작업. Primary / Architect 가 명시
 
 에이전트 간 A2A 통신을 자동 수집한 로그. Valkey Streams 로 publish 된 이벤트를 Chronicler 가 구독해 영속화 ([architecture-event-pipeline](architecture-event-pipeline.md)).
 
-- **a2a_contexts (대화 namespace)** — A2A `contextId` 와 1:1. 두 에이전트 사이의 대화. `parent_session_id` / `parent_assignment_id` 로 source 추적 (NULL 이면 system trigger 발 standalone)
+- **a2a_contexts (대화 namespace)** — A2A `contextId` 와 1:1. 두 에이전트 사이의 대화. `parent_session_id` / `parent_assignment_id` 로 source 추적 (NULL 이면 system trigger 발 standalone). **종료는 agent 가 결정** — agent 가 "이 inter-agent 대화 마무리" 라 판단한 시점에 `a2a.context.end` publish, `ended_at` 갱신. RPC 단위 아님
 - **a2a_messages (Message 응답)** — Context 안의 trivial / negotiation Message. 또는 commit 된 Task 의 history Message (이 경우 `a2a_task_id` 로 backlink)
 - **a2a_tasks (Task 응답)** — stateful long-running work. Context 안의 wire-level 진행 추적
 - **a2a_task_status_updates** — Task 의 state transition 로그
