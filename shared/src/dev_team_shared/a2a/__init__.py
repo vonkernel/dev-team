@@ -15,12 +15,14 @@ from dev_team_shared.a2a.agent_card import (
     build_agent_card,
 )
 from dev_team_shared.a2a.client import A2AClient, A2AClientError
+from dev_team_shared.a2a.decision import A2AResponseDecision
 from dev_team_shared.a2a.tracing import TRACE_ID_HEADER
 from dev_team_shared.a2a.types import Message, Part, TaskState
 
 __all__ = [
     "A2AClient",
     "A2AClientError",
+    "A2AResponseDecision",
     "AgentCapabilities",
     "AgentCard",
     "AgentSkill",
