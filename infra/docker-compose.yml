@@ -135,6 +135,15 @@ services:
       DATABASE_URI: "postgres://${POSTGRES_USER:-devteam}:${POSTGRES_PASSWORD:-devteam_postgres}@postgres:5432/${POSTGRES_DB:-langgraph}"
       # A2A 대화 이벤트 publish (#34) — Chronicler 가 consume.
       VALKEY_URL: "redis://valkey:6379"
+      # 4 채널 wiring (#39) — Settings.from_env() 가 read.
+      # Doc Store MCP (필수): 자기 도메인 직접 write/read (proposal §2.5).
+      DOC_STORE_MCP_URL: "http://doc-store-mcp:8000/mcp"
+      # IssueTracker MCP (선택): 외부 GitHub Issues 동기화 (#36).
+      ISSUE_TRACKER_MCP_URL: "http://issue-tracker-mcp:8000/mcp"
+      # Wiki MCP (선택): 외부 GitHub Wiki 동기화 (#37).
+      WIKI_MCP_URL: "http://wiki-mcp:8000/mcp"
+      # Librarian A2A (선택): 자연어 정보 검색 / 외부 리소스 조사 위임 (#38).
+      LIBRARIAN_A2A_URL: "http://librarian:8000/a2a/librarian"
     volumes:
       # Override config 마운트 — ${ANTHROPIC_API_KEY} 가 config_loader 단계에서 치환됨
       - ../overrides/primary.yaml:/app/primary/config/override.yaml:ro
@@ -146,6 +155,14 @@ services:
       postgres-init:
         condition: service_completed_successfully
       valkey:
+        condition: service_started
+      doc-store-mcp:
+        condition: service_started
+      issue-tracker-mcp:
+        condition: service_started
+      wiki-mcp:
+        condition: service_started
+      librarian:
         condition: service_started
 
   # Librarian (L) — Doc Store 단일 창구 (#38).
