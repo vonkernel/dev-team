@@ -119,9 +119,10 @@ localStorage:
 > 구현 영역. 본 protocol spec 은 server-FE 데이터 흐름과 localStorage 의
 > 캐시 구조만 정의.
 
-## 5. 메시지 큐 — Primary 측 책임 (#72)
+## 5. 메시지 큐 — Primary / Architect 측 책임 (#72)
 
-P/A 의 chat handler 가 thread-level 동시성 관리:
+사용자와 chat 하는 에이전트 (P / A — M4+ 부터 A 도 포함) 의 chat handler 가
+thread-level 동시성 관리:
 
 - **idle**: 즉시 graph 호출 → SSE 로 chunk
 - **busy**: in-process 큐에 적재 → POST 응답 `queued` ack + SSE 로 `queued`
@@ -137,11 +138,11 @@ P/A 의 chat handler 가 thread-level 동시성 관리:
 
 ### 의미 판단은 main LLM 에 위임
 
-오타 noise / 정정 / 보충 / 명시 cancel 의도 같은 **의미 판단은 P/A 의 main
-LLM 이 persona 가이드** 로 처리. UG 는 인터페이스만, 의미 영역은 agent 책임
-(SOLID / SRP — UG 가 LLM 가지지 않음).
+오타 noise / 정정 / 보충 / 명시 cancel 의도 같은 **의미 판단은 P / A 의
+main LLM 이 persona 가이드** 로 처리. UG 는 인터페이스만, 의미 영역은 agent
+책임 (SOLID / SRP — UG 가 LLM 가지지 않음).
 
-persona 가이드 (예 — Primary):
+persona 가이드 (P / A 공통 패턴):
 > 사용자가 응답 도중 추가 발화한 메시지가 batch 로 들어올 수 있다.
 > separator `[N초 뒤 추가 발화]` 가 보이면 다음과 같이 판단:
 > - 의미 없는 오타 / 1~2 글자 noise → 무시하고 본 의도에 응답
@@ -200,6 +201,6 @@ A2A Context 가 chat session 에서 비롯되는 경우 `a2a_contexts.parent_ses
 - Doc Store schema: [knowledge-model](knowledge-model.md) §4.2
 - A2A 프로토콜 (대비): [shared/a2a/messaging.md](../../shared/src/dev_team_shared/a2a/messaging.md)
 - UG 측 책임: [architecture-user-gateway](architecture-user-gateway.md)
-- Primary 큐 정책: #72
+- Primary / Architect 큐 정책: #72
 - FE multi-chat UI: #70
 - Stop 버튼 / streaming flag: #71
