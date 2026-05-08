@@ -52,7 +52,7 @@
   수정할 일이 없어야** 함 (registry / abstract base / 인스턴스 추가로 해결).
 - **L**iskov Substitution — 추상 타입을 사용하는 코드는 그 모든 하위 타입에 대해
   정상 동작해야 한다. Protocol / ABC 로 계약 명시.
-- **I**nterface Segregation — 크고 뭉뚱그린 인터페이스 대신 사용자 별 좁은 인터
+- **I**nterface Segregation — 크고 뭉뚱그린 인터페이스 대신 사용자별 좁은 인터
   페이스. 클라이언트가 쓰지 않는 메서드에 의존하지 않도록.
 - **D**ependency Inversion — 상위 모듈은 하위 구현 세부사항(httpx, 특정 DB
   드라이버 등) 에 직접 의존하지 않고 **추상(인터페이스 / Protocol)** 에 의존.
@@ -107,20 +107,24 @@
 
 | 결 | 프로토콜 | 비고 |
 |---|---|---|
-| 에이전트 ↔ 에이전트 (대화) | **A2A** (`shared/a2a`) | Message / Task / FSM / contextId / traceId. JSON-RPC 2.0 위. |
+| 사용자 ↔ Primary / Architect (논의) | **Chat protocol** (REST POST + 영속 SSE per session) | Session / Chat / Assignment 어휘. UG 가 routing. 사용자 ↔ 에이전트는 에이전트 간 통신과 다른 영역이라 자체 정의 (A2A 가 아님 — #75 / [docs/proposal/architecture-chat-protocol.md](docs/proposal/architecture-chat-protocol.md)) |
+| 에이전트 ↔ 에이전트 (위임 / 협상) | **A2A** (`shared/a2a`) | Message / Task / Context / messageId / contextId / traceId. JSON-RPC 2.0 위. |
 | 에이전트·스크립트 ↔ 도구 / 데이터 서비스 | **MCP 우선** (REST 보다) | 도구 catalog / Pydantic 입출력 / 표준 에러 / traceId. streamable HTTP. |
-| 외부 사용자 / 브라우저 ↔ Gateway | HTTP REST | 사용자 facing 표면 (UG `/chat` 등) |
+| 외부 사용자 / 브라우저 ↔ Gateway | HTTP REST + SSE | 사용자 facing 표면 (UG `/api/chat` POST + `/api/stream` SSE) |
 
 ### 결정 가이드
 
 새 서비스 / 통신 경로가 생길 때:
 
-1. **사용자 / 브라우저가 직접 부르는가?** → REST (Gateway 가 받아 내부에선 A2A / MCP 로 분기)
-2. **상대가 LLM 에이전트 자기 자신인가?** → A2A (의도가 *대화*)
+1. **사용자 ↔ Primary / Architect 의 chat 인가?** → Chat protocol (REST POST + 영속 SSE per session). 사용자 ↔ 에이전트는 에이전트 간 통신과 다른 영역이라 자체 정의 — chat 은 chat 으로
+2. **상대가 LLM 에이전트 자기 자신이고 위임 / 협상 의도?** → A2A
 3. **상대가 도구 / 데이터 서비스인가? (LLM 이 호출할 수 있어야 하나?)** → **MCP** (REST 두 번 안 만든다)
 4. **외부 SaaS 호출?** → 그쪽이 노출하는 프로토콜. 우리가 그 위에 MCP 어댑터로 감쌈 (예: GitHub API → IssueTracker MCP)
 
-원칙: **REST 와 MCP 양쪽을 평행 노출 금지**. 도구 / 데이터 서비스는 MCP 한 채널. 사용자 facing 만 REST. LLM 이 아닌 클라이언트 (CHR 등) 도 MCP 사용 — 일관성 우선.
+원칙:
+- **REST 와 MCP 양쪽을 평행 노출 금지**. 도구 / 데이터 서비스는 MCP 한 채널.
+- **Chat tier 와 A2A tier 분리**. UG↔P/A 는 chat protocol, 에이전트 간은 A2A. P/A 가 chat 중 합의된 작업을 Assignment 로 발급 후 A2A 로 위임.
+- LLM 이 아닌 클라이언트 (CHR 등) 도 MCP 사용 — 일관성 우선.
 
 ## 에이전트 ↔ 외부 도구 운영 원칙
 

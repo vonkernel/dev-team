@@ -142,10 +142,10 @@ graph TD
         WebSearch["[Tool] Claude Web Search"]
     end
 
-    %% 사용자 접점
-    User <-->|채팅 UI| UG
-    UG <-->|기획 개입| P
-    UG <-->|기술 설계 개입| A
+    %% 사용자 접점 (chat protocol — A2A 아님, #75)
+    User <-->|chat UI| UG
+    UG <-->|chat: 기획 개입| P
+    UG <-->|chat: 기술 설계 개입| A
 
     %% 외부 PM 서비스 — P 단독 창구
     P <-->|동기화| ExtPmMCP
@@ -159,11 +159,13 @@ graph TD
     L -->|통합 정보 검색| InterfaceLayer
     L -.->|외부 리소스 조사 3 트랙| ResearchTracks
 
-    %% A2A 대화 이벤트 publish
-    ExecAgents -.->|대화 이벤트 publish| Broker
-    UG -.->|대화 이벤트 publish| Broker
+    %% 대화 이벤트 publish (chat / assignment / A2A 3 layer — #75)
+    ExecAgents -.->|이벤트 publish| Broker
+    UG -.->|chat 이벤트 publish| Broker
     Broker -->|consume| Chronicler
 ```
+
+> **두 통신 tier (#75)**: 사용자 ↔ Primary / Architect 의 통신은 **chat protocol** (REST POST + 영속 SSE per session — [architecture-chat-protocol](proposal/architecture-chat-protocol.md)). 에이전트 간 통신은 **A2A** ([messaging.md](../shared/src/dev_team_shared/a2a/messaging.md)). 사용자 ↔ 에이전트는 에이전트 간 통신과 다른 영역이라 자체 어휘 / 자체 protocol 로 별도 정의. P/A 가 chat 중 합의된 작업을 **Assignment** 로 발급하고 그 실행을 다른 agent 에게 A2A 위임.
 
 **다이어그램 단순화 주석:**
 
@@ -186,7 +188,7 @@ graph TD
 
 ### 2.2. User Gateway → [user-gateway](proposal/architecture-user-gateway.md)
 
-사용자 ↔ 에이전트 중계 계층. 채팅 입력을 A2A `SendMessage` / `SendStreamingMessage` 로 변환하여 Primary 또는 Architect 로 전달, SSE 스트리밍으로 에이전트 응답을 실시간 UI 렌더링.
+사용자 ↔ Primary / Architect 중계 계층. **chat protocol** (REST POST + 영속 SSE per session) 으로 사용자 발화를 받아 session 의 `agent_endpoint` 보고 P/A 의 internal chat endpoint 로 forward, 응답 chunk 를 영속 SSE 채널로 FE 에 push. 자세한 spec 은 [architecture-chat-protocol](proposal/architecture-chat-protocol.md).
 
 ### 2.3. 단일 에이전트 내부 구조 → [agent-internals](proposal/architecture-agent-internals.md)
 
@@ -200,9 +202,13 @@ LangGraph 베이스 + LLM Adapter + Code Agent Adapter + MCP 클라이언트 (Sh
 
 이중 계층 — Atlas (Semantic / Neo4j) + Doc Store (Episodic / PostgreSQL). **분담 모델 (정정 — 2026-05)**: write = 각 에이전트 직접 / 단순 read = 직접 / 정보 검색 = Librarian 통과 / 외부 리소스 조사 = Librarian 단독.
 
-### 2.6. A2A 대화 이벤트 수집 → [event-pipeline](proposal/architecture-event-pipeline.md)
+### 2.6. 대화 이벤트 수집 → [event-pipeline](proposal/architecture-event-pipeline.md)
 
-모든 에이전트가 A2A 통신 시 Valkey Streams 에 event publish (fire-and-forget). 경량 Consumer **Chronicler** 가 XREADGROUP / XACK 으로 구독 → Doc Store MCP 로 영속화. CHR 은 LLM/LangGraph 미사용의 인프라 모듈.
+UG 의 chat 통신 + 에이전트 간 A2A 통신 양쪽의 lifecycle 이벤트가 Valkey Streams 에 publish (fire-and-forget). 경량 Consumer **Chronicler** 가 XREADGROUP / XACK 으로 구독 → Doc Store MCP 로 영속화. 3 layer (chat / assignment / A2A) 별 processor 분리. CHR 은 LLM/LangGraph 미사용의 인프라 모듈.
+
+### 2.6.1. Chat Protocol → [chat-protocol](proposal/architecture-chat-protocol.md)
+
+UG ↔ P/A 의 별도 chat 프로토콜 (REST POST + 영속 SSE per session). A2A 와 분리 (#75) — 사용자 ↔ 에이전트는 에이전트 간 통신과 다른 영역이라 자체 어휘로 별도 정의. Session / Chat / Assignment 어휘로 chat tier 표현.
 
 ### 2.7. 프로젝트 코드베이스 공유 → [codebase-sharing](proposal/architecture-codebase-sharing.md)
 
@@ -221,8 +227,9 @@ Librarian 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 U
 | 컴포넌트 | 기술 | 역할 |
 |----------|------|------|
 | 워크플로우 엔진 | LangGraph | 에이전트 내부 상태 머신 (StateGraph / 노드 / 체크포인트) |
-| A2A 서버 | 자체 FastAPI 라우트 (`/a2a/{role}`) | A2A v1.0 엔드포인트 호스팅 (JSON-RPC 2.0, SSE) |
-| User Gateway | FastAPI 중계 서비스 (별 컨테이너) | 사용자 UI ↔ A2A 네트워크 중계, SSE 스트리밍 |
+| A2A 서버 | 자체 FastAPI 라우트 (`/a2a/{role}`) | A2A v1.0 엔드포인트 호스팅 (JSON-RPC 2.0, SSE) — **에이전트 간 한정** |
+| Chat 서버 (P / A 만) | 자체 FastAPI 라우트 (`/chat/send` + `/chat/stream`) | 사용자 ↔ P/A chat protocol 엔드포인트 (REST POST + 영속 SSE — [architecture-chat-protocol](proposal/architecture-chat-protocol.md)) |
+| User Gateway | FastAPI 중계 서비스 (별도 컨테이너) | 사용자 UI ↔ P/A chat 중계 (REST POST + 영속 SSE per session) |
 | 코드 실행 도구 | 추상화 인터페이스 (기본: OpenCode CLI) | 코드 조작 실행 엔진, 추후 교체 가능 |
 | 추론 엔진 | LLM API (역할·서브 에이전트별 선택) | 모든 에이전트의 판단/검증 |
 | Runtime | Docker (1 Agent = 1 Container) | 격리된 실행 환경 |
@@ -242,13 +249,13 @@ Librarian 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 U
 
 ### 3.1. 역할 매트릭스
 
-| 에이전트 | 핵심 역할 | 페르소나 | 주요 상호작용 |
+| 에이전트 | 핵심 역할 | 페르소나 | 주요 상호작용 (chat / A2A) |
 |----------|-----------|----------|--------------|
-| **Primary** | 사용자와 기획 협의, PRD 작성, 외부 PM 도구 동기화, 프로젝트 전체 관리 | PM | 사용자, Architect, Librarian, 외부 PM 도구 |
-| **Architect** | 사용자와 기술 설계 협의, OO 설계 주도, 설계 결정권 보유, ADR / Atlas 직접 write | 시스템 아키텍트 | 사용자, Primary, Librarian, 각 Engineer+QA 페어 |
-| **Librarian** | DB 정보 검색 (자연어 / 교차 쿼리) + 외부 리소스 조사 (3 트랙) 전담 | 사서 | 전 에이전트 |
-| **Engineer:{specialty}** | Architect의 1차 설계 기반 세부 설계·구현 자율 수행, 구현 산출물 Atlas / Doc Store 직접 write | 역할별 SW 엔지니어 | Architect, 페어 QA, Librarian, 유관 Engineer |
-| **QA:{specialty}** | Architect의 설계 수신 → 독립적 테스트 코드 작성, 빌드/테스트 실행, 검증 산출물 직접 write | 역할별 테스트 엔지니어 | Architect, 페어 Engineer, Librarian |
+| **Primary** | 사용자와 기획 협의, Assignment 발급, PRD 작성, 외부 PM 도구 동기화, 프로젝트 전체 관리 | PM | **chat**: 사용자. **A2A**: Architect / Librarian / Engineer / QA / 외부 MCP |
+| **Architect** | 사용자와 기술 설계 협의, OO 설계 주도, 설계 결정권 보유, ADR / Atlas 직접 write | 시스템 아키텍트 | **chat**: 사용자. **A2A**: Primary / Librarian / Engineer + QA 페어 |
+| **Librarian** | DB 정보 검색 (자연어 / 교차 쿼리) + 외부 리소스 조사 (3 트랙) 전담 | 사서 | **A2A 만**: 전 에이전트 |
+| **Engineer:{specialty}** | Architect의 1차 설계 기반 세부 설계·구현 자율 수행, 구현 산출물 Atlas / Doc Store 직접 write | 역할별 SW 엔지니어 | **A2A 만**: Architect / 페어 QA / Librarian / 유관 Engineer |
+| **QA:{specialty}** | Architect의 설계 수신 → 독립적 테스트 코드 작성, 빌드/테스트 실행, 검증 산출물 직접 write | 역할별 테스트 엔지니어 | **A2A 만**: Architect / 페어 Engineer / Librarian |
 
 > **에이전트가 아닌 보조 모듈:**
 > **Chronicler** — Valkey Streams를 구독하여 A2A 대화 이벤트를 Doc Store에 영속화하는 경량 Consumer. LLM, LangGraph, Role Config를 사용하지 않는 단순 Python 스크립트 수준의 모듈. 에이전트 역할 정의에서 다루지 않으며, 인프라로 취급. ([event-pipeline](proposal/architecture-event-pipeline.md) 참조)
@@ -259,7 +266,12 @@ Librarian 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 U
 
 ## 4. 지식 모델링 → [knowledge-model](proposal/knowledge-model.md)
 
-이중 계층 — **Atlas (Semantic Layer, Neo4j)** 가 OO 구조 (Interface / Class / PublicMethod 노드 + IMPLEMENTS / DEPENDS_ON / BELONGS_TO 관계) + 과업-코드 추적성 (Task / Feature / BugReport) 모델, **Doc Store (Episodic Layer, PostgreSQL)** 가 기록/대화/문서 영속.
+이중 계층 — **Atlas (Semantic Layer, Neo4j)** 가 OO 구조 (Interface / Class / PublicMethod 노드 + IMPLEMENTS / DEPENDS_ON / BELONGS_TO 관계) + Assignment-코드 추적성 (Assignment / Feature / BugReport) 모델, **Doc Store (Episodic Layer, PostgreSQL)** 가 기록/대화/문서 영속.
+
+Doc Store 컬렉션은 두 통신 tier 분리 (#75) 에 따라 정리:
+- **Chat tier** — sessions, chats, assignments (UG↔P/A 영역)
+- **A2A tier** — a2a_contexts, a2a_messages, a2a_tasks, a2a_task_status_updates, a2a_task_artifacts (에이전트 간)
+- **도메인 산출물** — wiki_pages, issues, technical_notes, design_decisions, prds
 
 상세 모델링 → [knowledge-model](proposal/knowledge-model.md).
 
@@ -271,12 +283,12 @@ Librarian 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 U
 
 | 단계 | 명칭 | 참여 에이전트 | 핵심 활동 |
 |------|------|-------------|-----------|
-| 1단계 | 기획 구체화 | 사용자, Primary | 사용자-Primary 대화, PRD 작성, Primary 가 Doc Store 직접 write + 외부 PM 동기화 |
-| 2단계 | OO 설계 | Primary, Architect, 사용자, (필요 시 Librarian) | Architect의 서브 에이전트 루프, 사용자 기술 개입 수용, OO 1차 설계 확정 |
+| 1단계 | 기획 구체화 | 사용자, Primary | 사용자-Primary chat 대화, PRD 작성, **Assignment 발급**, Primary 가 Doc Store 직접 write + 외부 PM 동기화 |
+| 2단계 | OO 설계 | Primary, Architect, 사용자, (필요 시 Librarian) | Architect의 서브 에이전트 루프, 사용자 기술 chat 개입 수용, OO 1차 설계 확정 |
 | 3단계 | 병렬 구현·검증 | Architect, Engineer+QA 페어들, (필요 시 Librarian) | Engineer 자체 루프 + QA 독립 테스트. 산출물 직접 write. 자기 변경 코드는 Engineer 자체 색인 (Atlas 직접 write) |
-| 4단계 | 검수/종료 | Architect, Primary | Architect 검수 → Primary 결과 보고 |
+| 4단계 | 검수/종료 | Architect, Primary | Architect 검수 → Primary 결과 chat 으로 사용자 보고 |
 
-**인간 개입 지점:** 사용자는 단계와 무관하게 언제든 Primary(기획) 또는 Architect(기술)에게 직접 메시지를 보낼 수 있다. 개입 시점은 Task/Session/Item으로 기록되어 추적 가능하다.
+**인간 개입 지점:** 사용자는 단계와 무관하게 언제든 Primary (기획) 또는 Architect (기술) 에게 chat 으로 메시지를 보낼 수 있다. 개입은 chat tier 의 Session / Chat 으로 기록되고, 합의된 작업은 Assignment 로 발급되어 A2A tier 로 위임된다.
 
 단계별 상세 (1단계~4단계) → [workflow](proposal/workflow.md).
 

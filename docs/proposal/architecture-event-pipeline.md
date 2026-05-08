@@ -1,24 +1,28 @@
-# A2A 대화 이벤트 수집
+# 대화 이벤트 수집 (Chronicler)
 
 > 본 문서는 [`proposal-main.md`](../proposal-main.md) §2.6 에서 분리. (#66)
+> 두 tier 분리 / 어휘 정렬 반영 (#75).
 
-에이전트 간 직접 소통은 A2A(요청-응답)로 이루어지지만, **대화 로그는 Valkey Streams 브로커로 publish**되어 **Chronicler**라는 경량 Consumer가 Doc Store에 영속화한다. 이 분리는 다음을 보장한다:
+UG ↔ P/A 의 chat 통신 (REST POST + 영속 SSE per session) 과 에이전트 간 A2A
+통신 양쪽의 **lifecycle 이벤트가 Valkey Streams 브로커로 publish**되어
+**Chronicler** 라는 경량 Consumer 가 Doc Store 에 영속화한다. 이 분리는 다음을 보장한다:
 
-- 에이전트는 로그 기록에 블로킹되지 않음 (fire-and-forget)
-- Librarian의 LLM 추론 부하가 대화 기록을 지연시키지 않음
-- 향후 다른 구독자(실시간 모니터링, 감사 서비스 등) 추가 시 브로커에 구독만 걸면 됨
+- Publisher 는 로그 기록에 블로킹되지 않음 (fire-and-forget)
+- 향후 다른 구독자 (실시간 모니터링 / 감사 서비스 등) 추가 시 브로커에 구독만 걸면 됨
 
 ## 구성
 
 ```mermaid
 graph LR
-    Agents["에이전트들<br/>(UG, P, A, L,<br/>Eng/QA 페어)"]
+    UG["UG<br/>(chat publisher)"]
+    Agents["에이전트들<br/>(P / A / L /<br/>Eng / QA)"]
     Stream["Valkey Streams<br/>XADD → a2a-events"]
     Chronicler["Chronicler<br/>(경량 Consumer)"]
-    DocMCP["Doc DB MCP"]
+    DocMCP["Doc Store MCP"]
     DocDB["Doc Store"]
 
-    Agents -->|XADD publish| Stream
+    UG -->|chat events publish| Stream
+    Agents -->|chat / A2A / assignment events publish| Stream
     Stream -->|XREADGROUP| Chronicler
     Chronicler --> DocMCP --> DocDB
 ```
@@ -26,64 +30,105 @@ graph LR
 ## Chronicler 모듈 특성
 
 | 항목 | 내용 |
-|------|------|
+|---|---|
 | 정체성 | **에이전트가 아님** — Role Config, LangGraph, LLM, OpenCode CLI 일체 미사용 |
-| 구현 | 단일 Python 스크립트 수준 — Valkey 클라이언트(redis-py 호환) + Doc DB MCP 클라이언트만 보유 |
-| 책임 | `XREADGROUP`으로 Stream 구독 → 파싱/검증 → Task/Session/Item 컬렉션에 upsert → **저장 성공 시 `XACK`** |
+| 구현 | 단일 Python 스크립트 수준 — Valkey 클라이언트(redis-py 호환) + Doc Store MCP 클라이언트만 보유 |
+| 책임 | `XREADGROUP` 으로 Stream 구독 → 파싱/검증 → 해당 layer 컬렉션에 upsert → **저장 성공 시 `XACK`** |
 | 재시작 내구성 | 저장 전 장애 시 XACK 미실행 → 메시지는 PEL(Pending Entries List)에 남아 재기동 시 재처리됨 |
-| 스케일링 | 필요 시 같은 Consumer Group에 인스턴스 추가만 하면 수평 확장 |
+| 스케일링 | 필요 시 같은 Consumer Group 에 인스턴스 추가만 하면 수평 확장 |
+| Idempotency | 이벤트마다 `event_id` (publisher 발급 UUID). 처리 시점 dedup 으로 중복 흡수 |
 
-## 에이전트 측 publish
+## 이벤트 종류 — 3 layer
 
-- 에이전트는 Valkey 클라이언트로 `XADD a2a-events * <field> <value> ...` 호출
-- 즉시 반환 (A2A 본연의 요청-응답 흐름 방해 없음)
-- 실패 시 로컬 버퍼에 재시도 큐잉 (필수)
+publisher 가 정확히 어느 layer 의 이벤트인지 명시. Chronicler 는 layer 별
+processor 로 분기 (OCP — 새 layer 추가 = 새 processor + 등록 1줄).
 
-## Task/Session/Item 3계층 구조
+### 1. Chat layer (UG↔P/A 영역)
 
-```mermaid
-graph TD
-    Task["Task<br/>task_id: TASK-001<br/>프로젝트의 단위 과업"]
-    Task --> SessA["Session A<br/>session_id: SES-xxx<br/>Eng→A 설계 변경 제안"]
-    Task --> SessB["Session B<br/>session_id: SES-yyy<br/>A→QA 검증 사항 보완 지시"]
-    Task --> SessC["Session C<br/>session_id: SES-zzz<br/>Eng↔QA 스텝별 핑퐁"]
+UG 가 publish.
 
-    SessA --> ItemA1["Item<br/>item_id: ITM-1<br/>prev_item_id: null"]
-    ItemA1 --> ItemA2["Item<br/>item_id: ITM-2<br/>prev_item_id: ITM-1"]
-    ItemA2 --> ItemA3["Item<br/>item_id: ITM-3<br/>prev_item_id: ITM-2"]
+| 이벤트 | 트리거 | 적재처 |
+|---|---|---|
+| `chat.session.start` | 사용자가 새 chat session 시작 | `sessions` row 생성 |
+| `chat.append` | 사용자 / agent 의 발화 | `chats` row 생성 |
+| `chat.session.end` | session 닫힘 (페이지 떠남 / 명시 종료 / TTL) | `sessions.ended_at` 갱신 |
 
-    SessB --> ItemB1["Item<br/>item_id: ITM-4<br/>prev_item_id: null"]
-```
+### 2. Assignment layer (도메인 work item)
 
-**계층 정의:**
-- **Task**: 프로젝트의 단위 과업 (Architect가 Engineer+QA 페어에게 배분한 구현 과제 단위)
-- **Session**: 하나의 태스크 내에서 진행되는 **개별 대화 흐름**. 주제별/상황별로 구분됨
-    - 예: "Engineer:BE가 Architect에게 인터페이스 설계 변경 제안한 대화", "Architect가 QA:FE에게 테스트 보완 지시한 대화"
-- **Item**: Session 하위의 **개별 메시지**. `prev_item_id`로 대화 순서 추적
+Primary / Architect 가 publish (chat 중 합의 시점).
 
-**조회 API (Librarian 제공):**
-- `by_task(task_id)` → 해당 태스크의 모든 대화
-- `by_session(session_id)` → 해당 대화 세션의 전체 맥락
-- `by_item(item_id)` → 특정 메시지 단건
-- `thread(item_id)` → 해당 메시지를 포함한 대화 쓰레드 (prev_item_id 역추적)
+| 이벤트 | 트리거 | 적재처 |
+|---|---|---|
+| `assignment.create` | P/A 가 새 work item 발급 | `assignments` row 생성 |
+| `assignment.update` | status 변경 / metadata 갱신 | `assignments` row update |
+
+### 3. A2A layer (에이전트 간 통신)
+
+각 에이전트가 publish (자기 incoming / outgoing A2A 호출).
+
+| 이벤트 | 트리거 | 적재처 |
+|---|---|---|
+| `a2a.context.start` | counterpart 가 incoming A2A 첫 호출 받음 | `a2a_contexts` row 생성 |
+| `a2a.message.append` | A2A Message 송수신 | `a2a_messages` row 생성 |
+| `a2a.task.create` | A2A Task 생성 (stateful 작업 응답 시) | `a2a_tasks` row 생성 |
+| `a2a.task.status_update` | Task state 전환 | `a2a_task_status_updates` row 생성 + `a2a_tasks.state` 갱신 |
+| `a2a.task.artifact` | Task 산출물 추가 | `a2a_task_artifacts` row 생성 |
+| `a2a.context.end` | A2A 호출 트리 종료 (정상 / 에러) | `a2a_contexts.ended_at` 갱신 |
+
+## 어휘 / 객체 모델
+
+| 차원 | 객체 | 정의 |
+|---|---|---|
+| **Chat tier** | Session | UG↔P/A 한 대화창 |
+| | Chat | session 안 발화 |
+| | Assignment | chat 중 합의된 도메인 work item |
+| **A2A tier** | Context | A2A `contextId` — 두 에이전트 사이 대화 namespace |
+| | Message | A2A `Message` (parts / role / messageId), optional `taskId` |
+| | A2A Task | A2A `Task` (state lifecycle / artifacts / history). Message 와 응답 형식 alternative |
+
+세부 schema 정의 + 관계 그림은 [knowledge-model](knowledge-model.md) §4.2.
+
+## 자주 헷갈리는 점
+
+- **Domain Assignment ≠ A2A Task**:
+  - Assignment = 도메인 work item (open → done). Doc Store `assignments`.
+  - A2A Task = wire-level 진행 추적 (SUBMITTED → COMPLETED). Doc Store `a2a_tasks`.
+  - 한 Assignment 는 **1 개 이상의 A2A Task** 로 구성 가능 (위임 다회).
+- **Session ↔ A2A Context**:
+  - Session 은 UG↔P/A chat 단위 (사용자 → P/A 의 endpoint).
+  - A2A Context 는 에이전트 간 단위. session 발일 수도 있고 (대부분), system trigger 발 standalone 일 수도.
+  - `a2a_contexts.parent_session_id` / `parent_assignment_id` 로 source 추적.
+- **A2A Message ↔ A2A Task**:
+  - 응답 형식 alternative. Trivial 은 Message, stateful 은 Task ([messaging.md](../../shared/src/dev_team_shared/a2a/messaging.md)).
+  - Task commit 후 관련 Message 들은 Task.history 에 누적 → DB 에선 `a2a_messages.a2a_task_id` 로 backlink.
+
+## 조회 API (Librarian 제공)
+
+| 목적 | 쿼리 |
+|---|---|
+| 한 chat session 의 대화 | `chats.find({ session_id })` |
+| 한 session 에서 파생된 모든 assignment | `assignments.find({ root_session_id })` |
+| 한 assignment 의 모든 A2A context | `a2a_contexts.find({ parent_assignment_id })` |
+| 한 A2A context 의 모든 message | `a2a_messages.find({ a2a_context_id })` |
+| 한 A2A task 의 history | `a2a_messages.find({ a2a_task_id })` |
+| 한 trace 의 전체 시스템 흐름 | `a2a_contexts.find({ trace_id })` 시간순 |
+
+자연어 / 교차 컬렉션 쿼리는 Librarian 자연어 위임 ([architecture-shared-memory](architecture-shared-memory.md)).
 
 ## 이벤트 publish 포맷
 
+각 이벤트는 Pydantic 모델로 정의 (publisher / consumer 가 공유 contract —
+`shared/src/dev_team_shared/event_bus/events.py`). 공통 필드:
+
 ```json
 {
-  "event": "a2a_message",
-  "task_id": "TASK-001",
-  "session_id": "SES-xxx",
-  "item_id": "ITM-42",
-  "prev_item_id": "ITM-41",
-  "from": "Eng:BE",
-  "to": "A",
-  "type": "design_change_proposal",
-  "payload": { "...": "..." },
-  "timestamp": "2026-04-16T10:00:00Z"
+  "event_id": "<UUID — idempotency key>",
+  "timestamp": "2026-04-16T10:00:00Z",
+  "event_type": "<chat.append | a2a.message.append | ...>",
+  "trace_id": "<옵션, A2A layer 만 채움>"
 }
 ```
 
-- 발신 에이전트가 `session_id`, `item_id`, `prev_item_id`를 부여하여 Valkey Streams에 XADD
-- Chronicler가 Consumer Group으로 소비하여 Doc Store의 sessions/items 테이블(JSONB)에 저장
-- Session 생성 규칙: 새로운 주제의 첫 대화 시 발신자가 신규 `session_id` 생성, 기존 주제 이어가기는 동일 `session_id` 사용
+layer 별 필드는 각 event 모델 정의 참조 (`SessionStartEvent` /
+`ChatAppendEvent` / `AssignmentCreateEvent` / `A2AContextStartEvent` /
+`A2AMessageAppendEvent` / `A2ATaskCreateEvent` / 등).

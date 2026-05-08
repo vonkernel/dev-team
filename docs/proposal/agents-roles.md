@@ -4,13 +4,15 @@
 
 ## 3.1. 역할 매트릭스
 
-| 에이전트 | 핵심 역할 | 페르소나 | 주요 상호작용 |
+| 에이전트 | 핵심 역할 | 페르소나 | 주요 상호작용 (chat / A2A) |
 |----------|-----------|----------|--------------|
-| **Primary** | 사용자와 기획 협의, PRD 작성, 외부 PM 도구 동기화, 프로젝트 전체 관리 | PM | 사용자, Architect, Librarian, 외부 PM 도구 |
-| **Architect** | 사용자와 기술 설계 협의, OO 설계 주도, 설계 결정권 보유, ADR / Atlas 직접 write | 시스템 아키텍트 | 사용자, Primary, Librarian, 각 Engineer+QA 페어 |
-| **Librarian** | DB 정보 검색 (자연어 / 교차 쿼리) + 외부 리소스 조사 (3 트랙) 전담 | 사서 | 전 에이전트 |
-| **Engineer:{specialty}** | Architect의 1차 설계 기반 세부 설계·구현 자율 수행, 구현 산출물 Atlas / Doc Store 직접 write | 역할별 SW 엔지니어 | Architect, 페어 QA, Librarian, 유관 Engineer |
-| **QA:{specialty}** | Architect의 설계 수신 → 독립적 테스트 코드 작성, 빌드/테스트 실행, 검증 산출물 직접 write | 역할별 테스트 엔지니어 | Architect, 페어 Engineer, Librarian |
+| **Primary** | 사용자와 기획 협의, Assignment 발급, PRD 작성, 외부 PM 도구 동기화, 프로젝트 전체 관리 | PM | **chat**: 사용자 (UG 통해). **A2A**: Architect / Librarian / Engineer / QA / 외부 MCP 도구 |
+| **Architect** | 사용자와 기술 설계 협의, OO 설계 주도, 설계 결정권 보유, ADR / Atlas 직접 write | 시스템 아키텍트 | **chat**: 사용자 (UG 통해). **A2A**: Primary / Librarian / Engineer + QA 페어 |
+| **Librarian** | DB 정보 검색 (자연어 / 교차 쿼리) + 외부 리소스 조사 (3 트랙) 전담 | 사서 | **A2A 만**: 전 에이전트 (사용자와 직접 chat 안 함) |
+| **Engineer:{specialty}** | Architect의 1차 설계 기반 세부 설계·구현 자율 수행, 구현 산출물 Atlas / Doc Store 직접 write | 역할별 SW 엔지니어 | **A2A 만**: Architect / 페어 QA / Librarian / 유관 Engineer |
+| **QA:{specialty}** | Architect의 설계 수신 → 독립적 테스트 코드 작성, 빌드/테스트 실행, 검증 산출물 직접 write | 역할별 테스트 엔지니어 | **A2A 만**: Architect / 페어 Engineer / Librarian |
+
+> **두 통신 tier**: 사용자가 직접 chat 하는 P / A 만 chat endpoint 노출 (REST POST + 영속 SSE — [architecture-chat-protocol](architecture-chat-protocol.md)). 에이전트 간 모든 통신은 A2A. L / Eng / QA 는 chat endpoint 미노출 — 사용자 → Eng/QA 같은 직접 chat 은 없고, 필요 시 Primary 또는 Architect 가 합의된 Assignment 를 A2A 위임.
 
 > **에이전트가 아닌 보조 모듈:**
 > **Chronicler** — Valkey Streams를 구독하여 A2A 대화 이벤트를 Doc Store에 영속화하는 경량 Consumer. LLM, LangGraph, Role Config를 사용하지 않는 단순 Python 스크립트 수준의 모듈. 에이전트 역할 정의에서 다루지 않으며, 인프라로 취급. ([architecture-event-pipeline](architecture-event-pipeline.md) 참조)
@@ -19,22 +21,29 @@
 
 ### Primary - 프로젝트 매니저
 
-**사용자 접점 (기획 영역):**
-- 언제든 사용자와 채팅으로 소통, 작업 도중에도 중간 개입 수용
+**사용자 접점 (chat tier — 기획 영역):**
+- UG 가 routing 한 chat session 으로 사용자와 소통 (REST POST + 영속 SSE — [architecture-chat-protocol](architecture-chat-protocol.md))
+- chat 도중 합의되는 작업을 **Assignment 로 발급** (Doc Store `assignments` 컬렉션). 한 chat session 에서 N 개 Assignment 도출 가능
 - 사용자와의 논의를 통해 추상적 요구사항을 구체화하여 **PRD 작성**
-- PRD 변경이 발생하면 Architect와 재협의
+- PRD 변경이 발생하면 Architect 와 A2A 로 재협의
 
 **프로젝트 관리:**
 - PRD / Epic / Story / wiki_pages / issues 를 Doc Store MCP 에 **직접 write** + 외부 PM 도구 (GitHub Wiki/Issue 등) 도 본인이 직접 동기화
-- 태스크 분해 후 우선순위 결정
-- 전체 진행 상황 추적 — 자기 도메인 데이터는 MCP 직접 read, 정보 검색 / 교차 쿼리는 Librarian 자연어 위임
-- 최종 결과물 취합 및 사용자 보고
+- Assignment 분해 후 우선순위 결정
+- 합의된 Assignment 의 실행은 **A2A 로 다른 에이전트에 위임** (Architect / Engineer / QA). 한 Assignment 안에서 여러 A2A Task 발생 가능
+- 전체 진행 상황 추적 — 자기 도메인 데이터는 MCP 직접 read, 정보 검색 / 교차 쿼리는 Librarian 자연어 위임 (A2A)
+- 최종 결과물 취합 및 사용자 보고 (chat tier 로)
 
 ### Architect - 시스템 아키텍트
 
-**사용자 접점 (기술 영역):**
-- 언제든 사용자와 채팅으로 소통, 기술 설계 및 기술 결정에 대한 중간 개입 수용
-- 사용자의 기술적 질의/조율 요청에 대응
+**사용자 접점 (chat tier — 기술 영역, M4+):**
+- UG 가 routing 한 chat session 으로 사용자와 직접 소통 가능 (REST POST + 영속 SSE — Primary 와 동일 chat protocol)
+- 기술 설계 / 기술 결정에 대한 사용자 중간 개입 수용
+- chat 중 합의된 작업은 자기 명의로 Assignment 발급 또는 Primary 의 기존 Assignment 진행
+
+**A2A 접점 (Primary 등 다른 에이전트로부터):**
+- Primary 가 위임한 Assignment 진행을 위해 A2A Context 시작 (Primary → Architect)
+- Engineer / QA 페어에게 다시 A2A 위임 가능 (Architect → Engineer / Architect → QA)
 
 **설계 주도:**
 - **객체지향 관점의 1차 설계**를 수행하여 Engineer+QA 페어에게 동시 전달

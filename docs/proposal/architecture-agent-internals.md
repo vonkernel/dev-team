@@ -32,8 +32,9 @@ graph TD
 
         subgraph Network["네트워크 / 이벤트"]
             direction LR
-            A2A["A2A 서버 / 클라이언트<br/>(자체 FastAPI)<br/>POST /a2a/{role}<br/>GET /.well-known/agent-card.json"]
-            BrokerClient["이벤트 브로커 클라이언트<br/>(대화 이벤트 publish 전용)"]
+            ChatEP["Chat 인터페이스 (P / A 만)<br/>POST /chat/send<br/>GET /chat/stream?session_id=X<br/>(UG ↔ P/A 의 chat protocol)"]
+            A2A["A2A 서버 / 클라이언트<br/>(자체 FastAPI)<br/>POST /a2a/{role}<br/>GET /.well-known/agent-card.json<br/>(에이전트 간)"]
+            BrokerClient["이벤트 브로커 클라이언트<br/>(chat / assignment / A2A 이벤트 publish)"]
         end
     end
 
@@ -54,6 +55,8 @@ graph TD
     ExtPmMCP["External PM MCP"]
     ResearchMCP["외부 리소스 조사 MCP<br/>(context7 / web-fetch)"]
 
+    UG_ext["User Gateway"]
+    ChatEP <-->|chat protocol<br/>REST POST + 영속 SSE| UG_ext
     A2A <-->|A2A 프로토콜| Peers
     A2A -->|자연어 위임| Librarian
     BrokerClient -->|publish| Broker
@@ -64,8 +67,9 @@ graph TD
 
 **다이어그램 요지:**
 - 각 에이전트는 **모듈별 독립 이미지**로 빌드되지만, **공통 코드는 `shared/` 패키지에서 import**하여 LangGraph 베이스, A2A, MCP 클라이언트 등의 중복을 피한다
-- Role Config에 따라 페르소나, 워크플로우 확장, 사용 도구, A2A 피어가 결정된다
+- Role Config에 따라 페르소나, 워크플로우 확장, 사용 도구, 통신 인터페이스가 결정된다
 - 공통: LangGraph 베이스 워크플로우, LLM 어댑터, A2A 서버/클라이언트, 역할별 MCP 도구
+- **통신 인터페이스 두 종류** — chat protocol (UG ↔ P/A 한정) / A2A (에이전트 간). 사용자와 직접 chat 하는 P · A 만 chat endpoint 노출 ([architecture-chat-protocol](architecture-chat-protocol.md))
 - 역할에 따라 달라짐:
     - **Code Agent Adapter**: Primary, Librarian 은 비활성 / 그 외는 활성
     - **Shared Memory MCP 클라이언트**: 전 에이전트 활성 (write / read 직접 — [architecture-shared-memory](architecture-shared-memory.md) 분담 모델 정정)
