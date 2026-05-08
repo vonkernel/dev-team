@@ -24,6 +24,7 @@ A2ATaskState = Literal[
 class A2ATaskCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    id: UUID | None = None                           # publisher 가 미리 알면 사용
     task_id: str                                     # A2A wire taskId
     a2a_context_id: UUID
     state: A2ATaskState = "SUBMITTED"

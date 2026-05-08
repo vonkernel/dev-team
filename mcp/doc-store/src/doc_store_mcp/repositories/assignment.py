@@ -29,23 +29,32 @@ class AssignmentRepository(
         return AssignmentRead.model_validate(d)
 
     async def create(self, doc: AssignmentCreate) -> AssignmentRead:
-        sql = """
-            INSERT INTO assignments
-                (title, description, status, owner_agent, root_session_id,
-                 issue_refs, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
-            RETURNING *
-        """
-        row = await self._pool.fetchrow(
-            sql,
-            doc.title,
-            doc.description,
-            doc.status,
-            doc.owner_agent,
-            doc.root_session_id,
-            doc.issue_refs,
-            self._to_jsonb(doc.metadata),
-        )
+        if doc.id is not None:
+            sql = """
+                INSERT INTO assignments
+                    (id, title, description, status, owner_agent,
+                     root_session_id, issue_refs, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+                RETURNING *
+            """
+            row = await self._pool.fetchrow(
+                sql, doc.id, doc.title, doc.description, doc.status,
+                doc.owner_agent, doc.root_session_id, doc.issue_refs,
+                self._to_jsonb(doc.metadata),
+            )
+        else:
+            sql = """
+                INSERT INTO assignments
+                    (title, description, status, owner_agent, root_session_id,
+                     issue_refs, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+                RETURNING *
+            """
+            row = await self._pool.fetchrow(
+                sql, doc.title, doc.description, doc.status, doc.owner_agent,
+                doc.root_session_id, doc.issue_refs,
+                self._to_jsonb(doc.metadata),
+            )
         assert row is not None
         return self._to_read(row)
 

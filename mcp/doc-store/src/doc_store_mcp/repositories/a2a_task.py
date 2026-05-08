@@ -29,20 +29,28 @@ class A2ATaskRepository(
         return A2ATaskRead.model_validate(d)
 
     async def create(self, doc: A2ATaskCreate) -> A2ATaskRead:
-        sql = """
-            INSERT INTO a2a_tasks
-                (task_id, a2a_context_id, state, assignment_id, metadata)
-            VALUES ($1, $2, $3, $4, $5::jsonb)
-            RETURNING *
-        """
-        row = await self._pool.fetchrow(
-            sql,
-            doc.task_id,
-            doc.a2a_context_id,
-            doc.state,
-            doc.assignment_id,
-            self._to_jsonb(doc.metadata),
-        )
+        if doc.id is not None:
+            sql = """
+                INSERT INTO a2a_tasks
+                    (id, task_id, a2a_context_id, state, assignment_id, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+                RETURNING *
+            """
+            row = await self._pool.fetchrow(
+                sql, doc.id, doc.task_id, doc.a2a_context_id, doc.state,
+                doc.assignment_id, self._to_jsonb(doc.metadata),
+            )
+        else:
+            sql = """
+                INSERT INTO a2a_tasks
+                    (task_id, a2a_context_id, state, assignment_id, metadata)
+                VALUES ($1, $2, $3, $4, $5::jsonb)
+                RETURNING *
+            """
+            row = await self._pool.fetchrow(
+                sql, doc.task_id, doc.a2a_context_id, doc.state,
+                doc.assignment_id, self._to_jsonb(doc.metadata),
+            )
         assert row is not None
         return self._to_read(row)
 

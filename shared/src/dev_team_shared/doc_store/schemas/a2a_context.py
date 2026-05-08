@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class A2AContextCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    id: UUID | None = None                           # publisher 가 미리 알면 사용
     context_id: str                                  # A2A wire contextId
     initiator_agent: str
     counterpart_agent: str
