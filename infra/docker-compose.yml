@@ -230,10 +230,14 @@ services:
     image: dev-team/issue-tracker-mcp:latest
     container_name: dev-team-issue-tracker-mcp
     restart: unless-stopped
-    env_file:
-      - ../.env                                     # GITHUB_TOKEN / OWNER / REPO / PROJECT_NUMBER 주입
     environment:
+      # 본 MCP 가 read 하는 env 를 명시 — 값은 host `.env` (env_file 대신 ${VAR}
+      # 보간 사용해 컨테이너 정의에 표면화). 자세한 의미는 mcp/issue-tracker/CLAUDE.md §5.
       ISSUE_TRACKER_TYPE: "${ISSUE_TRACKER_TYPE:-github}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN}"
+      GITHUB_TARGET_OWNER: "${GITHUB_TARGET_OWNER}"
+      GITHUB_TARGET_REPO: "${GITHUB_TARGET_REPO}"
+      GITHUB_PROJECT_NUMBER: "${GITHUB_PROJECT_NUMBER}"
     ports:
       - "9101:8000"                                 # 호스트 9101 ← 컨테이너 8000
 
@@ -248,10 +252,12 @@ services:
     image: dev-team/wiki-mcp:latest
     container_name: dev-team-wiki-mcp
     restart: unless-stopped
-    env_file:
-      - ../.env                                     # GITHUB_TOKEN / OWNER / REPO 주입
     environment:
+      # 본 MCP 가 read 하는 env 를 명시. 자세한 의미는 mcp/wiki/CLAUDE.md §6.
       WIKI_TYPE: "${WIKI_TYPE:-github}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN}"
+      GITHUB_TARGET_OWNER: "${GITHUB_TARGET_OWNER}"
+      GITHUB_TARGET_REPO: "${GITHUB_TARGET_REPO}"
     ports:
       - "9102:8000"                                 # 호스트 9102 ← 컨테이너 8000
 
