@@ -52,7 +52,7 @@
   수정할 일이 없어야** 함 (registry / abstract base / 인스턴스 추가로 해결).
 - **L**iskov Substitution — 추상 타입을 사용하는 코드는 그 모든 하위 타입에 대해
   정상 동작해야 한다. Protocol / ABC 로 계약 명시.
-- **I**nterface Segregation — 크고 뭉뚱그린 인터페이스 대신 사용자 별 좁은 인터
+- **I**nterface Segregation — 크고 뭉뚱그린 인터페이스 대신 사용자별 좁은 인터
   페이스. 클라이언트가 쓰지 않는 메서드에 의존하지 않도록.
 - **D**ependency Inversion — 상위 모듈은 하위 구현 세부사항(httpx, 특정 DB
   드라이버 등) 에 직접 의존하지 않고 **추상(인터페이스 / Protocol)** 에 의존.

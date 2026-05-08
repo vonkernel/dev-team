@@ -24,9 +24,9 @@ flowchart LR
 **호출 주체**: Librarian 단독. 다른 에이전트 (Primary / Architect / Engineer / QA) 가 외부 정보 필요하면
 A2A 자연어로 Librarian 에게 위임 — Librarian 이 LLM 추론으로 적절한 트랙 선택 + 호출 + 응답 정리.
 
-**비-스코프 (별 작업)**:
-- 일반 web search 의 추가 backend (Brave / Tavily / Serper 등) — 트랙 3 부족 시 M5+ 별 이슈
+**비-스코프 (별도 작업)**:
+- 일반 web search 의 추가 backend (Brave / Tavily / Serper 등) — 트랙 3 부족 시 M5+ 별도 이슈
 - Google 직접 scrape (Playwright + Google) — bot detection / ToS risk 로 회피
 - Librarian 의 운영 지침 (`agents/librarian/resources/external-research-guide.md`) — Librarian wiring 후속 이슈에서 작성 (LLM 컨텍스트 embed)
 
-상세 설계 / 결정 근거: 별 docs (예: `docs/external-research.md`) — backend 작업 시점 (M6) 에 작성.
+상세 설계 / 결정 근거: 별도 docs (예: `docs/external-research.md`) — backend 작업 시점 (M6) 에 작성.
