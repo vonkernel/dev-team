@@ -5,13 +5,17 @@ contract. event_id 는 idempotency key — 재시도 시 중복 방지.
 
 #75 재설계로 layer 별 이벤트 분리:
 
-- **Chat layer** (UG publish): `chat.session.start` / `chat.append` /
-  `chat.session.end`
+- **Chat layer** (UG publish): `session.start` / `chat.append` / `session.end`
 - **Assignment layer** (P/A publish): `assignment.create` /
   `assignment.update`
 - **A2A layer** (각 에이전트 A2A handler publish): `a2a.context.start` /
   `a2a.message.append` / `a2a.task.create` / `a2a.task.status_update` /
   `a2a.task.artifact` / `a2a.context.end`
+
+#75 어휘 — `session` 과 `chat` 은 별 엔티티 (Doc Store `sessions` / `chats`).
+event 명에서 합쳐 `chat.session.*` 으로 부르지 않는다 — `sessions` 의
+라이프사이클은 `session.start` / `session.end`, `chats` 의 append 는
+`chat.append`.
 
 각 이벤트는 자기 layer 의 서버측 영속처에 1:1 매핑 (Doc Store sessions / chats /
 assignments / a2a_contexts / a2a_messages / a2a_tasks /
@@ -29,9 +33,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 EventType = Literal[
     # Chat layer
-    "chat.session.start",
+    "session.start",
     "chat.append",
-    "chat.session.end",
+    "session.end",
     # Assignment layer
     "assignment.create",
     "assignment.update",
@@ -67,14 +71,14 @@ class _EventBase(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class ChatSessionStartEvent(_EventBase):
+class SessionStartEvent(_EventBase):
     """사용자가 새 chat session 시작.
 
     `session_id` 는 publisher (UG) 가 생성한 server-side session UUID. PR 1 의
     Doc Store `sessions` 테이블의 row id 와 1:1.
     """
 
-    event_type: Literal["chat.session.start"] = "chat.session.start"
+    event_type: Literal["session.start"] = "session.start"
     session_id: UUID
     agent_endpoint: str                              # 'primary' | 'architect'
     initiator: str = "user"
@@ -98,10 +102,15 @@ class ChatAppendEvent(_EventBase):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class ChatSessionEndEvent(_EventBase):
-    """chat session 종료. UG 가 페이지 닫힘 / TTL / 명시 종료 시 publish."""
+class SessionEndEvent(_EventBase):
+    """chat session 종료. 페이지 닫힘 / TTL / 명시 종료 시 publish.
 
-    event_type: Literal["chat.session.end"] = "chat.session.end"
+    #75 PR 2 transition: UG 는 `/api/chat` 한 호출 단위로 발화 안 한다 —
+    그건 RPC 라이프사이클이지 session 라이프사이클이 아님 (같은 session_id
+    로 N 회 호출 가능). PR 4 chat protocol 도입 시 명시 close 시점에 발화.
+    """
+
+    event_type: Literal["session.end"] = "session.end"
     session_id: UUID
     reason: str = "completed"                        # 'completed' | 'closed' | ...
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -224,9 +233,9 @@ class A2AContextEndEvent(_EventBase):
 
 # discriminated union — consumer 가 event_type 으로 분기
 A2AEvent = (
-    ChatSessionStartEvent
+    SessionStartEvent
     | ChatAppendEvent
-    | ChatSessionEndEvent
+    | SessionEndEvent
     | AssignmentCreateEvent
     | AssignmentUpdateEvent
     | A2AContextStartEvent
@@ -249,7 +258,7 @@ __all__ = [
     "AssignmentCreateEvent",
     "AssignmentUpdateEvent",
     "ChatAppendEvent",
-    "ChatSessionEndEvent",
-    "ChatSessionStartEvent",
     "EventType",
+    "SessionEndEvent",
+    "SessionStartEvent",
 ]

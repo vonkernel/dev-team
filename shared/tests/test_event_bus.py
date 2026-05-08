@@ -20,8 +20,8 @@ from dev_team_shared.event_bus import (
     A2ATaskStatusUpdateEvent,
     AssignmentCreateEvent,
     ChatAppendEvent,
-    ChatSessionEndEvent,
-    ChatSessionStartEvent,
+    SessionEndEvent,
+    SessionStartEvent,
     ValkeyEventBus,
 )
 from dev_team_shared.event_bus.bus import A2A_EVENTS_STREAM
@@ -58,9 +58,9 @@ async def bus_and_client(stream_name, monkeypatch):  # type: ignore[no-untyped-d
 
 class TestValkeyEventBus:
     @pytest.mark.asyncio
-    async def test_publish_chat_session_start(self, bus_and_client) -> None:
+    async def test_publish_session_start(self, bus_and_client) -> None:
         bus, raw, stream = bus_and_client
-        await bus.publish(ChatSessionStartEvent(
+        await bus.publish(SessionStartEvent(
             session_id=uuid.uuid4(),
             agent_endpoint="primary",
             counterpart="primary",
@@ -71,20 +71,20 @@ class TestValkeyEventBus:
     async def test_publish_chat_layer(self, bus_and_client) -> None:
         bus, raw, stream = bus_and_client
         sid = uuid.uuid4()
-        await bus.publish(ChatSessionStartEvent(
+        await bus.publish(SessionStartEvent(
             session_id=sid, agent_endpoint="primary", counterpart="primary",
         ))
         await bus.publish(ChatAppendEvent(
             session_id=sid, role="user", sender="user",
             content=[{"text": "hi"}], message_id="m-1",
         ))
-        await bus.publish(ChatSessionEndEvent(
+        await bus.publish(SessionEndEvent(
             session_id=sid, reason="completed",
         ))
         assert await raw.xlen(stream) == 3
         entries = await raw.xrange(stream)
         types = [fields[b"event_type"] for _id, fields in entries]
-        assert types == [b"chat.session.start", b"chat.append", b"chat.session.end"]
+        assert types == [b"session.start", b"chat.append", b"session.end"]
 
     @pytest.mark.asyncio
     async def test_publish_a2a_layer(self, bus_and_client) -> None:
