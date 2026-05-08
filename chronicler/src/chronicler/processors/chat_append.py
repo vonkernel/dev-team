@@ -1,6 +1,6 @@
 """ChatAppendProcessor — chat.append → chats row.
 
-session 이 없으면 자동 생성하지 않고 warn-skip (publisher 가 chat.session.start
+session 이 없으면 자동 생성하지 않고 warn-skip (publisher 가 session.start
 먼저 보내야 함). idempotent: 같은 message_id 의 chat 이 이미 있으면 skip.
 """
 
@@ -27,7 +27,7 @@ class ChatAppendProcessor(EventProcessor):
         session = await db.session_get(event.session_id)
         if session is None:
             logger.warning(
-                "chat.append skip — session_id=%s 미존재 (chat.session.start 누락)",
+                "chat.append skip — session_id=%s 미존재 (session.start 누락)",
                 event.session_id,
             )
             return

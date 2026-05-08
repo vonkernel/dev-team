@@ -26,8 +26,8 @@ from dev_team_shared.event_bus.events import (
     AssignmentCreateEvent,
     AssignmentUpdateEvent,
     ChatAppendEvent,
-    ChatSessionEndEvent,
-    ChatSessionStartEvent,
+    SessionEndEvent,
+    SessionStartEvent,
 )
 
 from chronicler.handler import EventHandler
@@ -40,8 +40,8 @@ from chronicler.processors import (
     A2ATaskStatusUpdateProcessor,
     AssignmentCreateProcessor,
     ChatAppendProcessor,
-    ChatSessionEndProcessor,
-    ChatSessionStartProcessor,
+    SessionEndProcessor,
+    SessionStartProcessor,
     EventProcessor,
 )
 
@@ -100,9 +100,9 @@ class TestEventHandlerRegistry:
     def test_registers_all_default_processors(self) -> None:
         h = EventHandler(ALL_PROCESSORS, MagicMock())
         types = h.registered_event_types
-        assert ChatSessionStartEvent in types
+        assert SessionStartEvent in types
         assert ChatAppendEvent in types
-        assert ChatSessionEndEvent in types
+        assert SessionEndEvent in types
         assert AssignmentCreateEvent in types
         assert AssignmentUpdateEvent in types
         assert A2AContextStartEvent in types
@@ -115,13 +115,13 @@ class TestEventHandlerRegistry:
 
     def test_duplicate_registration_raises(self) -> None:
         class DupeProc(EventProcessor):
-            event_type = ChatSessionStartEvent
+            event_type = SessionStartEvent
 
             async def process(self, event, db) -> None: ...  # noqa: ARG002
 
         with pytest.raises(ValueError, match="duplicate"):
             EventHandler(
-                [ChatSessionStartProcessor(), DupeProc()], MagicMock(),
+                [SessionStartProcessor(), DupeProc()], MagicMock(),
             )
 
 
@@ -130,15 +130,15 @@ class TestEventHandlerRegistry:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class TestChatSessionStartProcessor:
+class TestSessionStartProcessor:
     @pytest.mark.asyncio
     async def test_creates_session_with_explicit_id(self) -> None:
-        proc = ChatSessionStartProcessor()
+        proc = SessionStartProcessor()
         db = MagicMock()
         sid = uuid.uuid4()
         db.session_get = AsyncMock(return_value=None)
         db.session_create = AsyncMock()
-        ev = ChatSessionStartEvent(
+        ev = SessionStartEvent(
             session_id=sid, agent_endpoint="primary", counterpart="primary",
         )
         await proc.process(ev, db)
@@ -148,12 +148,12 @@ class TestChatSessionStartProcessor:
 
     @pytest.mark.asyncio
     async def test_idempotent_when_exists(self) -> None:
-        proc = ChatSessionStartProcessor()
+        proc = SessionStartProcessor()
         db = MagicMock()
         sid = uuid.uuid4()
         db.session_get = AsyncMock(return_value=_session_read(sid))
         db.session_create = AsyncMock()
-        ev = ChatSessionStartEvent(
+        ev = SessionStartEvent(
             session_id=sid, agent_endpoint="primary", counterpart="primary",
         )
         await proc.process(ev, db)
@@ -189,15 +189,15 @@ class TestChatAppendProcessor:
         db.chat_create.assert_not_awaited()
 
 
-class TestChatSessionEndProcessor:
+class TestSessionEndProcessor:
     @pytest.mark.asyncio
     async def test_updates_session_metadata_and_ended_at(self) -> None:
-        proc = ChatSessionEndProcessor()
+        proc = SessionEndProcessor()
         db = MagicMock()
         sid = uuid.uuid4()
         db.session_get = AsyncMock(return_value=_session_read(sid))
         db.session_update = AsyncMock()
-        ev = ChatSessionEndEvent(session_id=sid, reason="completed")
+        ev = SessionEndEvent(session_id=sid, reason="completed")
         await proc.process(ev, db)
         db.session_update.assert_awaited_once()
 
