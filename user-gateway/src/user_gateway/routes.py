@@ -13,23 +13,19 @@ from typing import Any
 
 import anyio
 import httpx
-from dev_team_shared.event_bus import (
-    EventBus,
-    ItemAppendEvent,
-    SessionEndEvent,
-    SessionStartEvent,
-)
+from dev_team_shared.event_bus import EventBus
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
+from user_gateway.event_publisher import (
+    publish_chat_session_end,
+    publish_chat_session_start,
+    publish_chat_user,
+)
 from user_gateway.sse import KEEPALIVE_SENTINEL, sse_pack
 from user_gateway.translator import parse_a2a_line, translate
 from user_gateway.upstream import A2AUpstream, UpstreamHTTPError
-
-# UG 가 publish 시 사용하는 이름. CHR 는 본 값으로 initiator/counterpart 식별.
-_INITIATOR = "user"
-_COUNTERPART = "primary"
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +86,8 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
             "sse_session.start context_id=%s upstream=%s",
             context_id, upstream.a2a_url,
         )
-        await _publish_session_start(event_bus, context_id)
-        await _publish_user_item(event_bus, context_id, body.text, user_message_id)
+        await publish_chat_session_start(event_bus, context_id)
+        await publish_chat_user(event_bus, context_id, body.text, user_message_id)
         try:
             with anyio.fail_after(total_timeout_s):
                 # 초기 meta — FE 가 contextId 를 이어받아 thread 유지
@@ -148,7 +144,7 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
                 "sse_session.end context_id=%s reason=%s duration_ms=%d chunks=%d",
                 context_id, reason, duration_ms, chunk_count,
             )
-            await _publish_session_end(
+            await publish_chat_session_end(
                 event_bus, context_id, reason=reason, duration_ms=duration_ms,
                 chunks=chunk_count,
             )
@@ -168,67 +164,6 @@ async def _is_disconnected(request: Request) -> bool:
         return await request.is_disconnected()
     except Exception:
         return False
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  event_bus publish helpers — fire-and-forget, event_bus 미설정 시 no-op
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-async def _publish_session_start(bus: EventBus | None, context_id: str) -> None:
-    if bus is None:
-        return
-    try:
-        await bus.publish(SessionStartEvent(
-            context_id=context_id,
-            initiator=_INITIATOR,
-            counterpart=_COUNTERPART,
-            topic="user_gateway.chat",
-        ))
-    except Exception:
-        logger.exception("publish session.start failed (context_id=%s)", context_id)
-
-
-async def _publish_user_item(
-    bus: EventBus | None, context_id: str, text: str, message_id: str,
-) -> None:
-    if bus is None:
-        return
-    try:
-        await bus.publish(ItemAppendEvent(
-            context_id=context_id,
-            initiator=_INITIATOR,
-            counterpart=_COUNTERPART,
-            role="user",
-            sender="user",
-            content=[{"text": text}],
-            message_id=message_id,
-        ))
-    except Exception:
-        logger.exception("publish item.append failed (context_id=%s)", context_id)
-
-
-async def _publish_session_end(
-    bus: EventBus | None,
-    context_id: str,
-    *,
-    reason: str,
-    duration_ms: int,
-    chunks: int,
-) -> None:
-    if bus is None:
-        return
-    try:
-        await bus.publish(SessionEndEvent(
-            context_id=context_id,
-            initiator=_INITIATOR,
-            counterpart=_COUNTERPART,
-            reason=reason,
-            duration_ms=duration_ms,
-            metadata={"chunks": chunks},
-        ))
-    except Exception:
-        logger.exception("publish session.end failed (context_id=%s)", context_id)
 
 
 __all__ = ["ChatRequest", "router"]
