@@ -1,19 +1,36 @@
 # Chat Protocol — UG ↔ Primary / Architect
 
-> #75 — A2A 와 chat 의 본질 mismatch 정리에서 도입.
+> #75 — 사용자 ↔ 에이전트 통신 영역에 대한 자체 프로토콜 정의.
 
-사용자와 Primary / Architect 간 통신을 위한 별도 프로토콜. A2A 가 아님 (A2A 는
-에이전트 간 task 위임 / 협상 — [messaging.md](../../shared/src/dev_team_shared/a2a/messaging.md)).
+사용자와 Primary / Architect 간 통신을 위한 별도 프로토콜. A2A 가 아닌 자체
+정의. A2A 는 에이전트 간 통신 한정으로 사용 ([messaging.md](../../shared/src/dev_team_shared/a2a/messaging.md)).
 
 ## 1. 왜 별도 프로토콜인가
 
-A2A 의 본 의도 = task 위임 (Task lifecycle / Message / Context). 사용자 ↔ P/A
-의 본 의도 = **자연스러운 논의** (chat). A2A 어휘 (Task `SUBMITTED → COMPLETED`)
-를 chat 에 욱여넣은 게 schema / 운영 awkwardness 의 source — agent_tasks 의
-fallback 만 채워짐 / agent_sessions 의 의미 모호 등 (#69 / #75).
+**사용자 ↔ 에이전트 통신은 에이전트 ↔ 에이전트 통신과 다른 영역**.
+A2A (Agent-to-Agent) 는 이름 그대로 에이전트 사이의 협상 / 위임 / 자동화된
+협업을 위한 프로토콜이다. 사용자가 인터페이스 너머에서 자연어로 발화하는
+chat 은 그 영역과 본질적으로 다른 사용 사례 — 별도로 정의하는 게 자연스럽다.
 
-→ Chat 은 chat 으로, A2A 위임은 A2A 로 분리. P/A 는 chat 중 합의된 작업을
-**Assignment 로 발급** 하고, 그 실행만 다른 agent 에게 A2A 로 위임.
+A2A 스펙 자체는 chat 류 사용도 허용한다 — `Message` 만 주고받는 trivial
+interaction 모드가 명시되어 있다 ([A2A 공식 가이드](https://discuss.google.dev/t/a2a-protocol-demystifying-tasks-vs-messages/255879):
+"Messages for Trivial Interactions" / "Tasks for Stateful Interactions").
+즉 A2A 위에서 chat 을 굴리는 게 스펙 위반은 아님.
+
+다만:
+- **우리 현재 구현이 모든 SendMessage 응답을 Task 로 자동 wrap** 한다
+  (`graph_handlers/factories.py` 의 `make_*_task` 만 사용) — 이는 단순화
+  이지 스펙 요구사항 아님. 그 결과 사용자의 단순 발화 ("안녕", "뭐 있어?")
+  마다 A2A Task 객체가 만들어지고, agent_tasks 가 chronicler-fallback 으로만
+  채워지는 등의 운영 어색함 발생 (#69).
+- **이 자동 Task wrap 을 풀어 trivial / stateful 분기를 해도** chat 은
+  어차피 사용자-에이전트 영역이라 (에이전트 간 아님) A2A 의 어휘 (Context /
+  Message / Task) 를 그대로 쓰는 것보다 사용자-에이전트 인터랙션에 적합한
+  자체 어휘 (Session / Chat / Assignment) 로 정의하는 게 의미상 깔끔.
+
+→ 사용자 ↔ Primary / Architect 의 chat 은 자체 chat protocol 로 분리 정의.
+P/A 는 chat 중 합의된 작업을 **Assignment 로 발급** 하고, 그 실행을 다른
+agent 에게 A2A 로 위임 (에이전트 간 협상은 A2A 로 자연스럽게 처리).
 
 ## 2. 어휘
 

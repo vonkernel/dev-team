@@ -9,10 +9,10 @@ A2A 스펙 전체 가이드가 아니다. 더 깊이가 필요하면
 정도다.
 
 > ⚠️ **본 프로토콜은 에이전트 간 통신 한정.** 사용자 ↔ Primary / Architect 의
-> chat 통신은 A2A 가 아닌 별 chat protocol (REST POST + 영속 SSE per session) —
+> chat 통신은 A2A 가 아닌 별도 chat protocol (REST POST + 영속 SSE per session) —
 > [`docs/proposal/architecture-chat-protocol.md`](../../../../../docs/proposal/architecture-chat-protocol.md) 참조.
-> A2A 의 Task 어휘 / lifecycle 은 task 위임 / 협상에 적합한데 사용자와의
-> 자연 chat 에는 부적합한 mismatch 가 있어 분리했다 (#75).
+> 사용자 ↔ 에이전트는 에이전트 간 통신과 다른 영역이라 자체 어휘 (Session /
+> Chat / Assignment) 로 별도 정의했다 (#75).
 
 ---
 

@@ -7,9 +7,10 @@
 User Gateway 는 사용자 측 UI (웹) 와 내부 에이전트들을 연결하는 **얇은
 인터페이스 / routing 계층**이다.
 
-UG ↔ Primary / Architect 통신은 **A2A 가 아니라 별 chat protocol** ([architecture-chat-protocol](architecture-chat-protocol.md))
-— REST POST + 영속 SSE per session. A2A 의 Task 어휘는 task 위임 / 협상 의도라
-사용자와의 자연 chat 에는 부적합한 mismatch 가 있어 분리 (#75).
+UG ↔ Primary / Architect 통신은 **A2A 가 아니라 별도 chat protocol** ([architecture-chat-protocol](architecture-chat-protocol.md))
+— REST POST + 영속 SSE per session. 사용자 ↔ 에이전트는 에이전트 간 통신과
+다른 영역이라 자체 어휘 (Session / Chat / Assignment) 로 정의하는 게 의미상
+깔끔하다 (#75).
 
 **역할:**
 - FE 의 채팅 입력 (`POST /api/chat`) 을 받아 session 의 `agent_endpoint` 컬럼
