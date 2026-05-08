@@ -13,7 +13,7 @@ XACK) 은 chronicler/ 컨테이너 안.
 - `ValkeyEventBus` — Valkey Streams (XADD) 기반 구현. 기본 구현체.
 
 이벤트 schema (#75):
-- Chat layer: SessionStartEvent / ChatAppendEvent / SessionEndEvent
+- Chat layer: SessionStartEvent / ChatAppendEvent (session 은 종료 개념 없음)
 - Assignment layer: AssignmentCreateEvent / AssignmentUpdateEvent
 - A2A layer: A2AContextStartEvent / A2AMessageAppendEvent / A2ATaskCreateEvent /
   A2ATaskStatusUpdateEvent / A2ATaskArtifactEvent / A2AContextEndEvent
@@ -33,7 +33,6 @@ from dev_team_shared.event_bus.events import (
     AssignmentUpdateEvent,
     ChatAppendEvent,
     EventType,
-    SessionEndEvent,
     SessionStartEvent,
 )
 
@@ -50,7 +49,6 @@ __all__ = [
     "ChatAppendEvent",
     "EventBus",
     "EventType",
-    "SessionEndEvent",
     "SessionStartEvent",
     "ValkeyEventBus",
 ]

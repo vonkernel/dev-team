@@ -35,7 +35,6 @@ EventType = Literal[
     # Chat layer
     "session.start",
     "chat.append",
-    "session.end",
     # Assignment layer
     "assignment.create",
     "assignment.update",
@@ -102,18 +101,9 @@ class ChatAppendEvent(_EventBase):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class SessionEndEvent(_EventBase):
-    """chat session 종료. 페이지 닫힘 / TTL / 명시 종료 시 publish.
-
-    #75 PR 2 transition: UG 는 `/api/chat` 한 호출 단위로 발화 안 한다 —
-    그건 RPC 라이프사이클이지 session 라이프사이클이 아님 (같은 session_id
-    로 N 회 호출 가능). PR 4 chat protocol 도입 시 명시 close 시점에 발화.
-    """
-
-    event_type: Literal["session.end"] = "session.end"
-    session_id: UUID
-    reason: str = "completed"                        # 'completed' | 'closed' | ...
-    metadata: dict[str, Any] = Field(default_factory=dict)
+# #75 PR 3: SessionEndEvent 폐기. session 은 종료 개념 없는 대화창
+# (사용자가 언제든 재개) — `sessions.ended_at` 컬럼 / `SessionEndProcessor`
+# 도 함께 제거됨. archive 가 필요해지면 별 컬럼 (`archived_at`) 으로.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -235,7 +225,6 @@ class A2AContextEndEvent(_EventBase):
 A2AEvent = (
     SessionStartEvent
     | ChatAppendEvent
-    | SessionEndEvent
     | AssignmentCreateEvent
     | AssignmentUpdateEvent
     | A2AContextStartEvent
@@ -259,6 +248,5 @@ __all__ = [
     "AssignmentUpdateEvent",
     "ChatAppendEvent",
     "EventType",
-    "SessionEndEvent",
     "SessionStartEvent",
 ]

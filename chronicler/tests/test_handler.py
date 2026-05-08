@@ -26,7 +26,6 @@ from dev_team_shared.event_bus.events import (
     AssignmentCreateEvent,
     AssignmentUpdateEvent,
     ChatAppendEvent,
-    SessionEndEvent,
     SessionStartEvent,
 )
 
@@ -40,7 +39,6 @@ from chronicler.processors import (
     A2ATaskStatusUpdateProcessor,
     AssignmentCreateProcessor,
     ChatAppendProcessor,
-    SessionEndProcessor,
     SessionStartProcessor,
     EventProcessor,
 )
@@ -58,7 +56,6 @@ def _session_read(sid: uuid.UUID) -> SessionRead:
         counterpart="primary",
         metadata={},
         started_at=_now(),
-        ended_at=None,
     )
 
 
@@ -102,7 +99,6 @@ class TestEventHandlerRegistry:
         types = h.registered_event_types
         assert SessionStartEvent in types
         assert ChatAppendEvent in types
-        assert SessionEndEvent in types
         assert AssignmentCreateEvent in types
         assert AssignmentUpdateEvent in types
         assert A2AContextStartEvent in types
@@ -111,7 +107,7 @@ class TestEventHandlerRegistry:
         assert A2ATaskStatusUpdateEvent in types
         assert A2ATaskArtifactEvent in types
         assert A2AContextEndEvent in types
-        assert len(types) == 11
+        assert len(types) == 10
 
     def test_duplicate_registration_raises(self) -> None:
         class DupeProc(EventProcessor):
@@ -189,17 +185,7 @@ class TestChatAppendProcessor:
         db.chat_create.assert_not_awaited()
 
 
-class TestSessionEndProcessor:
-    @pytest.mark.asyncio
-    async def test_updates_session_metadata_and_ended_at(self) -> None:
-        proc = SessionEndProcessor()
-        db = MagicMock()
-        sid = uuid.uuid4()
-        db.session_get = AsyncMock(return_value=_session_read(sid))
-        db.session_update = AsyncMock()
-        ev = SessionEndEvent(session_id=sid, reason="completed")
-        await proc.process(ev, db)
-        db.session_update.assert_awaited_once()
+# SessionEnd test 폐기 — #75 PR 3: session 은 종료 개념 없음.
 
 
 # ─────────────────────────────────────────────────────────────────────────────

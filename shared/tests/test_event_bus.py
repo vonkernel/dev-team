@@ -20,7 +20,6 @@ from dev_team_shared.event_bus import (
     A2ATaskStatusUpdateEvent,
     AssignmentCreateEvent,
     ChatAppendEvent,
-    SessionEndEvent,
     SessionStartEvent,
     ValkeyEventBus,
 )
@@ -78,13 +77,11 @@ class TestValkeyEventBus:
             session_id=sid, role="user", sender="user",
             content=[{"text": "hi"}], message_id="m-1",
         ))
-        await bus.publish(SessionEndEvent(
-            session_id=sid, reason="completed",
-        ))
-        assert await raw.xlen(stream) == 3
+        # session 은 종료 개념 없음 — SessionEndEvent 폐기 (#75 PR 3)
+        assert await raw.xlen(stream) == 2
         entries = await raw.xrange(stream)
         types = [fields[b"event_type"] for _id, fields in entries]
-        assert types == [b"session.start", b"chat.append", b"session.end"]
+        assert types == [b"session.start", b"chat.append"]
 
     @pytest.mark.asyncio
     async def test_publish_a2a_layer(self, bus_and_client) -> None:
