@@ -19,9 +19,8 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from user_gateway.event_publisher import (
-    publish_chat_session_end,
-    publish_chat_session_start,
     publish_chat_user,
+    publish_session_start,
 )
 from user_gateway.sse import KEEPALIVE_SENTINEL, sse_pack
 from user_gateway.translator import parse_a2a_line, translate
@@ -83,10 +82,10 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
         chunk_count = 0
         reason = "completed"
         logger.info(
-            "sse_session.start context_id=%s upstream=%s",
+            "chat_proxy.start context_id=%s upstream=%s",
             context_id, upstream.a2a_url,
         )
-        await publish_chat_session_start(event_bus, context_id)
+        await publish_session_start(event_bus, context_id)
         await publish_chat_user(event_bus, context_id, body.text, user_message_id)
         try:
             with anyio.fail_after(total_timeout_s):
@@ -141,13 +140,12 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
         finally:
             duration_ms = int((time.monotonic() - started) * 1000)
             logger.info(
-                "sse_session.end context_id=%s reason=%s duration_ms=%d chunks=%d",
+                "chat_proxy.end context_id=%s reason=%s duration_ms=%d chunks=%d",
                 context_id, reason, duration_ms, chunk_count,
             )
-            await publish_chat_session_end(
-                event_bus, context_id, reason=reason, duration_ms=duration_ms,
-                chunks=chunk_count,
-            )
+            # session.end 는 publish 안 함 — `/api/chat` 한 호출은 RPC 라이프
+            # 사이클이지 session 라이프사이클이 아님. PR 4 chat protocol 의
+            # 명시 close 시점에 발화하도록 정정 예정 (#75 후속).
 
     return StreamingResponse(
         event_stream(),
