@@ -1,6 +1,6 @@
-"""ValkeyEventBus 단위 테스트 — fakeredis 또는 진짜 Valkey 사용.
+"""ValkeyEventBus 단위 테스트 — 진짜 Valkey 가 떠 있으면 사용, 없으면 skip.
 
-진짜 Valkey 가 떠 있으면 사용 (compose `mcp` profile up). 없으면 skip.
+#75 PR 2: 11 events (chat / assignment / a2a 3 layer) wire-level publish 검증.
 """
 
 from __future__ import annotations
@@ -13,7 +13,13 @@ import pytest_asyncio
 import redis.asyncio as redis
 
 from dev_team_shared.event_bus import (
-    ItemAppendEvent,
+    A2AContextEndEvent,
+    A2AContextStartEvent,
+    A2AMessageAppendEvent,
+    A2ATaskCreateEvent,
+    A2ATaskStatusUpdateEvent,
+    AssignmentCreateEvent,
+    ChatAppendEvent,
     SessionEndEvent,
     SessionStartEvent,
     ValkeyEventBus,
@@ -25,14 +31,11 @@ _VALKEY_URL = os.environ.get("EVENT_BUS_TEST_URL", "redis://localhost:6379")
 
 @pytest_asyncio.fixture
 async def stream_name() -> str:
-    """테스트마다 별 stream name 사용 (격리)."""
     return f"a2a-events-test-{uuid.uuid4().hex[:8]}"
 
 
 @pytest_asyncio.fixture
 async def bus_and_client(stream_name, monkeypatch):  # type: ignore[no-untyped-def]
-    """test-only stream name 으로 ValkeyEventBus + 검증용 raw client."""
-    # bus 가 사용하는 stream 이름을 monkeypatch 로 임시 교체
     monkeypatch.setattr(
         "dev_team_shared.event_bus.bus.A2A_EVENTS_STREAM",
         stream_name,
@@ -58,31 +61,71 @@ class TestValkeyEventBus:
     async def test_publish_session_start(self, bus_and_client) -> None:
         bus, raw, stream = bus_and_client
         await bus.publish(SessionStartEvent(
-            context_id="ctx-1",
-            initiator="user",
+            session_id=uuid.uuid4(),
+            agent_endpoint="primary",
             counterpart="primary",
-            trace_id="trace-1",
         ))
-        # XLEN 으로 확인
-        length = await raw.xlen(stream)
-        assert length == 1
+        assert await raw.xlen(stream) == 1
 
     @pytest.mark.asyncio
-    async def test_publish_3_event_types(self, bus_and_client) -> None:
+    async def test_publish_chat_layer(self, bus_and_client) -> None:
         bus, raw, stream = bus_and_client
+        sid = uuid.uuid4()
         await bus.publish(SessionStartEvent(
-            context_id="c", initiator="user", counterpart="primary",
+            session_id=sid, agent_endpoint="primary", counterpart="primary",
         ))
-        await bus.publish(ItemAppendEvent(
-            context_id="c", initiator="user", counterpart="primary",
-            role="user", sender="user", content={"text": "hi"},
+        await bus.publish(ChatAppendEvent(
+            session_id=sid, role="user", sender="user",
+            content=[{"text": "hi"}], message_id="m-1",
         ))
         await bus.publish(SessionEndEvent(
-            context_id="c", initiator="user", counterpart="primary",
-            reason="completed", duration_ms=100,
+            session_id=sid, reason="completed",
         ))
         assert await raw.xlen(stream) == 3
-        # event_type 필드 정확
         entries = await raw.xrange(stream)
         types = [fields[b"event_type"] for _id, fields in entries]
-        assert types == [b"session.start", b"item.append", b"session.end"]
+        assert types == [b"session.start", b"chat.append", b"session.end"]
+
+    @pytest.mark.asyncio
+    async def test_publish_a2a_layer(self, bus_and_client) -> None:
+        bus, raw, stream = bus_and_client
+        await bus.publish(A2AContextStartEvent(
+            context_id="ctx-1",
+            initiator_agent="primary",
+            counterpart_agent="engineer",
+        ))
+        await bus.publish(A2ATaskCreateEvent(
+            context_id="ctx-1", task_id="task-1", state="SUBMITTED",
+        ))
+        await bus.publish(A2AMessageAppendEvent(
+            context_id="ctx-1", message_id="m-1", task_id="task-1",
+            role="user", sender="primary", parts=[{"text": "do it"}],
+        ))
+        await bus.publish(A2ATaskStatusUpdateEvent(
+            task_id="task-1", state="WORKING",
+        ))
+        await bus.publish(A2AContextEndEvent(
+            context_id="ctx-1", reason="completed", duration_ms=42,
+        ))
+        assert await raw.xlen(stream) == 5
+        entries = await raw.xrange(stream)
+        types = [fields[b"event_type"] for _id, fields in entries]
+        assert types == [
+            b"a2a.context.start",
+            b"a2a.task.create",
+            b"a2a.message.append",
+            b"a2a.task.status_update",
+            b"a2a.context.end",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_publish_assignment_event(self, bus_and_client) -> None:
+        bus, raw, stream = bus_and_client
+        await bus.publish(AssignmentCreateEvent(
+            assignment_id=uuid.uuid4(),
+            title="결제 모듈 설계",
+            owner_agent="primary",
+        ))
+        assert await raw.xlen(stream) == 1
+        entries = await raw.xrange(stream)
+        assert entries[0][1][b"event_type"] == b"assignment.create"

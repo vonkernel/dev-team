@@ -29,25 +29,36 @@ class A2AContextRepository(
         return A2AContextRead.model_validate(d)
 
     async def create(self, doc: A2AContextCreate) -> A2AContextRead:
-        sql = """
-            INSERT INTO a2a_contexts
-                (context_id, initiator_agent, counterpart_agent,
-                 parent_session_id, parent_assignment_id,
-                 trace_id, topic, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-            RETURNING *
-        """
-        row = await self._pool.fetchrow(
-            sql,
-            doc.context_id,
-            doc.initiator_agent,
-            doc.counterpart_agent,
-            doc.parent_session_id,
-            doc.parent_assignment_id,
-            doc.trace_id,
-            doc.topic,
-            self._to_jsonb(doc.metadata),
-        )
+        if doc.id is not None:
+            sql = """
+                INSERT INTO a2a_contexts
+                    (id, context_id, initiator_agent, counterpart_agent,
+                     parent_session_id, parent_assignment_id,
+                     trace_id, topic, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+                RETURNING *
+            """
+            row = await self._pool.fetchrow(
+                sql, doc.id, doc.context_id, doc.initiator_agent,
+                doc.counterpart_agent, doc.parent_session_id,
+                doc.parent_assignment_id, doc.trace_id, doc.topic,
+                self._to_jsonb(doc.metadata),
+            )
+        else:
+            sql = """
+                INSERT INTO a2a_contexts
+                    (context_id, initiator_agent, counterpart_agent,
+                     parent_session_id, parent_assignment_id,
+                     trace_id, topic, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+                RETURNING *
+            """
+            row = await self._pool.fetchrow(
+                sql, doc.context_id, doc.initiator_agent,
+                doc.counterpart_agent, doc.parent_session_id,
+                doc.parent_assignment_id, doc.trace_id, doc.topic,
+                self._to_jsonb(doc.metadata),
+            )
         assert row is not None
         return self._to_read(row)
 

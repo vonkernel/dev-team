@@ -19,7 +19,7 @@ from dev_team_shared.a2a.events import (
 from dev_team_shared.a2a.types import Message, Part, Role, TaskState
 
 from dev_team_shared.a2a.server.graph_handlers.config import AGENT_TOTAL_TIMEOUT_S
-from dev_team_shared.a2a.server.graph_handlers.session import ChatContext
+from dev_team_shared.a2a.server.graph_handlers.rpc import RPCContext
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -47,7 +47,7 @@ def agent_timeout_text() -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _error_message(ctx: ChatContext, text: str) -> Message:
+def _error_message(ctx: RPCContext, text: str) -> Message:
     return Message(
         message_id=f"err-{uuid.uuid4()}",
         role=Role.AGENT,
@@ -57,7 +57,7 @@ def _error_message(ctx: ChatContext, text: str) -> Message:
     )
 
 
-def make_initial_task(ctx: ChatContext, user_msg: Message) -> Task:
+def make_initial_task(ctx: RPCContext, user_msg: Message) -> Task:
     return Task(
         id=ctx.task_id,
         context_id=ctx.context_id,
@@ -67,7 +67,7 @@ def make_initial_task(ctx: ChatContext, user_msg: Message) -> Task:
 
 
 def make_completed_task(
-    ctx: ChatContext, user_msg: Message, ai_text: str,
+    ctx: RPCContext, user_msg: Message, ai_text: str,
 ) -> Task:
     agent_reply = Message(
         message_id=f"reply-{uuid.uuid4()}",
@@ -85,7 +85,7 @@ def make_completed_task(
 
 
 def make_failed_task(
-    ctx: ChatContext, user_msg: Message, error_text: str,
+    ctx: RPCContext, user_msg: Message, error_text: str,
 ) -> Task:
     return Task(
         id=ctx.task_id,
@@ -98,7 +98,7 @@ def make_failed_task(
     )
 
 
-def make_completed_status_event(ctx: ChatContext) -> TaskStatusUpdateEvent:
+def make_completed_status_event(ctx: RPCContext) -> TaskStatusUpdateEvent:
     return TaskStatusUpdateEvent(
         task_id=ctx.task_id,
         context_id=ctx.context_id,
@@ -108,7 +108,7 @@ def make_completed_status_event(ctx: ChatContext) -> TaskStatusUpdateEvent:
 
 
 def make_failed_status_event(
-    ctx: ChatContext, error_text: str,
+    ctx: RPCContext, error_text: str,
 ) -> TaskStatusUpdateEvent:
     return TaskStatusUpdateEvent(
         task_id=ctx.task_id,
@@ -122,7 +122,7 @@ def make_failed_status_event(
 
 
 def make_artifact_event(
-    ctx: ChatContext, text: str,
+    ctx: RPCContext, text: str,
 ) -> TaskArtifactUpdateEvent:
     return TaskArtifactUpdateEvent(
         task_id=ctx.task_id,

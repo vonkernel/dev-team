@@ -25,7 +25,7 @@
 | 파일 | 책임 |
 |---|---|
 | `config.py` | env 기반 자원 관리 튜닝 (timeout / keepalive) |
-| `session.py` | `ChatContext` + `log_session` (lifecycle 로깅) |
+| `rpc.py` | `RPCContext` + `log_rpc` (lifecycle 로깅) |
 | `parse.py` | 요청 파싱 / LLM 응답 텍스트 추출 |
 | `factories.py` | A2A Task / 이벤트 모델 조립 + 에러 텍스트 |
 | `envelope.py` | JSON-RPC / SSE envelope 직렬화 |

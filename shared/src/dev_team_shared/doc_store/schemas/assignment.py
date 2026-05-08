@@ -18,6 +18,7 @@ AssignmentStatus = Literal["open", "in_progress", "done", "cancelled"]
 class AssignmentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    id: UUID | None = None                           # publisher 가 미리 알면 사용
     title: str
     description: str | None = None
     status: AssignmentStatus = "open"

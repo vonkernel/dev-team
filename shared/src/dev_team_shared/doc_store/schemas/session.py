@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class SessionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    id: UUID | None = None                           # publisher (UG / chronicler) 가 미리 알면 사용
     agent_endpoint: str                              # 'primary' | 'architect'
     initiator: str = "user"
     counterpart: str

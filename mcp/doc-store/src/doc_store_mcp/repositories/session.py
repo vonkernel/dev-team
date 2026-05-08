@@ -29,19 +29,28 @@ class SessionRepository(
         return SessionRead.model_validate(d)
 
     async def create(self, doc: SessionCreate) -> SessionRead:
-        sql = """
-            INSERT INTO sessions
-                (agent_endpoint, initiator, counterpart, metadata)
-            VALUES ($1, $2, $3, $4::jsonb)
-            RETURNING *
-        """
-        row = await self._pool.fetchrow(
-            sql,
-            doc.agent_endpoint,
-            doc.initiator,
-            doc.counterpart,
-            self._to_jsonb(doc.metadata),
-        )
+        if doc.id is not None:
+            sql = """
+                INSERT INTO sessions
+                    (id, agent_endpoint, initiator, counterpart, metadata)
+                VALUES ($1, $2, $3, $4, $5::jsonb)
+                RETURNING *
+            """
+            row = await self._pool.fetchrow(
+                sql, doc.id, doc.agent_endpoint, doc.initiator,
+                doc.counterpart, self._to_jsonb(doc.metadata),
+            )
+        else:
+            sql = """
+                INSERT INTO sessions
+                    (agent_endpoint, initiator, counterpart, metadata)
+                VALUES ($1, $2, $3, $4::jsonb)
+                RETURNING *
+            """
+            row = await self._pool.fetchrow(
+                sql, doc.agent_endpoint, doc.initiator, doc.counterpart,
+                self._to_jsonb(doc.metadata),
+            )
         assert row is not None
         return self._to_read(row)
 

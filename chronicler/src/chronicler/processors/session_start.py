@@ -1,9 +1,7 @@
-"""SessionStartProcessor — #75 재설계 중 stub.
+"""SessionStartProcessor — session.start → sessions row.
 
-PR 1 (#75) 의 cut-over 로 기존 agent_tasks / agent_sessions / agent_items 가
-삭제되어 본 processor 의 적재 로직이 동작 못 함. PR 2 에서 새 schema (chat
-tier: sessions / chats / assignments + a2a tier) 기반으로 재작성 예정 — 그
-사이엔 no-op (이벤트 받으면 warn-log 만).
+publisher (UG) 가 발급한 session_id 를 그대로 row id 로 사용 (`SessionCreate.id`
+optional 사용). 이미 존재 시 idempotent skip.
 """
 
 from __future__ import annotations
@@ -11,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import ClassVar
 
-from dev_team_shared.doc_store import DocStoreClient
+from dev_team_shared.doc_store import DocStoreClient, SessionCreate
 from dev_team_shared.event_bus.events import A2AEvent, SessionStartEvent
 
 from chronicler.processors.base import EventProcessor
@@ -20,16 +18,29 @@ logger = logging.getLogger(__name__)
 
 
 class SessionStartProcessor(EventProcessor):
-    """#75 PR 2 재작성 대기. 현재는 no-op."""
-
     event_type: ClassVar[type[A2AEvent]] = SessionStartEvent
 
-    async def process(self, event: A2AEvent, db: DocStoreClient) -> None:  # noqa: ARG002
+    async def process(self, event: A2AEvent, db: DocStoreClient) -> None:
         assert isinstance(event, SessionStartEvent)
-        logger.warning(
-            "session.start received but processor is stubbed (#75 PR 2 will rewrite) "
-            "context_id=%s initiator=%s counterpart=%s",
-            event.context_id, event.initiator, event.counterpart,
+
+        existing = await db.session_get(event.session_id)
+        if existing is not None:
+            logger.debug(
+                "session.start skip — existing session_id=%s",
+                event.session_id,
+            )
+            return
+
+        await db.session_create(SessionCreate(
+            id=event.session_id,
+            agent_endpoint=event.agent_endpoint,
+            initiator=event.initiator,
+            counterpart=event.counterpart,
+            metadata=event.metadata,
+        ))
+        logger.info(
+            "session.start adapter ok session_id=%s endpoint=%s",
+            event.session_id, event.agent_endpoint,
         )
 
 
