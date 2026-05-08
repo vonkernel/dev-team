@@ -46,11 +46,30 @@ agent 에게 A2A 로 위임 (에이전트 간 협상은 A2A 로 자연스럽게 
 
 ### 흐름
 
-```
-세션 시작 시 1회:  UG → GET /api/stream?session_id=X     [SSE 쭉 열려 있음]
-사용자 발화:       UG → POST /api/chat (text, session_id) → 202 ack
-응답:              P/A → 위 SSE 채널로 chunk push
-이후 사용자 발화:  POST 다시 (위 SSE 는 여전히 열려있음)
+```mermaid
+sequenceDiagram
+    participant FE
+    participant UG
+    participant Agent as P / A
+
+    Note over FE,Agent: 세션 진입 (1회)
+    FE->>UG: GET /api/stream?session_id=X
+    UG->>Agent: GET /chat/stream?session_id=X
+    Note over FE,Agent: SSE 채널 영속 (이후 모든 응답은 여기로)
+
+    Note over FE,Agent: 사용자 첫 발화
+    FE->>UG: POST /api/chat (text, session_id)
+    UG->>Agent: POST /chat/send (text, session_id)
+    UG-->>FE: 202 ack (queued | processing)
+    Agent-->>UG: SSE chunk (response)
+    UG-->>FE: SSE chunk (response)
+
+    Note over FE,Agent: 이후 사용자 발화 (SSE 채널 그대로 유지)
+    FE->>UG: POST /api/chat (text, session_id)
+    UG->>Agent: POST /chat/send (text, session_id)
+    UG-->>FE: 202 ack
+    Agent-->>UG: SSE chunk
+    UG-->>FE: SSE chunk
 ```
 
 **이유**:
