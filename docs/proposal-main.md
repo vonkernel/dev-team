@@ -229,7 +229,7 @@ Librarian 전담 — context7 (라이브러리 docs), mcp/web-fetch (사용자 U
 | 워크플로우 엔진 | LangGraph | 에이전트 내부 상태 머신 (StateGraph / 노드 / 체크포인트) |
 | A2A 서버 | 자체 FastAPI 라우트 (`/a2a/{role}`) | A2A v1.0 엔드포인트 호스팅 (JSON-RPC 2.0, SSE) — **에이전트 간 한정** |
 | Chat 서버 (P / A 만) | 자체 FastAPI 라우트 (`/chat/send` + `/chat/stream`) | 사용자 ↔ P/A chat protocol 엔드포인트 (REST POST + 영속 SSE — [architecture-chat-protocol](proposal/architecture-chat-protocol.md)) |
-| User Gateway | FastAPI 중계 서비스 (별 컨테이너) | 사용자 UI ↔ P/A chat 중계 (REST POST + 영속 SSE per session) |
+| User Gateway | FastAPI 중계 서비스 (별도 컨테이너) | 사용자 UI ↔ P/A chat 중계 (REST POST + 영속 SSE per session) |
 | 코드 실행 도구 | 추상화 인터페이스 (기본: OpenCode CLI) | 코드 조작 실행 엔진, 추후 교체 가능 |
 | 추론 엔진 | LLM API (역할·서브 에이전트별 선택) | 모든 에이전트의 판단/검증 |
 | Runtime | Docker (1 Agent = 1 Container) | 격리된 실행 환경 |

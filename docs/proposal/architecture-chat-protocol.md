@@ -2,10 +2,10 @@
 
 > #75 — A2A 와 chat 의 본질 mismatch 정리에서 도입.
 
-사용자와 Primary / Architect 간 통신을 위한 별 프로토콜. A2A 가 아님 (A2A 는
+사용자와 Primary / Architect 간 통신을 위한 별도 프로토콜. A2A 가 아님 (A2A 는
 에이전트 간 task 위임 / 협상 — [messaging.md](../../shared/src/dev_team_shared/a2a/messaging.md)).
 
-## 1. 왜 별 프로토콜인가
+## 1. 왜 별도 프로토콜인가
 
 A2A 의 본 의도 = task 위임 (Task lifecycle / Message / Context). 사용자 ↔ P/A
 의 본 의도 = **자연스러운 논의** (chat). A2A 어휘 (Task `SUBMITTED → COMPLETED`)
@@ -137,7 +137,7 @@ UG 가 chat lifecycle 이벤트를 Valkey Streams 로 publish:
 Chronicler 가 consume 해 Doc Store `sessions` / `chats` 컬렉션에 영속화
 ([architecture-event-pipeline](architecture-event-pipeline.md)).
 
-P/A 의 Assignment 발급은 별 이벤트 (`assignment.create` / `assignment.update`).
+P/A 의 Assignment 발급은 별도 이벤트 (`assignment.create` / `assignment.update`).
 
 ## 8. A2A 와의 경계
 

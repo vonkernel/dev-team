@@ -75,7 +75,7 @@ Doc Store 는 **시간 흐름의 사실 (episode)** — 대화 / 결정 / 산출
 | 이슈 | Primary (직접 write + 외부 PM 동기화) | PM 작업 추적 |
 | PRD | Primary (직접 write + 외부 PM 동기화) | 기획 산출물 |
 
-> **Tier 분리**: 사용자 ↔ Primary/Architect 의 통신은 **chat protocol** (REST POST + 영속 SSE — [architecture-chat-protocol](architecture-chat-protocol.md)), 에이전트 간 통신은 **A2A** ([messaging.md](../../shared/src/dev_team_shared/a2a/messaging.md)). 두 layer 가 별 개념 / 별 영속 컬렉션.
+> **Tier 분리**: 사용자 ↔ Primary/Architect 의 통신은 **chat protocol** (REST POST + 영속 SSE — [architecture-chat-protocol](architecture-chat-protocol.md)), 에이전트 간 통신은 **A2A** ([messaging.md](../../shared/src/dev_team_shared/a2a/messaging.md)). 두 layer 가 별도 개념 / 별도 영속 컬렉션.
 
 ### Chat 컬렉션 — UG↔P/A 대화 영속
 
