@@ -91,9 +91,9 @@ Primary / Architect 가 publish (chat 중 합의 시점).
 ## 자주 헷갈리는 점
 
 - **Domain Assignment ≠ A2A Task**:
-  - Assignment = 도메인 work item (며칠~몇 주, open → done). Doc Store `assignments`.
-  - A2A Task = wire-level 진행 추적 (짧음, SUBMITTED → COMPLETED). Doc Store `a2a_tasks`.
-  - 한 Assignment 안에서 여러 A2A Task 발생 가능 (위임 다회).
+  - Assignment = 도메인 work item (open → done). Doc Store `assignments`.
+  - A2A Task = wire-level 진행 추적 (SUBMITTED → COMPLETED). Doc Store `a2a_tasks`.
+  - 한 Assignment 는 **1 개 이상의 A2A Task** 로 구성 가능 (위임 다회).
 - **Session ↔ A2A Context**:
   - Session 은 UG↔P/A chat 단위 (사용자 → P/A 의 endpoint).
   - A2A Context 는 에이전트 간 단위. session 발일 수도 있고 (대부분), system trigger 발 standalone 일 수도.

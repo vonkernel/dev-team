@@ -137,7 +137,7 @@ Chat 중 사용자와 합의해 정의된 작업. Primary / Architect 가 명시
 
 > **A2A Message 와 Task 의 관계**: 응답 형식 alternative — trivial 은 Message, stateful 은 Task. Task commit 후 관련 Message 들은 Task 의 history 에 누적 (`a2a_messages.a2a_task_id` 로 backlink). 자세한 정의는 [messaging.md](../../shared/src/dev_team_shared/a2a/messaging.md).
 
-> **Domain Assignment 와 A2A Task 는 다른 객체**. Assignment = 도메인 work item (며칠~몇 주, open→done), A2A Task = wire-level 한 호출의 진행 추적 (짧음, SUBMITTED→COMPLETED). 한 Assignment 안에 여러 A2A Task 발생 가능.
+> **Domain Assignment 와 A2A Task 는 다른 객체**. Assignment = 도메인 work item (open→done), A2A Task = wire-level 한 호출의 진행 추적 (SUBMITTED→COMPLETED). 한 Assignment 는 1 개 이상의 A2A Task 로 구성 가능.
 
 ```json
 // a2a_contexts
