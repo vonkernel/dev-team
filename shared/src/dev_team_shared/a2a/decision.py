@@ -3,7 +3,12 @@
 A2A 공식 가이드 *"Messages for Trivial Interactions, Tasks for Stateful
 Interactions"* 따라 응답을 Message 만 / Task wrap 중 어느 형태로 보낼지
 결정. 결정은 callee agent 의 graph 안 LLM 추론으로 이뤄지며 (룰베이스 X),
-본 모델은 그 추론의 structured output schema.
+본 모듈은:
+
+- `A2AResponseDecision` — LLM structured output 의 schema (Pydantic)
+- `DEFAULT_RESPONSE_DECISION_PROMPT` — protocol-level 결정 가이드 (모든
+  agent 공유). 본 결정은 agent 정체성이 아닌 A2A 프로토콜 차원이라 shared
+  에 두고 모든 agent 가 import 해 사용.
 
 graph 측은 `llm.with_structured_output(A2AResponseDecision)` 으로 LLM 에
 schema 를 강제하고, 결정 결과를 graph state 에 저장. handler 측은 state
@@ -45,4 +50,26 @@ class A2AResponseDecision(BaseModel):
     )
 
 
-__all__ = ["A2AResponseDecision"]
+# A2A 프로토콜 차원의 결정 가이드 — 모든 agent 공유 default.
+# agent 정체성 / 도메인 워크플로가 아닌 protocol-level 텍스트라 shared 에
+# 위치. agent 별 customize 가 필요해지면 (드물 것) config 에서 override
+# 가능한 형태로 확장.
+DEFAULT_RESPONSE_DECISION_PROMPT = (
+    "You are reviewing the agent's final response to a peer agent's request "
+    "(A2A inter-agent communication). Decide whether the response should be "
+    "wrapped as an A2A Task or sent as a plain Message.\n\n"
+    "requires_task=true when:\n"
+    "  - the response delegates work to another agent or starts a long-running operation\n"
+    "  - the caller will need to follow up referencing this work (track progress, fetch artifacts)\n"
+    "  - stateful outputs (artifacts, status transitions) are produced or expected\n\n"
+    "requires_task=false when:\n"
+    "  - the response is a simple answer, opinion, or fact lookup\n"
+    "  - no follow-up tracking is required by the caller\n\n"
+    "Look at the final assistant message and the request that prompted it to decide."
+)
+
+
+__all__ = [
+    "A2AResponseDecision",
+    "DEFAULT_RESPONSE_DECISION_PROMPT",
+]

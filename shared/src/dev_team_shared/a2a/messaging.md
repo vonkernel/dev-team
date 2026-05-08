@@ -182,8 +182,11 @@ class A2AResponseDecision(BaseModel):
 
 graph 는 이 출력을 state 에 담아 handler 로 전달. handler 는 hint 만 보고 wrap 분기 — 분류 / 분석 로직 0 (LLM 이 이미 결정).
 
-LLM 이 추론하기 위한 system prompt 단편 (persona text 안):
-> 응답 시 `requires_task` 도 함께 결정한다. 단순 조회 / 의견 / fact 확인이면 false. 다른 에이전트에 작업을 위임하거나 long-running 한 작업을 시작하는 응답이면 true. 호출자가 후속으로 진행 상태를 추적해야 하는가? — 그렇다면 true.
+#### 결정 prompt 의 위치 — shared
+
+본 결정은 **A2A 프로토콜 차원** (agent 정체성이 아님) — 모든 agent (Primary / Architect / Engineer / QA …) 가 동일 기준으로 답해야 함. 따라서 prompt 텍스트는 `shared/src/dev_team_shared/a2a/decision.py:DEFAULT_RESPONSE_DECISION_PROMPT` 상수로 두고 모든 agent 가 import 해 사용. agent 별 customize 가 필요해지면 (드물 것) config 에서 override 가능한 형태로 확장.
+
+> agent 정체성 / 도메인 워크플로 자료는 `agents/<name>/config/base.yaml`(persona) 와 `agents/<name>/resources/*.md`. **protocol-level 공통 텍스트** 는 shared. 코드 안에 자연어 prompt 박지 않음 — root [`CLAUDE.md`](../../../../../CLAUDE.md) "AI 에이전트 런타임 자산" 원칙.
 
 #### default — hint 누락 시
 

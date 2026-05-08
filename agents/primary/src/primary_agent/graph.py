@@ -27,7 +27,10 @@ import logging
 from pathlib import Path
 from typing import Annotated, Any, NotRequired, TypedDict
 
-from dev_team_shared.a2a import A2AResponseDecision
+from dev_team_shared.a2a import (
+    DEFAULT_RESPONSE_DECISION_PROMPT,
+    A2AResponseDecision,
+)
 from dev_team_shared.config_loader import load_config
 from dev_team_shared.llm import LLMSpec, create_chat_model
 from langchain_core.language_models import BaseChatModel
@@ -166,21 +169,6 @@ def _should_continue(state: State) -> str:
     return "tools" if tool_calls else "classify_response"
 
 
-_CLASSIFY_PROMPT = (
-    "You are reviewing the agent's final response to a peer agent's request "
-    "(A2A inter-agent communication). Decide whether the response should be "
-    "wrapped as an A2A Task or sent as a plain Message.\n\n"
-    "requires_task=true when:\n"
-    "  - the response delegates work to another agent or starts a long-running operation\n"
-    "  - the caller will need to follow up referencing this work (track progress, fetch artifacts)\n"
-    "  - stateful outputs (artifacts, status transitions) are produced or expected\n\n"
-    "requires_task=false when:\n"
-    "  - the response is a simple answer, opinion, or fact lookup\n"
-    "  - no follow-up tracking is required by the caller\n\n"
-    "Look at the final assistant message and the request that prompted it to decide."
-)
-
-
 def _format_conversation_for_classifier(messages: list[AnyMessage]) -> str:
     """state.messages 를 classifier 가 볼 수 있는 한 덩어리 텍스트로 직렬화.
 
@@ -231,7 +219,7 @@ def _make_classify_response_node(llm: BaseChatModel):
         )
         try:
             decision = await classifier.ainvoke([
-                SystemMessage(content=_CLASSIFY_PROMPT),
+                SystemMessage(content=DEFAULT_RESPONSE_DECISION_PROMPT),
                 HumanMessage(content=prompt),
             ])
         except Exception:
