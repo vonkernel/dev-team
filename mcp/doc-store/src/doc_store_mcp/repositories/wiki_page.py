@@ -36,7 +36,7 @@ class WikiPageRepository(
     async def create(self, doc: WikiPageCreate) -> WikiPageRead:
         sql = """
             INSERT INTO wiki_pages
-                (agent_task_id, page_type, slug, title, content_md, status,
+                (assignment_id, page_type, slug, title, content_md, status,
                  author_agent, references_issues, references_pages,
                  structured, external_refs, metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb)
@@ -44,7 +44,7 @@ class WikiPageRepository(
         """
         row = await self._pool.fetchrow(
             sql,
-            doc.agent_task_id,
+            doc.assignment_id,
             doc.page_type,
             doc.slug,
             doc.title,

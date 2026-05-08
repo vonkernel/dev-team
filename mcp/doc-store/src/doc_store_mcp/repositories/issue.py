@@ -30,14 +30,14 @@ class IssueRepository(PostgresRepositoryBase[IssueCreate, IssueUpdate, IssueRead
     async def create(self, doc: IssueCreate) -> IssueRead:
         sql = """
             INSERT INTO issues
-                (agent_task_id, type, title, body_md, status, parent_issue_id,
+                (assignment_id, type, title, body_md, status, parent_issue_id,
                  labels, external_refs, metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb)
             RETURNING *
         """
         row = await self._pool.fetchrow(
             sql,
-            doc.agent_task_id,
+            doc.assignment_id,
             doc.type,
             doc.title,
             doc.body_md,

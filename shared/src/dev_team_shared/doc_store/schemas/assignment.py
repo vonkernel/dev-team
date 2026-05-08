@@ -1,4 +1,8 @@
-"""agent_tasks Pydantic 모델."""
+"""assignments Pydantic 모델 — 도메인 work item.
+
+P / A 가 chat 중 합의해 발급. 한 Assignment 는 1 개 이상의 A2A Task 로 구성
+가능 (`a2a_tasks.assignment_id` 로 backlink).
+"""
 
 from __future__ import annotations
 
@@ -8,45 +12,42 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-AgentTaskStatus = Literal["open", "in_progress", "done", "cancelled"]
+AssignmentStatus = Literal["open", "in_progress", "done", "cancelled"]
 
 
-class AgentTaskCreate(BaseModel):
-    """create 입력 (id 미지정 — DB가 발급)."""
-
+class AssignmentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: str
     description: str | None = None
-    status: AgentTaskStatus = "open"
+    status: AssignmentStatus = "open"
     owner_agent: str | None = None
+    root_session_id: UUID | None = None              # 어느 chat session 에서 비롯
     issue_refs: list[UUID] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class AgentTaskUpdate(BaseModel):
-    """update 입력 — 모든 필드 선택. 명시된 필드만 patch."""
-
+class AssignmentUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: str | None = None
     description: str | None = None
-    status: AgentTaskStatus | None = None
+    status: AssignmentStatus | None = None
     owner_agent: str | None = None
+    root_session_id: UUID | None = None
     issue_refs: list[UUID] | None = None
     metadata: dict[str, Any] | None = None
 
 
-class AgentTaskRead(BaseModel):
-    """DB row → 외부 노출 형태."""
-
+class AssignmentRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     title: str
     description: str | None
-    status: AgentTaskStatus
+    status: AssignmentStatus
     owner_agent: str | None
+    root_session_id: UUID | None
     issue_refs: list[UUID]
     metadata: dict[str, Any]
     created_at: datetime

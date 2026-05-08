@@ -1,13 +1,11 @@
-"""DocStoreClient — Document DB MCP 의 typed 클라이언트.
+"""DocStoreClient — Doc Store MCP 의 typed 클라이언트.
 
 호출자는 Pydantic 모델 입출력만 다룸. wire-level 디테일 (도구명 / dict 래핑 /
 JSON parse) 모두 본 클래스 안에 격리.
 
-사용:
-
-    async with StreamableMCPClient.connect(url) as mcp:
-        db = DocStoreClient(mcp)
-        item = await db.agent_item_create(AgentItemCreate(...))   # → AgentItemRead
+#75 재설계: chat tier (Session / Chat / Assignment) + A2A tier (A2AContext /
+A2AMessage / A2ATask / A2ATaskStatusUpdate / A2ATaskArtifact) + 도메인 산출물
+(Issue / WikiPage). 기존 AgentTask / AgentSession / AgentItem 폐기.
 """
 
 from __future__ import annotations
@@ -18,26 +16,43 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from dev_team_shared.doc_store.schemas import (
-    AgentItemCreate,
-    AgentItemRead,
-    AgentSessionCreate,
-    AgentSessionRead,
-    AgentSessionUpdate,
-    AgentTaskCreate,
-    AgentTaskRead,
-    AgentTaskUpdate,
+    A2AContextCreate,
+    A2AContextRead,
+    A2AContextUpdate,
+    A2AMessageCreate,
+    A2AMessageRead,
+    A2ATaskArtifactCreate,
+    A2ATaskArtifactRead,
+    A2ATaskCreate,
+    A2ATaskRead,
+    A2ATaskStatusUpdateCreate,
+    A2ATaskStatusUpdateRead,
+    A2ATaskUpdate,
+    AssignmentCreate,
+    AssignmentRead,
+    AssignmentUpdate,
+    ChatCreate,
+    ChatRead,
     IssueCreate,
     IssueRead,
     IssueUpdate,
+    SessionCreate,
+    SessionRead,
+    SessionUpdate,
     WikiPageCreate,
     WikiPageRead,
     WikiPageUpdate,
 )
 from dev_team_shared.doc_store.tool_names import (
-    AgentItemTools,
-    AgentSessionTools,
-    AgentTaskTools,
+    A2AContextTools,
+    A2AMessageTools,
+    A2ATaskArtifactTools,
+    A2ATaskStatusUpdateTools,
+    A2ATaskTools,
+    AssignmentTools,
+    ChatTools,
     IssueTools,
+    SessionTools,
     WikiPageTools,
 )
 from dev_team_shared.mcp_client import StreamableMCPClient
@@ -46,7 +61,7 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class DocStoreClient:
-    """Typed wrapper around `StreamableMCPClient` for Document DB MCP 도구.
+    """Typed wrapper around `StreamableMCPClient` for Doc Store MCP 도구.
 
     각 collection × op 마다 1 메서드. 모든 입력은 Pydantic 모델, 모든 반환은
     Pydantic 모델 / scalar 또는 None. dict / 문자열은 본 클래스 외부로 새지 않음.
@@ -55,150 +70,375 @@ class DocStoreClient:
     def __init__(self, mcp: StreamableMCPClient) -> None:
         self._mcp = mcp
 
-    # ──────────────────────────────────────────────────────────────────
-    # agent_task
-    # ──────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
+    # Chat tier — sessions
+    # ──────────────────────────────────────────────────────────────────────
 
-    async def agent_task_create(self, doc: AgentTaskCreate) -> AgentTaskRead:
-        return await self._call(
-            AgentTaskTools.CREATE, _doc(doc), AgentTaskRead,
-        )
+    async def session_create(self, doc: SessionCreate) -> SessionRead:
+        return await self._call(SessionTools.CREATE, _doc(doc), SessionRead)
 
-    async def agent_task_update(
-        self, id: UUID, patch: AgentTaskUpdate,
-    ) -> AgentTaskRead | None:
+    async def session_update(
+        self, id: UUID, patch: SessionUpdate,
+    ) -> SessionRead | None:
         return await self._call_optional(
-            AgentTaskTools.UPDATE, _id_patch(id, patch), AgentTaskRead,
+            SessionTools.UPDATE, _id_patch(id, patch), SessionRead,
         )
 
-    async def agent_task_get(self, id: UUID) -> AgentTaskRead | None:
+    async def session_get(self, id: UUID) -> SessionRead | None:
         return await self._call_optional(
-            AgentTaskTools.GET, {"id": str(id)}, AgentTaskRead,
+            SessionTools.GET, {"id": str(id)}, SessionRead,
         )
 
-    async def agent_task_list(
-        self,
-        *,
-        where: dict[str, Any] | None = None,
-        limit: int = 100,
-        offset: int = 0,
-        order_by: str = "created_at DESC",
-    ) -> list[AgentTaskRead]:
-        return await self._call_list(
-            AgentTaskTools.LIST,
-            _list_args(where, limit, offset, order_by),
-            AgentTaskRead,
-        )
-
-    async def agent_task_delete(self, id: UUID) -> bool:
-        return await self._call_scalar(AgentTaskTools.DELETE, {"id": str(id)})
-
-    async def agent_task_count(self, *, where: dict[str, Any] | None = None) -> int:
-        return await self._call_scalar(
-            AgentTaskTools.COUNT, _where_args(where),
-        )
-
-    # ──────────────────────────────────────────────────────────────────
-    # agent_session
-    # ──────────────────────────────────────────────────────────────────
-
-    async def agent_session_create(self, doc: AgentSessionCreate) -> AgentSessionRead:
-        return await self._call(AgentSessionTools.CREATE, _doc(doc), AgentSessionRead)
-
-    async def agent_session_update(
-        self, id: UUID, patch: AgentSessionUpdate,
-    ) -> AgentSessionRead | None:
-        return await self._call_optional(
-            AgentSessionTools.UPDATE, _id_patch(id, patch), AgentSessionRead,
-        )
-
-    async def agent_session_get(self, id: UUID) -> AgentSessionRead | None:
-        return await self._call_optional(
-            AgentSessionTools.GET, {"id": str(id)}, AgentSessionRead,
-        )
-
-    async def agent_session_list(
+    async def session_list(
         self,
         *,
         where: dict[str, Any] | None = None,
         limit: int = 100,
         offset: int = 0,
         order_by: str = "started_at DESC",
-    ) -> list[AgentSessionRead]:
+    ) -> list[SessionRead]:
         return await self._call_list(
-            AgentSessionTools.LIST,
-            _list_args(where, limit, offset, order_by),
-            AgentSessionRead,
+            SessionTools.LIST, _list_args(where, limit, offset, order_by), SessionRead,
         )
 
-    async def agent_session_delete(self, id: UUID) -> bool:
-        return await self._call_scalar(AgentSessionTools.DELETE, {"id": str(id)})
+    async def session_delete(self, id: UUID) -> bool:
+        return await self._call_scalar(SessionTools.DELETE, {"id": str(id)})
 
-    async def agent_session_count(self, *, where: dict[str, Any] | None = None) -> int:
-        return await self._call_scalar(AgentSessionTools.COUNT, _where_args(where))
+    async def session_count(self, *, where: dict[str, Any] | None = None) -> int:
+        return await self._call_scalar(SessionTools.COUNT, _where_args(where))
 
-    async def agent_session_list_by_task(
-        self, agent_task_id: UUID,
-    ) -> list[AgentSessionRead]:
-        return await self._call_list(
-            AgentSessionTools.LIST_BY_TASK,
-            {"agent_task_id": str(agent_task_id)},
-            AgentSessionRead,
-        )
+    # ──────────────────────────────────────────────────────────────────────
+    # Chat tier — chats (immutable — no update)
+    # ──────────────────────────────────────────────────────────────────────
 
-    async def agent_session_find_by_context(
-        self, context_id: str,
-    ) -> AgentSessionRead | None:
+    async def chat_create(self, doc: ChatCreate) -> ChatRead:
+        return await self._call(ChatTools.CREATE, _doc(doc), ChatRead)
+
+    async def chat_get(self, id: UUID) -> ChatRead | None:
         return await self._call_optional(
-            AgentSessionTools.FIND_BY_CONTEXT,
-            {"context_id": context_id},
-            AgentSessionRead,
+            ChatTools.GET, {"id": str(id)}, ChatRead,
         )
 
-    # ──────────────────────────────────────────────────────────────────
-    # agent_item (immutable — no update)
-    # ──────────────────────────────────────────────────────────────────
-
-    async def agent_item_create(self, doc: AgentItemCreate) -> AgentItemRead:
-        return await self._call(AgentItemTools.CREATE, _doc(doc), AgentItemRead)
-
-    async def agent_item_get(self, id: UUID) -> AgentItemRead | None:
-        return await self._call_optional(
-            AgentItemTools.GET, {"id": str(id)}, AgentItemRead,
-        )
-
-    async def agent_item_list(
+    async def chat_list(
         self,
         *,
         where: dict[str, Any] | None = None,
         limit: int = 200,
         offset: int = 0,
         order_by: str = "created_at",
-    ) -> list[AgentItemRead]:
+    ) -> list[ChatRead]:
         return await self._call_list(
-            AgentItemTools.LIST,
+            ChatTools.LIST, _list_args(where, limit, offset, order_by), ChatRead,
+        )
+
+    async def chat_delete(self, id: UUID) -> bool:
+        return await self._call_scalar(ChatTools.DELETE, {"id": str(id)})
+
+    async def chat_count(self, *, where: dict[str, Any] | None = None) -> int:
+        return await self._call_scalar(ChatTools.COUNT, _where_args(where))
+
+    async def chat_list_by_session(self, session_id: UUID) -> list[ChatRead]:
+        return await self._call_list(
+            ChatTools.LIST_BY_SESSION,
+            {"session_id": str(session_id)},
+            ChatRead,
+        )
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Chat tier — assignments
+    # ──────────────────────────────────────────────────────────────────────
+
+    async def assignment_create(self, doc: AssignmentCreate) -> AssignmentRead:
+        return await self._call(AssignmentTools.CREATE, _doc(doc), AssignmentRead)
+
+    async def assignment_update(
+        self, id: UUID, patch: AssignmentUpdate,
+    ) -> AssignmentRead | None:
+        return await self._call_optional(
+            AssignmentTools.UPDATE, _id_patch(id, patch), AssignmentRead,
+        )
+
+    async def assignment_get(self, id: UUID) -> AssignmentRead | None:
+        return await self._call_optional(
+            AssignmentTools.GET, {"id": str(id)}, AssignmentRead,
+        )
+
+    async def assignment_list(
+        self,
+        *,
+        where: dict[str, Any] | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        order_by: str = "created_at DESC",
+    ) -> list[AssignmentRead]:
+        return await self._call_list(
+            AssignmentTools.LIST,
             _list_args(where, limit, offset, order_by),
-            AgentItemRead,
+            AssignmentRead,
         )
 
-    async def agent_item_delete(self, id: UUID) -> bool:
-        return await self._call_scalar(AgentItemTools.DELETE, {"id": str(id)})
+    async def assignment_delete(self, id: UUID) -> bool:
+        return await self._call_scalar(AssignmentTools.DELETE, {"id": str(id)})
 
-    async def agent_item_count(self, *, where: dict[str, Any] | None = None) -> int:
-        return await self._call_scalar(AgentItemTools.COUNT, _where_args(where))
+    async def assignment_count(self, *, where: dict[str, Any] | None = None) -> int:
+        return await self._call_scalar(AssignmentTools.COUNT, _where_args(where))
 
-    async def agent_item_list_by_session(
-        self, agent_session_id: UUID,
-    ) -> list[AgentItemRead]:
+    async def assignment_list_by_session(
+        self, root_session_id: UUID,
+    ) -> list[AssignmentRead]:
         return await self._call_list(
-            AgentItemTools.LIST_BY_SESSION,
-            {"agent_session_id": str(agent_session_id)},
-            AgentItemRead,
+            AssignmentTools.LIST_BY_SESSION,
+            {"root_session_id": str(root_session_id)},
+            AssignmentRead,
         )
 
-    # ──────────────────────────────────────────────────────────────────
-    # issue
-    # ──────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
+    # A2A tier — a2a_contexts
+    # ──────────────────────────────────────────────────────────────────────
+
+    async def a2a_context_create(self, doc: A2AContextCreate) -> A2AContextRead:
+        return await self._call(A2AContextTools.CREATE, _doc(doc), A2AContextRead)
+
+    async def a2a_context_update(
+        self, id: UUID, patch: A2AContextUpdate,
+    ) -> A2AContextRead | None:
+        return await self._call_optional(
+            A2AContextTools.UPDATE, _id_patch(id, patch), A2AContextRead,
+        )
+
+    async def a2a_context_get(self, id: UUID) -> A2AContextRead | None:
+        return await self._call_optional(
+            A2AContextTools.GET, {"id": str(id)}, A2AContextRead,
+        )
+
+    async def a2a_context_list(
+        self,
+        *,
+        where: dict[str, Any] | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        order_by: str = "started_at DESC",
+    ) -> list[A2AContextRead]:
+        return await self._call_list(
+            A2AContextTools.LIST,
+            _list_args(where, limit, offset, order_by),
+            A2AContextRead,
+        )
+
+    async def a2a_context_delete(self, id: UUID) -> bool:
+        return await self._call_scalar(A2AContextTools.DELETE, {"id": str(id)})
+
+    async def a2a_context_count(self, *, where: dict[str, Any] | None = None) -> int:
+        return await self._call_scalar(A2AContextTools.COUNT, _where_args(where))
+
+    async def a2a_context_find_by_context_id(
+        self, context_id: str,
+    ) -> A2AContextRead | None:
+        return await self._call_optional(
+            A2AContextTools.FIND_BY_CONTEXT_ID,
+            {"context_id": context_id},
+            A2AContextRead,
+        )
+
+    # ──────────────────────────────────────────────────────────────────────
+    # A2A tier — a2a_messages (immutable — no update)
+    # ──────────────────────────────────────────────────────────────────────
+
+    async def a2a_message_create(self, doc: A2AMessageCreate) -> A2AMessageRead:
+        return await self._call(A2AMessageTools.CREATE, _doc(doc), A2AMessageRead)
+
+    async def a2a_message_get(self, id: UUID) -> A2AMessageRead | None:
+        return await self._call_optional(
+            A2AMessageTools.GET, {"id": str(id)}, A2AMessageRead,
+        )
+
+    async def a2a_message_list(
+        self,
+        *,
+        where: dict[str, Any] | None = None,
+        limit: int = 200,
+        offset: int = 0,
+        order_by: str = "created_at",
+    ) -> list[A2AMessageRead]:
+        return await self._call_list(
+            A2AMessageTools.LIST,
+            _list_args(where, limit, offset, order_by),
+            A2AMessageRead,
+        )
+
+    async def a2a_message_delete(self, id: UUID) -> bool:
+        return await self._call_scalar(A2AMessageTools.DELETE, {"id": str(id)})
+
+    async def a2a_message_count(self, *, where: dict[str, Any] | None = None) -> int:
+        return await self._call_scalar(A2AMessageTools.COUNT, _where_args(where))
+
+    async def a2a_message_list_by_context(
+        self, a2a_context_id: UUID,
+    ) -> list[A2AMessageRead]:
+        return await self._call_list(
+            A2AMessageTools.LIST_BY_CONTEXT,
+            {"a2a_context_id": str(a2a_context_id)},
+            A2AMessageRead,
+        )
+
+    async def a2a_message_list_by_task(
+        self, a2a_task_id: UUID,
+    ) -> list[A2AMessageRead]:
+        return await self._call_list(
+            A2AMessageTools.LIST_BY_TASK,
+            {"a2a_task_id": str(a2a_task_id)},
+            A2AMessageRead,
+        )
+
+    # ──────────────────────────────────────────────────────────────────────
+    # A2A tier — a2a_tasks
+    # ──────────────────────────────────────────────────────────────────────
+
+    async def a2a_task_create(self, doc: A2ATaskCreate) -> A2ATaskRead:
+        return await self._call(A2ATaskTools.CREATE, _doc(doc), A2ATaskRead)
+
+    async def a2a_task_update(
+        self, id: UUID, patch: A2ATaskUpdate,
+    ) -> A2ATaskRead | None:
+        return await self._call_optional(
+            A2ATaskTools.UPDATE, _id_patch(id, patch), A2ATaskRead,
+        )
+
+    async def a2a_task_get(self, id: UUID) -> A2ATaskRead | None:
+        return await self._call_optional(
+            A2ATaskTools.GET, {"id": str(id)}, A2ATaskRead,
+        )
+
+    async def a2a_task_list(
+        self,
+        *,
+        where: dict[str, Any] | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        order_by: str = "submitted_at DESC",
+    ) -> list[A2ATaskRead]:
+        return await self._call_list(
+            A2ATaskTools.LIST,
+            _list_args(where, limit, offset, order_by),
+            A2ATaskRead,
+        )
+
+    async def a2a_task_delete(self, id: UUID) -> bool:
+        return await self._call_scalar(A2ATaskTools.DELETE, {"id": str(id)})
+
+    async def a2a_task_count(self, *, where: dict[str, Any] | None = None) -> int:
+        return await self._call_scalar(A2ATaskTools.COUNT, _where_args(where))
+
+    async def a2a_task_find_by_task_id(self, task_id: str) -> A2ATaskRead | None:
+        return await self._call_optional(
+            A2ATaskTools.FIND_BY_TASK_ID,
+            {"task_id": task_id},
+            A2ATaskRead,
+        )
+
+    # ──────────────────────────────────────────────────────────────────────
+    # A2A tier — a2a_task_status_updates (immutable — no update)
+    # ──────────────────────────────────────────────────────────────────────
+
+    async def a2a_task_status_update_create(
+        self, doc: A2ATaskStatusUpdateCreate,
+    ) -> A2ATaskStatusUpdateRead:
+        return await self._call(
+            A2ATaskStatusUpdateTools.CREATE, _doc(doc), A2ATaskStatusUpdateRead,
+        )
+
+    async def a2a_task_status_update_get(
+        self, id: UUID,
+    ) -> A2ATaskStatusUpdateRead | None:
+        return await self._call_optional(
+            A2ATaskStatusUpdateTools.GET, {"id": str(id)}, A2ATaskStatusUpdateRead,
+        )
+
+    async def a2a_task_status_update_list(
+        self,
+        *,
+        where: dict[str, Any] | None = None,
+        limit: int = 200,
+        offset: int = 0,
+        order_by: str = "transitioned_at",
+    ) -> list[A2ATaskStatusUpdateRead]:
+        return await self._call_list(
+            A2ATaskStatusUpdateTools.LIST,
+            _list_args(where, limit, offset, order_by),
+            A2ATaskStatusUpdateRead,
+        )
+
+    async def a2a_task_status_update_delete(self, id: UUID) -> bool:
+        return await self._call_scalar(
+            A2ATaskStatusUpdateTools.DELETE, {"id": str(id)},
+        )
+
+    async def a2a_task_status_update_count(
+        self, *, where: dict[str, Any] | None = None,
+    ) -> int:
+        return await self._call_scalar(
+            A2ATaskStatusUpdateTools.COUNT, _where_args(where),
+        )
+
+    async def a2a_task_status_update_list_by_task(
+        self, a2a_task_id: UUID,
+    ) -> list[A2ATaskStatusUpdateRead]:
+        return await self._call_list(
+            A2ATaskStatusUpdateTools.LIST_BY_TASK,
+            {"a2a_task_id": str(a2a_task_id)},
+            A2ATaskStatusUpdateRead,
+        )
+
+    # ──────────────────────────────────────────────────────────────────────
+    # A2A tier — a2a_task_artifacts (immutable — no update)
+    # ──────────────────────────────────────────────────────────────────────
+
+    async def a2a_task_artifact_create(
+        self, doc: A2ATaskArtifactCreate,
+    ) -> A2ATaskArtifactRead:
+        return await self._call(
+            A2ATaskArtifactTools.CREATE, _doc(doc), A2ATaskArtifactRead,
+        )
+
+    async def a2a_task_artifact_get(self, id: UUID) -> A2ATaskArtifactRead | None:
+        return await self._call_optional(
+            A2ATaskArtifactTools.GET, {"id": str(id)}, A2ATaskArtifactRead,
+        )
+
+    async def a2a_task_artifact_list(
+        self,
+        *,
+        where: dict[str, Any] | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        order_by: str = "created_at DESC",
+    ) -> list[A2ATaskArtifactRead]:
+        return await self._call_list(
+            A2ATaskArtifactTools.LIST,
+            _list_args(where, limit, offset, order_by),
+            A2ATaskArtifactRead,
+        )
+
+    async def a2a_task_artifact_delete(self, id: UUID) -> bool:
+        return await self._call_scalar(A2ATaskArtifactTools.DELETE, {"id": str(id)})
+
+    async def a2a_task_artifact_count(
+        self, *, where: dict[str, Any] | None = None,
+    ) -> int:
+        return await self._call_scalar(A2ATaskArtifactTools.COUNT, _where_args(where))
+
+    async def a2a_task_artifact_list_by_task(
+        self, a2a_task_id: UUID,
+    ) -> list[A2ATaskArtifactRead]:
+        return await self._call_list(
+            A2ATaskArtifactTools.LIST_BY_TASK,
+            {"a2a_task_id": str(a2a_task_id)},
+            A2ATaskArtifactRead,
+        )
+
+    # ──────────────────────────────────────────────────────────────────────
+    # 도메인 산출물 — issues
+    # ──────────────────────────────────────────────────────────────────────
 
     async def issue_create(self, doc: IssueCreate) -> IssueRead:
         return await self._call(IssueTools.CREATE, _doc(doc), IssueRead)
@@ -216,9 +456,7 @@ class DocStoreClient:
         return await self._call_optional(IssueTools.UPDATE, args, IssueRead)
 
     async def issue_get(self, id: UUID) -> IssueRead | None:
-        return await self._call_optional(
-            IssueTools.GET, {"id": str(id)}, IssueRead,
-        )
+        return await self._call_optional(IssueTools.GET, {"id": str(id)}, IssueRead)
 
     async def issue_list(
         self,
@@ -229,9 +467,7 @@ class DocStoreClient:
         order_by: str = "created_at DESC",
     ) -> list[IssueRead]:
         return await self._call_list(
-            IssueTools.LIST,
-            _list_args(where, limit, offset, order_by),
-            IssueRead,
+            IssueTools.LIST, _list_args(where, limit, offset, order_by), IssueRead,
         )
 
     async def issue_delete(self, id: UUID) -> bool:
@@ -240,9 +476,9 @@ class DocStoreClient:
     async def issue_count(self, *, where: dict[str, Any] | None = None) -> int:
         return await self._call_scalar(IssueTools.COUNT, _where_args(where))
 
-    # ──────────────────────────────────────────────────────────────────
-    # wiki_page
-    # ──────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
+    # 도메인 산출물 — wiki_pages
+    # ──────────────────────────────────────────────────────────────────────
 
     async def wiki_page_create(self, doc: WikiPageCreate) -> WikiPageRead:
         return await self._call(WikiPageTools.CREATE, _doc(doc), WikiPageRead)
@@ -289,26 +525,19 @@ class DocStoreClient:
             WikiPageTools.GET_BY_SLUG, {"slug": slug}, WikiPageRead,
         )
 
-    # ──────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
     # 내부 — wire 호출 + 직렬화/역직렬화
-    # ──────────────────────────────────────────────────────────────────
+    # ──────────────────────────────────────────────────────────────────────
 
     async def _call(
         self, name: str, args: dict[str, Any], return_type: type[T],
     ) -> T:
-        """Pydantic 모델 반환. structuredContent 가 모델 dict 자체."""
         sc = await self._invoke(name, args)
         return return_type.model_validate(sc)
 
     async def _call_optional(
         self, name: str, args: dict[str, Any], return_type: type[T],
     ) -> T | None:
-        """Optional[Model] — FastMCP 가 항상 `{"result": <model_dict_or_None>}` 로 wrap.
-
-        (이유: FastMCP 의 structured content 규약 — return type 이 Pydantic 모델
-        한 종(non-optional) 일 때만 unwrapped, 그 외 (Optional 포함) 는 result key
-        wrap. None 이 dict 가 아니라 wrap 강제.)
-        """
         sc = await self._invoke(name, args)
         inner = sc.get("result")
         if inner is None:
@@ -318,43 +547,29 @@ class DocStoreClient:
     async def _call_list(
         self, name: str, args: dict[str, Any], item_type: type[T],
     ) -> list[T]:
-        """list[T] — FastMCP 가 {"result": [...]} 로 wrap."""
         sc = await self._invoke(name, args)
         items = sc.get("result") or []
         return [item_type.model_validate(it) for it in items]
 
     async def _call_scalar(self, name: str, args: dict[str, Any]) -> Any:
-        """bool / int / str 등 — FastMCP 가 {"result": <scalar>} 로 wrap."""
         sc = await self._invoke(name, args)
         return sc.get("result")
 
     async def _invoke(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
-        """MCP 도구 호출 → structuredContent 반환.
-
-        FastMCP 는 모든 응답에 structuredContent 를 채움 (MCP spec 2025-06-18):
-        - Pydantic 모델 → 모델 dict 그대로
-        - list / scalar / None → `{"result": <value>}` 로 wrap (MCP 의 structured
-          content 는 dict 만 허용하기 때문)
-        """
         result = await self._mcp.call_tool(name, args)
         return result.structuredContent or {}
 
 
-# ──────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
 # 내부 헬퍼 — args 조립을 한 곳에서
-# ──────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────
 
 
 def _doc(model: BaseModel) -> dict[str, Any]:
-    """`{"doc": <model dict>}` 래핑."""
     return {"doc": model.model_dump(mode="json")}
 
 
 def _id_patch(id: UUID, patch: BaseModel) -> dict[str, Any]:
-    """update 도구의 `{"id": ..., "patch": ...}` 래핑.
-
-    patch 는 `exclude_unset=True` 로 명시된 필드만 보냄 (Pydantic Update 시멘틱).
-    """
     return {
         "id": str(id),
         "patch": patch.model_dump(mode="json", exclude_unset=True),
