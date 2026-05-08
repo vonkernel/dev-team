@@ -165,25 +165,29 @@ method 이름이 response shape 를 결정하지 않는다 (예: SendStreamingMe
 | SendStreamingMessage | Message stream | streaming 인데 trivial — chunk 단위 텍스트만 |
 | SendStreamingMessage | Task stream | streaming + stateful work (가장 일반적) |
 
-#### 결정 메커니즘 — graph hint
+#### 결정 메커니즘 — LLM 추론 (callee graph 안)
 
-agent 의 graph 가 결정. graph state 에 명시적 hint 채움:
+callee 의 graph 안 LLM 이 자기 응답이 trivial 인지 stateful 인지 **추론**해 결정. 룰베이스 / 휴리스틱 도입 X — 진짜 에이전트는 추론하지 룰 따르지 않는다.
+
+구현은 **structured output**: ReAct 의 응답 생성 LLM 이 자기 출력에 hint 필드 포함하도록 schema 강제.
 
 ```python
-# Primary / Engineer 등의 graph state
-{
-    "messages": [...],
-    "requires_task": bool,           # True 면 Task wrap, False 면 Message only
-    # 또는 더 풍부한 hint:
-    # "task_state": TaskState | None,  # None 이면 Message only
-}
+# 응답 generation LLM 의 structured output schema
+class A2AResponseDecision(BaseModel):
+    text: str                        # 응답 본문
+    requires_task: bool              # LLM 이 추론한 결정 (Task wrap 필요한가)
+    # 또는 더 풍부:
+    # task_state: TaskState | None   # None 이면 Message only
 ```
 
-handler 는 hint 보고 wrap 분기. 분류 로직 0 — graph 자기가 ReAct / 룰 / 명시적 노드 출력 등으로 결정.
+graph 는 이 출력을 state 에 담아 handler 로 전달. handler 는 hint 만 보고 wrap 분기 — 분류 / 분석 로직 0 (LLM 이 이미 결정).
 
-#### default — hint 안 줄 때
+LLM 이 추론하기 위한 system prompt 단편 (persona text 안):
+> 응답 시 `requires_task` 도 함께 결정한다. 단순 조회 / 의견 / fact 확인이면 false. 다른 에이전트에 작업을 위임하거나 long-running 한 작업을 시작하는 응답이면 true. 호출자가 후속으로 진행 상태를 추적해야 하는가? — 그렇다면 true.
 
-graph 가 hint 미구현이면 보수적으로 둘 다 **Message only**. Task 는 graph 가 명시적으로 opt-in 해야만. 이유: Task wrap 은 a2a_tasks / status_updates / artifacts 까지 publish 하므로 부수 비용 ↑ — graph 가 명시한 경우만.
+#### default — hint 누락 시
+
+LLM 출력 파싱 실패 / graph 미구현 등 hint 가 비어 있으면 보수적으로 **Message only**. Task wrap 은 LLM 이 명시한 경우만 — Task 는 a2a_tasks / status_updates / artifacts 까지 publish 하므로 부수 비용이 있다.
 
 #### publish 패턴 (server 측)
 
