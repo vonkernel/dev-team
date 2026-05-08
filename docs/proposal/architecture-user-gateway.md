@@ -38,15 +38,15 @@ agent (Primary / Architect) 의 LLM 영역. UG 는 인터페이스만, agent 가
 | `POST /api/chat` | UG | FE |
 | `GET /api/stream?session_id=X` | UG | FE |
 | `GET /api/history?session_id=X` | UG | FE (리프레시 / 새 탭 시 hydrate) |
-| `GET /api/sessions` | UG | FE (사이드바 chat list) |
+| `GET /api/sessions` | UG | FE (chat list 조회) |
 | `POST /chat/send` (내부) | 각 agent (P / A) | UG |
 | `GET /chat/stream?session_id=X` (내부) | 각 agent (P / A) | UG |
 
 **FE 측 영속 (localStorage):**
 ```
 activeSessionId   ← 현재 열려 있는 chat 의 session_id
-sessions          ← 사이드바 cache (id, title, agent_endpoint, last_chat_at)
+sessions          ← chat list cache (id, title, agent_endpoint, last_chat_at)
 ```
 
-server 의 `sessions` 테이블이 source of truth. localStorage 는 사이드바
+server 의 `sessions` 테이블이 source of truth. localStorage 는 chat list
 표시 / active session 빠른 전환을 위한 cache.

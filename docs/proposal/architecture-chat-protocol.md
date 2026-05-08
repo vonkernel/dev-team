@@ -86,7 +86,7 @@ sequenceDiagram
 |---|---|---|---|
 | `POST /api/chat` | UG | FE | 사용자 발화 제출. body: `{session_id, text}`. 응답: 202 + `{queued | processing}` |
 | `GET /api/stream?session_id=X` | UG | FE | 영속 SSE 채널. 모든 응답 / queued ack / lifecycle 이벤트 receive |
-| `GET /api/sessions` | UG | FE | 사이드바 chat list 조회 |
+| `GET /api/sessions` | UG | FE | chat list 조회 |
 | `GET /api/history?session_id=X` | UG | FE | 새로고침 / 새 탭 시 chats hydrate |
 | `POST /chat/send` (내부) | 각 agent (P / A) | UG | UG 가 forward |
 | `GET /chat/stream?session_id=X` (내부) | 각 agent (P / A) | UG | UG 가 SSE 중계 |
@@ -98,22 +98,26 @@ UG 가 session 의 `agent_endpoint` 컬럼 보고 해당 agent 의 internal endp
 
 ## 4. FE 측 영속 / 상태 관리
 
-server `sessions` 테이블이 source of truth. FE 의 localStorage 는 사이드바
+server `sessions` 테이블이 source of truth. FE 의 localStorage 는 chat list
 표시 / active session 빠른 전환을 위한 **cache 역할만**:
 
 ```
 localStorage:
   activeSessionId   ← 현재 열려 있는 chat 의 session_id
-  sessions          ← 사이드바 cache (id, title, agent_endpoint, last_chat_at)
+  sessions          ← chat list cache (id, title, agent_endpoint, last_chat_at)
 ```
 
 페이지 로드 시:
 1. localStorage 에서 `activeSessionId` 복원
-2. `GET /api/sessions` 로 사이드바 list refresh
+2. `GET /api/sessions` 로 chat list refresh
 3. `GET /api/history?session_id=<active>` 로 활성 session 의 chats hydrate
 4. `GET /api/stream?session_id=<active>` 로 영속 SSE 재연결
 
-새 chat 버튼 → 새 session 생성 (`POST /api/sessions`) → 활성 전환.
+새 chat 시작 → 새 session 생성 (`POST /api/sessions`) → 활성 전환.
+
+> UI 구체 (chat list 를 사이드바로 표시할지 / 드롭다운 / 별도 화면 등) 는 FE
+> 구현 영역. 본 protocol spec 은 server-FE 데이터 흐름과 localStorage 의
+> 캐시 구조만 정의.
 
 ## 5. 메시지 큐 — Primary 측 책임 (#72)
 
