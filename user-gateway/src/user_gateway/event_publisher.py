@@ -1,10 +1,10 @@
 """UG → Chronicler 의 chat tier 이벤트 publish 어댑터.
 
-routes.py 는 HTTP 라우트 처리만 (SRP). 이벤트 publish 의 wire-level 디테일
+routes 는 HTTP 라우트 처리만 (SRP). 이벤트 publish 의 wire-level 디테일
 (Pydantic 모델 조립 / EventBus 호출 / 실패 처리) 은 본 모듈에 격리.
 
-publish 는 fire-and-forget — 실패해도 chat 흐름 차단 X (로그만 남김).
-event_bus 가 None (Valkey 미설정) 이면 모든 helper 가 no-op.
+`bus` 는 lifespan init 에서 보장 (fail-fast — VALKEY_URL 필수). runtime publish
+실패는 fire-and-forget — chat 흐름 차단 X (로그만).
 
 #75 PR 4 (chat protocol):
 - session 생성은 명시적 `POST /api/sessions` 트리거 — UG 가 session_id
@@ -42,7 +42,7 @@ def _to_uuid(s: str) -> _uuid.UUID | None:
 
 
 async def publish_session_start(
-    bus: EventBus | None,
+    bus: EventBus,
     session_id: _uuid.UUID,
     *,
     agent_endpoint: str = COUNTERPART,
@@ -53,8 +53,6 @@ async def publish_session_start(
     agent_endpoint 는 FE 가 선택한 대상 ('primary' / 'architect'). M3 엔
     'primary' 만 지원, M4+ 에 'architect' 추가.
     """
-    if bus is None:
-        return
     try:
         await bus.publish(SessionStartEvent(
             session_id=session_id,
@@ -70,14 +68,12 @@ async def publish_session_start(
 
 
 async def publish_chat_user(
-    bus: EventBus | None,
+    bus: EventBus,
     session_id: str,
     text: str,
     message_id: str,
 ) -> None:
     """chat.append role=user — 사용자 발화 직후 publish."""
-    if bus is None:
-        return
     sid = _to_uuid(session_id)
     if sid is None:
         return

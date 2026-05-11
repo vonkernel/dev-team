@@ -37,7 +37,7 @@ async def create_session(
     지연이 보통 더 길어 실측 OK. 부족해지면 chronicler chat_append 에 retry
     추가 (현재는 미발견 시 warn-skip).
     """
-    event_bus: EventBus | None = getattr(request.app.state, "event_bus", None)
+    event_bus: EventBus = request.app.state.event_bus
     session_id = uuid.uuid4()
     started_at = datetime.now(tz=UTC)
     await publish_session_start(

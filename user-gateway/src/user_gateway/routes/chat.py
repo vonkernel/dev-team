@@ -39,7 +39,7 @@ async def chat(body: ChatRequest, request: Request) -> dict[str, Any]:
     2. Primary 의 `POST /chat/send` 로 forward
     """
     chat_upstream: ChatProtocolUpstream = request.app.state.chat_upstream
-    event_bus: EventBus | None = getattr(request.app.state, "event_bus", None)
+    event_bus: EventBus = request.app.state.event_bus
     user_message_id = body.message_id or f"ug-msg-{uuid.uuid4()}"
 
     # D3: 사용자 발화는 UG 가 publish.

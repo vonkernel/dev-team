@@ -85,19 +85,16 @@ async def lifespan(app: FastAPI):
     )
     doc_store = DocStoreClient(doc_mcp_client)
 
-    # event_bus — VALKEY_URL 가 있으면 publish 활성. 없거나 초기화 실패 시 None
-    # (routes 의 publish helper 가 no-op).
-    event_bus: ValkeyEventBus | None = None
+    # event_bus — 필수 인프라 (chat tier publish 의존). VALKEY_URL 미설정 /
+    # 초기화 실패 시 **기동 종료** (fail-fast). Runtime publish 실패는 별 layer.
     valkey_url = os.environ.get("VALKEY_URL")
-    if valkey_url:
-        try:
-            event_bus = await ValkeyEventBus.create(valkey_url)
-            logger.info("event_bus ready (Valkey at %s)", valkey_url)
-        except Exception:
-            logger.exception(
-                "ValkeyEventBus 초기화 실패 (url=%s) — publish 비활성화",
-                valkey_url,
-            )
+    if not valkey_url:
+        raise RuntimeError(
+            "VALKEY_URL is required — event_bus is a hard dependency for "
+            "chat publish.",
+        )
+    event_bus = await ValkeyEventBus.create(valkey_url)
+    logger.info("event_bus ready (Valkey at %s)", valkey_url)
 
     # 라우트는 app.state 의 추상만 소비 (DIP).
     app.state.config = _CONFIG
@@ -121,8 +118,7 @@ async def lifespan(app: FastAPI):
     finally:
         await doc_mcp_client.aclose()
         await http.aclose()
-        if event_bus is not None:
-            await event_bus.aclose()
+        await event_bus.aclose()
 
 
 app = FastAPI(
