@@ -25,7 +25,7 @@ from dev_team_shared.chat_protocol.schemas import (
     SessionRead,
     SessionUpdateRequest,
 )
-from dev_team_shared.chat_protocol.session_runtime import (
+from dev_team_shared.chat_protocol.session import (
     DEFAULT_IDLE_TTL_S,
     DEFAULT_MAX_BACKLOG_MESSAGES,
     DEFAULT_SWEEP_INTERVAL_S,

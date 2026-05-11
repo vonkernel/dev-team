@@ -1,7 +1,8 @@
 """Message-aware ChatEvent 버퍼 — `SessionRuntime` 내부 자료구조.
 
-본 모듈은 `session_runtime` 의 implementation detail (underscore prefix).
-외부 노출 X — `SessionRuntime` 의 send / receive 만 노출됨.
+본 모듈은 `session` 서브패키지의 implementation detail — `session/__init__`
+에서 의도적으로 export 하지 않는다 (외부 노출 X). 클래스명에 underscore
+prefix 유지로도 internal 의미 표시.
 
 설계:
 - 내부 자료구조 = `deque[ChatEvent]`

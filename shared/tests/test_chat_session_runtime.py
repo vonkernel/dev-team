@@ -13,14 +13,15 @@ from uuid import uuid4
 
 import anyio
 import pytest
-
 from dev_team_shared.chat_protocol import (
     ChatEvent,
     ChatEventType,
     SessionRegistry,
     SessionRuntime,
 )
-from dev_team_shared.chat_protocol._chat_event_buffer import _ChatEventBuffer
+from dev_team_shared.chat_protocol.session.chat_event_buffer import (
+    _ChatEventBuffer,
+)
 
 
 def _chunk(message_id: str, text: str = "x") -> ChatEvent:
