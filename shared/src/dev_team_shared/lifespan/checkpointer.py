@@ -1,4 +1,4 @@
-"""LangGraph Postgres checkpointer lifespan helper + DSN 마스킹.
+"""LangGraph Postgres checkpointer lifespan helper.
 
 `DATABASE_URI` env 활성이면 `AsyncPostgresSaver` 를 caller 의 AsyncExitStack
 에 enter, 미활성이면 None (in-memory checkpointer 폴백 — LangGraph default).
@@ -11,6 +11,8 @@ from contextlib import AsyncExitStack
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+from dev_team_shared.utils import mask_dsn
 
 logger = logging.getLogger(__name__)
 
@@ -42,19 +44,4 @@ async def build_checkpointer(
     return checkpointer
 
 
-def mask_dsn(dsn: str) -> str:
-    """비밀번호를 마스킹한 DSN (로그 안전성).
-
-    `postgres://user:secret@host/db` → `postgres://user:***@host/db`.
-    `@` 또는 `://` 없으면 원본 그대로 반환.
-    """
-    if "@" in dsn and "://" in dsn:
-        scheme, rest = dsn.split("://", 1)
-        creds, host = rest.split("@", 1)
-        if ":" in creds:
-            user = creds.split(":", 1)[0]
-            return f"{scheme}://{user}:***@{host}"
-    return dsn
-
-
-__all__ = ["build_checkpointer", "mask_dsn"]
+__all__ = ["build_checkpointer"]

@@ -1,6 +1,6 @@
 """Librarian lifespan 의 agent-specific helper.
 
-shared 인 부분 (`build_event_bus`, `build_checkpointer`, `mask_dsn`) 은
+shared 인 부분 (`build_event_bus`, `build_checkpointer`) 은
 `dev_team_shared.lifespan` 으로 추출됨. 본 모듈은 Librarian 특수 helper 만:
 
 - `build_doc_store_client` — Doc Store MCP streamable HTTP 연결 + cleanup
@@ -14,12 +14,11 @@ from __future__ import annotations
 import logging
 from contextlib import AsyncExitStack
 
-from dev_team_shared.doc_store import DocStoreClient
 # shared helpers — server.py 가 본 모듈에서 import 하는 호환성 위해 re-export.
+from dev_team_shared.doc_store import DocStoreClient
 from dev_team_shared.lifespan import (  # noqa: F401  re-export
     build_checkpointer,
     build_event_bus,
-    mask_dsn,
 )
 from dev_team_shared.mcp_client import StreamableMCPClient
 from langchain_core.tools import BaseTool
@@ -47,5 +46,4 @@ __all__ = [
     "build_doc_store_client",
     "build_event_bus",
     "log_runtime_ready",
-    "mask_dsn",
 ]

@@ -1,6 +1,6 @@
 """Primary lifespan 의 agent-specific helper.
 
-shared 인 부분 (`build_event_bus`, `build_checkpointer`, `mask_dsn`) 은
+shared 인 부분 (`build_event_bus`, `build_checkpointer`) 은
 `dev_team_shared.lifespan` 으로 추출됨. 본 모듈은 Primary 특수 helper 만:
 
 - `log_runtime_ready` — Primary 의 4 채널 (Doc Store / IssueTracker / Wiki /
@@ -17,7 +17,6 @@ import logging
 from dev_team_shared.lifespan import (  # noqa: F401  re-export
     build_checkpointer,
     build_event_bus,
-    mask_dsn,
 )
 from langchain_core.tools import BaseTool
 
@@ -41,5 +40,4 @@ __all__ = [
     "build_checkpointer",
     "build_event_bus",
     "log_runtime_ready",
-    "mask_dsn",
 ]
