@@ -6,12 +6,12 @@ import json
 from uuid import UUID
 
 import asyncpg
-
 from dev_team_shared.doc_store.schemas.assignment import (
     AssignmentCreate,
     AssignmentRead,
     AssignmentUpdate,
 )
+
 from doc_store_mcp.repositories.base import PostgresRepositoryBase
 
 

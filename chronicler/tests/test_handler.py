@@ -59,10 +59,9 @@ def _session_read(sid: uuid.UUID) -> SessionRead:
     )
 
 
-def _a2a_context_read(cid: uuid.UUID, wire: str = "ctx-1") -> A2AContextRead:
+def _a2a_context_read(cid: uuid.UUID) -> A2AContextRead:
     return A2AContextRead(
         id=cid,
-        context_id=wire,
         initiator_agent="user",
         counterpart_agent="primary",
         parent_session_id=None,
@@ -75,10 +74,9 @@ def _a2a_context_read(cid: uuid.UUID, wire: str = "ctx-1") -> A2AContextRead:
     )
 
 
-def _a2a_task_read(tid: uuid.UUID, wire: str = "task-1") -> A2ATaskRead:
+def _a2a_task_read(tid: uuid.UUID) -> A2ATaskRead:
     return A2ATaskRead(
         id=tid,
-        task_id=wire,
         a2a_context_id=uuid.uuid4(),
         state="SUBMITTED",
         submitted_at=_now(),
@@ -170,7 +168,7 @@ class TestChatAppendProcessor:
         ev = ChatAppendEvent(
             chat_id=uuid.uuid4(),
             session_id=sid, role="user", sender="user",
-            content=[{"text": "hi"}], message_id="m1",
+            content=[{"text": "hi"}],
         )
         await proc.process(ev, db)
         db.chat_create.assert_awaited_once()
@@ -229,10 +227,11 @@ class TestA2AContextStartProcessor:
     async def test_creates_a2a_context(self) -> None:
         proc = A2AContextStartProcessor()
         db = MagicMock()
-        db.a2a_context_find_by_context_id = AsyncMock(return_value=None)
+        cid = uuid.uuid4()
+        db.a2a_context_get = AsyncMock(return_value=None)
         db.a2a_context_create = AsyncMock()
         ev = A2AContextStartEvent(
-            context_id="ctx-1",
+            context_id=cid,
             initiator_agent="primary",
             counterpart_agent="engineer",
         )
@@ -246,13 +245,12 @@ class TestA2AMessageAppendProcessor:
         proc = A2AMessageAppendProcessor()
         db = MagicMock()
         cid = uuid.uuid4()
-        db.a2a_context_find_by_context_id = AsyncMock(
-            return_value=_a2a_context_read(cid),
-        )
-        db.a2a_message_list = AsyncMock(return_value=[])
+        mid = uuid.uuid4()
+        db.a2a_context_get = AsyncMock(return_value=_a2a_context_read(cid))
+        db.a2a_message_get = AsyncMock(return_value=None)
         db.a2a_message_create = AsyncMock()
         ev = A2AMessageAppendEvent(
-            context_id="ctx-1", message_id="m1",
+            context_id=cid, message_id=mid,
             role="user", sender="primary", parts=[{"text": "hi"}],
         )
         await proc.process(ev, db)
@@ -265,13 +263,12 @@ class TestA2ATaskCreateProcessor:
         proc = A2ATaskCreateProcessor()
         db = MagicMock()
         cid = uuid.uuid4()
-        db.a2a_task_find_by_task_id = AsyncMock(return_value=None)
-        db.a2a_context_find_by_context_id = AsyncMock(
-            return_value=_a2a_context_read(cid),
-        )
+        tid = uuid.uuid4()
+        db.a2a_task_get = AsyncMock(return_value=None)
+        db.a2a_context_get = AsyncMock(return_value=_a2a_context_read(cid))
         db.a2a_task_create = AsyncMock()
         ev = A2ATaskCreateEvent(
-            context_id="ctx-1", task_id="task-1", state="SUBMITTED",
+            context_id=cid, task_id=tid, state="SUBMITTED",
         )
         await proc.process(ev, db)
         db.a2a_task_create.assert_awaited_once()
@@ -283,10 +280,10 @@ class TestA2ATaskStatusUpdateProcessor:
         proc = A2ATaskStatusUpdateProcessor()
         db = MagicMock()
         tid = uuid.uuid4()
-        db.a2a_task_find_by_task_id = AsyncMock(return_value=_a2a_task_read(tid))
+        db.a2a_task_get = AsyncMock(return_value=_a2a_task_read(tid))
         db.a2a_task_status_update_create = AsyncMock()
         db.a2a_task_update = AsyncMock()
-        ev = A2ATaskStatusUpdateEvent(task_id="task-1", state="WORKING")
+        ev = A2ATaskStatusUpdateEvent(task_id=tid, state="WORKING")
         await proc.process(ev, db)
         db.a2a_task_status_update_create.assert_awaited_once()
         db.a2a_task_update.assert_awaited_once()
@@ -298,12 +295,10 @@ class TestA2AContextEndProcessor:
         proc = A2AContextEndProcessor()
         db = MagicMock()
         cid = uuid.uuid4()
-        db.a2a_context_find_by_context_id = AsyncMock(
-            return_value=_a2a_context_read(cid),
-        )
+        db.a2a_context_get = AsyncMock(return_value=_a2a_context_read(cid))
         db.a2a_context_update = AsyncMock()
         ev = A2AContextEndEvent(
-            context_id="ctx-1", reason="completed", duration_ms=1234,
+            context_id=cid, reason="completed", duration_ms=1234,
         )
         await proc.process(ev, db)
         db.a2a_context_update.assert_awaited_once()

@@ -71,7 +71,6 @@ async def publish_chat_user(
     bus: EventBus,
     session_id: str,
     text: str,
-    message_id: str,
     chat_id: _uuid.UUID,
     prev_chat_id: _uuid.UUID | None,
 ) -> None:
@@ -90,7 +89,6 @@ async def publish_chat_user(
             role="user",
             sender="user",
             content=[{"text": text}],
-            message_id=message_id,
             prev_chat_id=prev_chat_id,
         ))
     except Exception:

@@ -48,16 +48,14 @@ def make_chat_router() -> APIRouter:
         """
         registry: SessionRegistry = request.app.state.chat_session_registry
         runtime = await registry.get_or_create(body.session_id)
-        message_id = body.message_id or f"ug-msg-{body.session_id}"
         task = asyncio.create_task(
             run_session_turn(
-                runtime, request, body.text, message_id,
-                prev_chat_id=body.prev_chat_id,
+                runtime, request, body.text, prev_chat_id=body.prev_chat_id,
             ),
             name=f"chat_send-{body.session_id}",
         )
         runtime.attach_task(task)
-        return ChatSendResponse(status="processing", message_id=message_id)
+        return ChatSendResponse(status="processing")
 
     @router.get("/chat/stream")
     async def chat_stream(session_id: UUID, request: Request) -> StreamingResponse:

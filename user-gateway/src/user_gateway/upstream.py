@@ -185,7 +185,6 @@ class ChatProtocolUpstream:
         self,
         session_id: str,
         text: str,
-        message_id: str | None = None,
         prev_chat_id: str | None = None,
     ) -> dict[str, Any]:
         """`POST /chat/send` forward. 응답 (202 ack) JSON 반환.
@@ -194,8 +193,6 @@ class ChatProtocolUpstream:
         사용 (chats chain, #75 PR 4).
         """
         body: dict[str, Any] = {"session_id": session_id, "text": text}
-        if message_id:
-            body["message_id"] = message_id
         if prev_chat_id:
             body["prev_chat_id"] = prev_chat_id
         for attempt in range(self._connect_retries + 1):

@@ -78,7 +78,7 @@ class TestAssignmentCreate:
 class TestA2AContextCreate:
     def test_minimal(self) -> None:
         doc = A2AContextCreate(
-            context_id="ctx-1",
+            id=uuid4(),
             initiator_agent="primary",
             counterpart_agent="engineer",
         )
@@ -91,7 +91,7 @@ class TestA2AMessageCreate:
     def test_role_validation(self) -> None:
         for r in ("user", "agent", "system"):
             A2AMessageCreate(
-                message_id="msg-1",
+                id=uuid4(),
                 a2a_context_id=uuid4(),
                 role=r,  # type: ignore[arg-type]
                 sender="primary",
@@ -101,7 +101,7 @@ class TestA2AMessageCreate:
     def test_optional_task_id(self) -> None:
         # standalone Message — a2a_task_id 없음
         doc = A2AMessageCreate(
-            message_id="msg-1",
+            id=uuid4(),
             a2a_context_id=uuid4(),
             role="agent",
             sender="primary",
@@ -112,13 +112,13 @@ class TestA2AMessageCreate:
 
 class TestA2ATaskCreate:
     def test_default_state(self) -> None:
-        doc = A2ATaskCreate(task_id="task-1", a2a_context_id=uuid4())
+        doc = A2ATaskCreate(id=uuid4(), a2a_context_id=uuid4())
         assert doc.state == "SUBMITTED"
 
     def test_invalid_state(self) -> None:
         with pytest.raises(ValidationError):
             A2ATaskCreate(
-                task_id="task-1",
+                id=uuid4(),
                 a2a_context_id=uuid4(),
                 state="DRAFT",  # type: ignore[arg-type]
             )

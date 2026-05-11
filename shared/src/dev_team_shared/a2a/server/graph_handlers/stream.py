@@ -15,13 +15,12 @@ from typing import Any
 from fastapi import Request
 from langchain_core.messages import AIMessage, HumanMessage
 
-from dev_team_shared.a2a.server.sse import KEEPALIVE_SENTINEL, aiter_with_keepalive
-
 from dev_team_shared.a2a.server.graph_handlers.config import SSE_KEEPALIVE_S
 from dev_team_shared.a2a.server.graph_handlers.envelope import sse
 from dev_team_shared.a2a.server.graph_handlers.factories import make_artifact_event
 from dev_team_shared.a2a.server.graph_handlers.parse import stringify_ai_content
 from dev_team_shared.a2a.server.graph_handlers.rpc import RPCContext
+from dev_team_shared.a2a.server.sse import KEEPALIVE_SENTINEL, aiter_with_keepalive
 
 
 async def _is_disconnected(request: Request) -> bool:

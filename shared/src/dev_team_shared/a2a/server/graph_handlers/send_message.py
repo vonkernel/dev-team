@@ -22,7 +22,6 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, Response
 from langchain_core.messages import HumanMessage
 
-from dev_team_shared.a2a.types import Message
 from dev_team_shared.a2a.server.graph_handlers.config import AGENT_TOTAL_TIMEOUT_S
 from dev_team_shared.a2a.server.graph_handlers.envelope import json_response
 from dev_team_shared.a2a.server.graph_handlers.factories import (
@@ -44,6 +43,7 @@ from dev_team_shared.a2a.server.graph_handlers.publish import (
 )
 from dev_team_shared.a2a.server.graph_handlers.rpc import RPCContext, log_rpc
 from dev_team_shared.a2a.server.handler import MethodHandler
+from dev_team_shared.a2a.types import Message
 
 logger = logging.getLogger(__name__)
 

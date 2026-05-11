@@ -24,7 +24,6 @@ class ChatCreate(BaseModel):
     role: ChatRole
     sender: str                                      # 'user' / 'primary' / ...
     content: list[dict[str, Any]] | dict[str, Any]   # A2A parts 형태
-    message_id: str | None = None                    # FE 또는 server 발급 (wire-level)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -37,6 +36,5 @@ class ChatRead(BaseModel):
     role: ChatRole
     sender: str
     content: list[dict[str, Any]] | dict[str, Any]
-    message_id: str | None
     metadata: dict[str, Any]
     created_at: datetime

@@ -11,9 +11,8 @@ from typing import Any
 from fastapi.responses import JSONResponse
 
 from dev_team_shared.a2a.jsonrpc import rpc_result_response
-from dev_team_shared.a2a.server.sse import sse_pack
-
 from dev_team_shared.a2a.server.graph_handlers.rpc import RPCContext
+from dev_team_shared.a2a.server.sse import sse_pack
 
 
 def rpc_result(ctx: RPCContext, model: Any) -> dict[str, Any]:

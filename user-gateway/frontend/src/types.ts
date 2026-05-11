@@ -1,20 +1,19 @@
 /** chat protocol SSE 이벤트 (서버 → FE). */
 export type ChatStreamEvent =
   | { type: "meta"; payload: { session_id: string } }
-  | { type: "queued"; payload: { message_id: string; queue_depth?: number } }
-  | { type: "chunk"; payload: { text: string; message_id: string; chat_id?: string } }
+  | { type: "queued"; payload: { chat_id: string; queue_depth?: number } }
+  | { type: "chunk"; payload: { text: string; chat_id: string } }
   | {
       type: "message";
       payload: {
-        message_id: string;
-        chat_id?: string;
+        chat_id: string;
         prev_chat_id?: string | null;
         role: "user" | "agent" | "system";
         text: string;
       };
     }
-  | { type: "done"; payload: { message_id: string } }
-  | { type: "error"; payload: { message: string } };
+  | { type: "done"; payload: { chat_id: string } }
+  | { type: "error"; payload: { chat_id?: string; message: string } };
 
 export type Role = "user" | "agent" | "system";
 
@@ -39,7 +38,6 @@ export interface HistoryChat {
   role: Role;
   sender: string;
   content: Array<{ text?: string }>;
-  message_id?: string | null;
   created_at: string;
 }
 
@@ -50,7 +48,6 @@ export interface ChatMessage {
   text: string;
   streaming?: boolean;
   failed?: boolean;
-  message_id?: string;
   /** chats.id — last_chat_id 추적 (#75 PR 4). history hydrate / SSE 로 수집. */
   chat_id?: string;
 }

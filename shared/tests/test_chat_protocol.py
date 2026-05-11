@@ -56,13 +56,14 @@ class TestSchemas:
 
     def test_chat_send_request(self) -> None:
         sid = uuid.uuid4()
-        req = ChatSendRequest(session_id=sid, text="안녕", message_id="ug-msg-1")
+        prev = uuid.uuid4()
+        req = ChatSendRequest(session_id=sid, text="안녕", prev_chat_id=prev)
         assert req.session_id == sid
         assert req.text == "안녕"
-        assert req.message_id == "ug-msg-1"
+        assert req.prev_chat_id == prev
 
     def test_chat_send_response_defaults(self) -> None:
-        resp = ChatSendResponse(message_id="m-1")
+        resp = ChatSendResponse()
         assert resp.status == "processing"
 
     def test_session_update_request(self) -> None:

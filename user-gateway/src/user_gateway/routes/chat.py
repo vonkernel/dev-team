@@ -24,7 +24,6 @@ router = APIRouter()
 class ChatRequest(BaseModel):
     session_id: uuid.UUID
     text: str
-    message_id: str | None = None
     prev_chat_id: uuid.UUID | None = None
 
 
@@ -43,7 +42,6 @@ async def chat(body: ChatRequest, request: Request) -> dict[str, Any]:
     """
     chat_upstream: ChatProtocolUpstream = request.app.state.chat_upstream
     event_bus: EventBus = request.app.state.event_bus
-    user_message_id = body.message_id or f"ug-msg-{uuid.uuid4()}"
     user_chat_id = uuid.uuid4()
 
     # D3: 사용자 발화는 UG 가 publish.
@@ -51,14 +49,12 @@ async def chat(body: ChatRequest, request: Request) -> dict[str, Any]:
         event_bus,
         str(body.session_id),
         body.text,
-        user_message_id,
         chat_id=user_chat_id,
         prev_chat_id=body.prev_chat_id,
     )
     logger.info(
-        "chat session_id=%s chat_id=%s prev_chat_id=%s message_id=%s text_len=%d",
-        body.session_id, user_chat_id, body.prev_chat_id,
-        user_message_id, len(body.text),
+        "chat session_id=%s chat_id=%s prev_chat_id=%s text_len=%d",
+        body.session_id, user_chat_id, body.prev_chat_id, len(body.text),
     )
 
     # Primary 로 forward — user_chat_id 를 prev_chat_id 로 전달 (agent 응답의 직전).
@@ -66,7 +62,6 @@ async def chat(body: ChatRequest, request: Request) -> dict[str, Any]:
         ack = await chat_upstream.chat_send(
             str(body.session_id),
             body.text,
-            message_id=user_message_id,
             prev_chat_id=str(user_chat_id),
         )
     except UpstreamHTTPError as exc:
@@ -83,7 +78,6 @@ async def chat(body: ChatRequest, request: Request) -> dict[str, Any]:
 
     return {
         "status": ack.get("status", "processing"),
-        "message_id": user_message_id,
         "chat_id": str(user_chat_id),
     }
 

@@ -19,10 +19,17 @@ class A2AContextEndProcessor(EventProcessor):
     async def process(self, event: A2AEvent, db: DocStoreClient) -> None:
         assert isinstance(event, A2AContextEndEvent)
 
-        ctx = await db.a2a_context_find_by_context_id(event.context_id)
+        ctx = await db.a2a_context_get(event.context_id)
         if ctx is None:
             logger.warning(
-                "a2a.context.end skip — wire context_id=%s 미존재",
+                "a2a.context.end skip — context_id=%s 미존재",
+                event.context_id,
+            )
+            return
+
+        if ctx.ended_at is not None:
+            logger.debug(
+                "a2a.context.end skip — context_id=%s 이미 ended_at 있음",
                 event.context_id,
             )
             return

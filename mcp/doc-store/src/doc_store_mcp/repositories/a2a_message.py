@@ -6,12 +6,12 @@ import json
 from uuid import UUID
 
 import asyncpg
-from pydantic import BaseModel
-
 from dev_team_shared.doc_store.schemas.a2a_message import (
     A2AMessageCreate,
     A2AMessageRead,
 )
+from pydantic import BaseModel
+
 from doc_store_mcp.repositories.base import PostgresRepositoryBase
 
 
@@ -34,14 +34,14 @@ class A2AMessageRepository(
     async def create(self, doc: A2AMessageCreate) -> A2AMessageRead:
         sql = """
             INSERT INTO a2a_messages
-                (message_id, a2a_context_id, a2a_task_id, role, sender,
+                (id, a2a_context_id, a2a_task_id, role, sender,
                  parts, prev_message_id, metadata)
             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8::jsonb)
             RETURNING *
         """
         row = await self._pool.fetchrow(
             sql,
-            doc.message_id,
+            doc.id,
             doc.a2a_context_id,
             doc.a2a_task_id,
             doc.role,

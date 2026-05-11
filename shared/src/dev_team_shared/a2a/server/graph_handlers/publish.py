@@ -44,7 +44,7 @@ def _bus(request: Request) -> EventBus:
 async def publish_a2a_context_start(
     request: Request,
     *,
-    context_id: str,
+    context_id: UUID,
     trace_id: str | None,
     initiator_agent: str,
     counterpart_agent: str,
@@ -74,7 +74,7 @@ async def publish_a2a_context_start(
 async def publish_a2a_context_end(
     request: Request,
     *,
-    context_id: str,
+    context_id: UUID,
     reason: str,
     duration_ms: int | None = None,
     metadata: dict[str, Any] | None = None,
@@ -101,12 +101,12 @@ async def publish_a2a_context_end(
 async def publish_a2a_message_append(
     request: Request,
     *,
-    context_id: str,
-    message_id: str,
+    context_id: UUID,
+    message_id: UUID,
     role: str,
     sender: str,
     content: dict[str, Any] | list[Any],
-    task_id: str | None = None,
+    task_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
     bus = _bus(request)
@@ -135,8 +135,8 @@ async def publish_a2a_message_append(
 async def publish_a2a_task_create(
     request: Request,
     *,
-    context_id: str,
-    task_id: str,
+    context_id: UUID,
+    task_id: UUID,
     state: str = "SUBMITTED",
     assignment_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
@@ -159,7 +159,7 @@ async def publish_a2a_task_create(
 async def publish_a2a_task_status_update(
     request: Request,
     *,
-    task_id: str,
+    task_id: UUID,
     state: str,
     reason: str | None = None,
     metadata: dict[str, Any] | None = None,
@@ -181,8 +181,8 @@ async def publish_a2a_task_status_update(
 async def publish_a2a_task_artifact(
     request: Request,
     *,
-    task_id: str,
-    artifact_id: str,
+    task_id: UUID,
+    artifact_id: UUID,
     parts: dict[str, Any] | list[Any],
     name: str | None = None,
     metadata: dict[str, Any] | None = None,

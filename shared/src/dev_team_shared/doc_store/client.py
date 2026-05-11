@@ -231,15 +231,6 @@ class DocStoreClient:
     async def a2a_context_count(self, *, where: dict[str, Any] | None = None) -> int:
         return await self._call_scalar(A2AContextTools.COUNT, _where_args(where))
 
-    async def a2a_context_find_by_context_id(
-        self, context_id: str,
-    ) -> A2AContextRead | None:
-        return await self._call_optional(
-            A2AContextTools.FIND_BY_CONTEXT_ID,
-            {"context_id": context_id},
-            A2AContextRead,
-        )
-
     # ──────────────────────────────────────────────────────────────────────
     # A2A tier — a2a_messages (immutable — no update)
     # ──────────────────────────────────────────────────────────────────────
@@ -328,13 +319,6 @@ class DocStoreClient:
 
     async def a2a_task_count(self, *, where: dict[str, Any] | None = None) -> int:
         return await self._call_scalar(A2ATaskTools.COUNT, _where_args(where))
-
-    async def a2a_task_find_by_task_id(self, task_id: str) -> A2ATaskRead | None:
-        return await self._call_optional(
-            A2ATaskTools.FIND_BY_TASK_ID,
-            {"task_id": task_id},
-            A2ATaskRead,
-        )
 
     # ──────────────────────────────────────────────────────────────────────
     # A2A tier — a2a_task_status_updates (immutable — no update)

@@ -6,9 +6,9 @@ import json
 from uuid import UUID
 
 import asyncpg
+from dev_team_shared.doc_store.schemas.chat import ChatCreate, ChatRead
 from pydantic import BaseModel
 
-from dev_team_shared.doc_store.schemas.chat import ChatCreate, ChatRead
 from doc_store_mcp.repositories.base import PostgresRepositoryBase
 
 

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from typing import Final
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 #  Chat tier
 # ─────────────────────────────────────────────────────────────────────────────
@@ -60,7 +59,6 @@ class A2AContextTools:
     LIST: Final = "a2a_context.list"
     DELETE: Final = "a2a_context.delete"
     COUNT: Final = "a2a_context.count"
-    FIND_BY_CONTEXT_ID: Final = "a2a_context.find_by_context_id"
 
 
 class A2AMessageTools:
@@ -82,7 +80,6 @@ class A2ATaskTools:
     LIST: Final = "a2a_task.list"
     DELETE: Final = "a2a_task.delete"
     COUNT: Final = "a2a_task.count"
-    FIND_BY_TASK_ID: Final = "a2a_task.find_by_task_id"
 
 
 class A2ATaskStatusUpdateTools:

@@ -16,8 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field
 class A2ATaskArtifactCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    id: UUID                                         # publisher-supplied (#75 PR 4)
     a2a_task_id: UUID
-    artifact_id: str                                 # A2A wire artifactId
     name: str | None = None
     parts: list[dict[str, Any]] | dict[str, Any]
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -28,7 +28,6 @@ class A2ATaskArtifactRead(BaseModel):
 
     id: UUID
     a2a_task_id: UUID
-    artifact_id: str
     name: str | None
     parts: list[dict[str, Any]] | dict[str, Any]
     metadata: dict[str, Any]

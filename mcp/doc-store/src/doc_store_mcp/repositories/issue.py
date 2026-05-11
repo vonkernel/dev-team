@@ -6,9 +6,9 @@ import json
 from uuid import UUID
 
 import asyncpg
+from dev_team_shared.doc_store.schemas.issue import IssueCreate, IssueRead, IssueUpdate
 
 from doc_store_mcp.repositories.base import PostgresRepositoryBase
-from dev_team_shared.doc_store.schemas.issue import IssueCreate, IssueRead, IssueUpdate
 
 
 class IssueOptimisticLockError(RuntimeError):

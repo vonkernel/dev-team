@@ -73,7 +73,6 @@ class ChatAppendProcessor(EventProcessor):
             role=event.role,
             sender=event.sender,
             content=event.content,
-            message_id=event.message_id,
             metadata=event.metadata,
         ))
 

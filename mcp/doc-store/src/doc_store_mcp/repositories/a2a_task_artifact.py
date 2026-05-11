@@ -6,12 +6,12 @@ import json
 from uuid import UUID
 
 import asyncpg
-from pydantic import BaseModel
-
 from dev_team_shared.doc_store.schemas.a2a_task_artifact import (
     A2ATaskArtifactCreate,
     A2ATaskArtifactRead,
 )
+from pydantic import BaseModel
+
 from doc_store_mcp.repositories.base import PostgresRepositoryBase
 
 
@@ -36,14 +36,14 @@ class A2ATaskArtifactRepository(
     ) -> A2ATaskArtifactRead:
         sql = """
             INSERT INTO a2a_task_artifacts
-                (a2a_task_id, artifact_id, name, parts, metadata)
+                (id, a2a_task_id, name, parts, metadata)
             VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
             RETURNING *
         """
         row = await self._pool.fetchrow(
             sql,
+            doc.id,
             doc.a2a_task_id,
-            doc.artifact_id,
             doc.name,
             self._to_jsonb(doc.parts),
             self._to_jsonb(doc.metadata),

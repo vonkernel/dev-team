@@ -15,9 +15,7 @@ from pydantic import BaseModel, ConfigDict
 class ChatSendRequest(BaseModel):
     """`POST /api/chat` body — 사용자 발화 제출.
 
-    `session_id` 는 사전에 `POST /api/sessions` 로 생성한 것. `message_id` 는
-    FE 가 발급해 wire-level dedup key 로 사용.
-
+    `session_id` 는 사전에 `POST /api/sessions` 로 생성한 것.
     `prev_chat_id` 는 FE 가 추적한 이전 chat (마지막 agent 응답) 의 chat_id.
     chats 의 chain 결정성 보장 (#75 PR 4). 첫 발화는 None.
     """
@@ -26,17 +24,18 @@ class ChatSendRequest(BaseModel):
 
     session_id: UUID
     text: str
-    message_id: str | None = None
     prev_chat_id: UUID | None = None
 
 
 class ChatSendResponse(BaseModel):
-    """`POST /api/chat` 응답 — 즉시 202 ack. 실제 응답은 SSE 채널로."""
+    """`POST /chat/send` 응답 — 즉시 202 ack. 실제 응답은 SSE 채널로.
+
+    chat_id 등 식별자는 caller (UG) 가 발급해 들고 있음 — 응답엔 status 만.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["queued", "processing"] = "processing"
-    message_id: str
 
 
 __all__ = [

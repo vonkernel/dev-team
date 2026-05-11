@@ -41,15 +41,18 @@ class RPCContext:
 
     `started` 는 wall-clock 이 아닌 `time.monotonic()` 기준 (시계 보정 영향 없음).
     `trace_id` 는 시스템 전체 추적용 (참조: `dev_team_shared.a2a.tracing`).
+
+    `context_id` / `task_id` / `artifact_id` 는 모두 UUID — #75 PR 4 에서
+    publisher-supplied id 패턴으로 통일. wire 에 보낼 때 str() 변환.
     """
 
     request: Request
     rpc_id: Any
     method: str
     assistant: str
-    context_id: str
-    task_id: str
-    artifact_id: str
+    context_id: uuid.UUID
+    task_id: uuid.UUID
+    artifact_id: uuid.UUID
     trace_id: str
     started: float = field(default_factory=time.monotonic)
     chunk_count: int = 0
@@ -76,9 +79,9 @@ class RPCContext:
             rpc_id=rpc_id,
             method=method,
             assistant=_assistant_name(request),
-            context_id=context_id,
-            task_id=f"{context_id}:{uuid.uuid4()}",
-            artifact_id=str(uuid.uuid4()),
+            context_id=uuid.UUID(context_id),
+            task_id=uuid.uuid4(),
+            artifact_id=uuid.uuid4(),
             trace_id=trace_id,
         )
 

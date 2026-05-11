@@ -29,10 +29,10 @@ class A2ATaskStatusUpdateProcessor(EventProcessor):
     async def process(self, event: A2AEvent, db: DocStoreClient) -> None:
         assert isinstance(event, A2ATaskStatusUpdateEvent)
 
-        task = await db.a2a_task_find_by_task_id(event.task_id)
+        task = await db.a2a_task_get(event.task_id)
         if task is None:
             logger.warning(
-                "a2a.task.status_update skip — wire task_id=%s 미존재",
+                "a2a.task.status_update skip — task_id=%s 미존재",
                 event.task_id,
             )
             return
