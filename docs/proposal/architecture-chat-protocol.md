@@ -209,6 +209,25 @@ persona 가이드 (P / A 공통 패턴):
 
 자세한 정책 / 구현은 #72.
 
+### In-memory ChatEvent 버퍼 정책 (#75 PR 4)
+
+agent 의 chat handler 가 한 session 당 보유하는 in-memory 버퍼는
+`shared/chat_protocol/session_runtime.py` 의 `SessionRuntime` 으로 통일 (P / A
+공통). 정책:
+
+| 항목 | 정책 |
+|---|---|
+| Send | **non-blocking** — graph 의 forward progress 가 SSE consumer 상태와 결합되지 않음. consumer 끊긴 채여도 graph 가 멈추지 X (LLM call 노드 종료 → AIMessage state append → checkpoint snapshot 보장) |
+| Buffer overflow drop 단위 | **message** — backlog 가 `MAX_BACKLOG_MESSAGES` (기본 5) 초과 시 oldest message 의 chunks 통째 atomic drop. partial message 가 buffer 에 남지 X |
+| TTL evict | **마지막 send 시각 기준 idle** — `IDLE_TTL_S` (기본 30분) 초과 시 background sweeper 가 SessionRuntime evict + 진행 중 task `cancel()`. message 흐르는 동안엔 evict X (매 send 가 timer 갱신) |
+
+알려진 한계:
+- 단일 process in-memory — 다중 instance scale-out 시 sticky routing 필요 (M3
+  scope 가정)
+- TTL evict 가 진행 task 를 cancel — 그 시점까지의 graph state 는 LangGraph
+  checkpoint 에 보존되므로 다음 POST 가 이어 받을 수 있음 (손실 X)
+- Subscriber 1명 (FE 한 탭) 가정 — multi-tab broadcast 필요해지면 v2
+
 ## 6. Cancel / Stop
 
 ### 자연어 cancel ("그만", "멈춰" 등)
