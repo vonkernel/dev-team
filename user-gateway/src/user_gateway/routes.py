@@ -9,10 +9,12 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 import anyio
 import httpx
+from dev_team_shared.chat_protocol import SessionCreateRequest, SessionRead
 from dev_team_shared.event_bus import EventBus
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -34,6 +36,41 @@ router = APIRouter()
 @router.get("/healthz")
 async def healthz() -> dict[str, bool]:
     return {"ok": True}
+
+
+@router.post("/api/sessions", status_code=201, response_model=SessionRead)
+async def create_session(
+    body: SessionCreateRequest, request: Request,
+) -> SessionRead:
+    """새 chat session 생성 (#75 PR 4 — D4).
+
+    UG 가 session_id (UUID) 발급 → `session.start` publish → 응답에 session_id.
+    실제 `sessions` row 는 Chronicler 가 event 처리해 영속화 (eventual). FE 는
+    응답의 session_id 로 즉시 `POST /api/chat` / `GET /api/stream` 진입 가능.
+
+    chronicler 가 session row 만들기 전에 chat.append 가 도착할 수 있는 race
+    는 있으나 Valkey XADD → CHR XREADGROUP 폴링 < 100ms 수준 + FE 사용자 액션
+    지연이 보통 더 길어 실측 OK. 부족해지면 chronicler chat_append 에 retry
+    추가 (현재는 미발견 시 warn-skip).
+    """
+    event_bus: EventBus | None = getattr(request.app.state, "event_bus", None)
+    session_id = uuid.uuid4()
+    started_at = datetime.now(tz=timezone.utc)
+    await publish_session_start(
+        event_bus, session_id, agent_endpoint=body.agent_endpoint,
+    )
+    logger.info(
+        "session_created session_id=%s agent_endpoint=%s",
+        session_id, body.agent_endpoint,
+    )
+    return SessionRead(
+        id=session_id,
+        agent_endpoint=body.agent_endpoint,
+        initiator="user",
+        counterpart=body.agent_endpoint,
+        metadata=body.metadata,
+        started_at=started_at,
+    )
 
 
 @router.get("/api/agent-card")
@@ -85,7 +122,15 @@ async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
             "chat_proxy.start context_id=%s upstream=%s",
             context_id, upstream.a2a_url,
         )
-        await publish_session_start(event_bus, context_id)
+        # transitional: /api/chat 은 PR 4 commit 9 (cutover) 까지 A2A 흐름
+        # 유지. session 미발급 시 (FE 가 /api/sessions 거치지 않은 옛 클라이언트)
+        # session.start 를 여기서 발급 — 정상 흐름은 POST /api/sessions 가 publish.
+        try:
+            sid_uuid = uuid.UUID(context_id)
+        except ValueError:
+            sid_uuid = None
+        if sid_uuid is not None:
+            await publish_session_start(event_bus, sid_uuid)
         await publish_chat_user(event_bus, context_id, body.text, user_message_id)
         try:
             with anyio.fail_after(total_timeout_s):
