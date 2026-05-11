@@ -208,9 +208,19 @@ async def _run_graph_and_stream(
             with anyio.fail_after(_GRAPH_TIMEOUT_S):
                 # session_id 가 LangGraph thread_id — 같은 session 으로 N turn
                 # 호출 시 graph 의 체크포인터가 thread history 누적.
+                # extra_system_message: LLM 이 도구 호출 시 root_session_id
+                # 채울 수 있도록 runtime context 노출 (#75 PR 4).
                 config = {"configurable": {"thread_id": str(runtime.session_id)}}
+                runtime_ctx = (
+                    f"[runtime] current chat session_id: {runtime.session_id}. "
+                    "When calling tools that accept `root_session_id` (예: "
+                    "assignment.create), use this value."
+                )
                 async for msg_chunk, metadata in graph.astream(
-                    {"messages": [HumanMessage(content=text)]},
+                    {
+                        "messages": [HumanMessage(content=text)],
+                        "extra_system_message": runtime_ctx,
+                    },
                     config=config,
                     stream_mode="messages",
                 ):

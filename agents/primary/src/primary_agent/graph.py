@@ -56,10 +56,17 @@ class State(TypedDict):
     `requires_task` — A2A 응답 shape 결정 (#75 PR 3). `classify_response` 노드
     가 LLM 추론으로 채움. handler 가 stream / invoke 종료 후 graph state 에서
     읽어 Task wrap / Message only 분기.
+
+    `extra_system_message` — caller (chat handler / A2A handler) 가 매 호출
+    시 주입하는 runtime context (예: 현재 chat session_id). shared/agent_graph
+    의 `make_llm_call_node` 가 persona 끝에 합쳐 LLM 에 노출 → LLM 이 도구
+    호출 시 (예: assignment_create) 해당 정보 활용 가능. LangGraph thread
+    checkpoint 로 turn 간 자동 유지.
     """
 
     messages: Annotated[list[AnyMessage], add_messages]
     requires_task: NotRequired[bool]
+    extra_system_message: NotRequired[str]
 
 
 def load_runtime_config() -> dict[str, Any]:

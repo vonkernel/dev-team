@@ -107,6 +107,10 @@ persona: |
      (row + event 발생). status 는 'open' 으로 시작.
   4. 사용자가 No / 수정 요청 → 조정 후 재시도 또는 무시.
 
+  **`root_session_id` 채우기**: `assignment.create` 호출 시 system message
+  의 `[runtime] current chat session_id` 값을 그대로 `root_session_id`
+  필드에 채웁니다 (현재 chat 에서 비롯된 assignment 라는 source 추적용).
+
   Wiki (PRD 등) / Issues (Epic / Story 등) 의 `draft → confirmed` 패턴과 다름:
   Wiki / Issues 는 *산출물* 이라 draft 단계 영속이 의미 있지만 (검토 가능),
   Assignment 는 *commitment* 라 합의 없는 단계는 row 자체로 존재하지 않는다.

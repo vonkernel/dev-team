@@ -69,6 +69,13 @@ def make_llm_call_node(persona: str, llm_with_tools: BaseChatModel) -> NodeFn:
     - 예외 원인을 풍부하게 감싼 `RuntimeError` 로 re-raise
     - 흔한 운영 이슈 (Anthropic 크레딧 부족) 에 빌링 콘솔 힌트 덧붙임
 
+    Runtime context 주입:
+    - state.get("extra_system_message") 가 있으면 system message 끝에 추가
+    - 용도: caller 가 runtime 정보를 LLM 에 노출 (예: chat session_id, 현재
+      날짜, runtime 권한 등). persona 와 분리해 caller 가 매 turn 다르게
+      세팅 가능
+    - LangGraph thread checkpoint 로 한 번 set 후 자동 유지
+
     Args:
         persona: SystemMessage content. agent 정체성 텍스트 (config/base.yaml).
         llm_with_tools: 이미 `bind_tools` 가 적용된 BaseChatModel. tools 가
@@ -76,7 +83,11 @@ def make_llm_call_node(persona: str, llm_with_tools: BaseChatModel) -> NodeFn:
     """
 
     async def _llm_call(state: dict[str, Any]) -> dict[str, Any]:
-        system = SystemMessage(content=persona)
+        system_text = persona
+        extra = state.get("extra_system_message")
+        if extra:
+            system_text = f"{persona}\n\n{extra}"
+        system = SystemMessage(content=system_text)
         messages = state.get("messages") or []
         try:
             response = await llm_with_tools.ainvoke([system, *messages])
