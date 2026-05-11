@@ -1,7 +1,10 @@
-"""EventBus (Valkey) lifespan helper — 활성 시 인스턴스화 + cleanup 등록.
+"""EventBus (Valkey) lifespan helper — 필수 인프라.
 
-`VALKEY_URL` env 미설정 시 None 반환 (publish helper 들이 no-op). 초기화 실패
-시에도 graceful fallback — agent 가 publish 안 되더라도 본 흐름 차단 X.
+`VALKEY_URL` env 미설정 / 초기화 실패 시 **기동 종료** (fail-fast). chat tier
++ A2A tier 의 모든 publish 가 이벤트 버스 의존이라 graceful fallback 불가능.
+
+Runtime 의 publish 실패 (Valkey 일시 장애 등) 는 별 layer — publish helper
+들이 try/except + 로그로 fire-and-forget (chat 흐름 차단 X).
 """
 
 from __future__ import annotations
@@ -16,27 +19,27 @@ logger = logging.getLogger(__name__)
 
 async def build_event_bus(
     valkey_url: str | None, stack: AsyncExitStack,
-) -> ValkeyEventBus | None:
-    """Valkey 가 활성이면 EventBus 인스턴스화 + cleanup 등록. 실패는 graceful.
+) -> ValkeyEventBus:
+    """Valkey EventBus 인스턴스화 + cleanup 등록. **fail-fast**.
 
     Args:
-        valkey_url: `VALKEY_URL` env. None / 빈 문자열이면 publish 비활성.
+        valkey_url: `VALKEY_URL` env. None / 빈 문자열이면 RuntimeError.
         stack: caller (lifespan) 의 AsyncExitStack — bus.aclose 등록.
 
     Returns:
-        EventBus 인스턴스 또는 None (미활성 / 실패).
+        EventBus 인스턴스.
+
+    Raises:
+        RuntimeError: `valkey_url` 미설정.
+        Exception: `ValkeyEventBus.create` 실패는 그대로 propagate.
     """
     if not valkey_url:
-        logger.info("VALKEY_URL not set — A2A 이벤트 publish 비활성화")
-        return None
-    try:
-        bus = await ValkeyEventBus.create(valkey_url)
-    except Exception:
-        logger.exception(
-            "ValkeyEventBus 초기화 실패 (url=%s) — publish 비활성화로 진행",
-            valkey_url,
+        raise RuntimeError(
+            "VALKEY_URL is required — event_bus is a hard dependency for "
+            "chat / A2A publish. Set VALKEY_URL env to a reachable Valkey "
+            "instance.",
         )
-        return None
+    bus = await ValkeyEventBus.create(valkey_url)
     stack.push_async_callback(bus.aclose)
     logger.info("event_bus ready (Valkey at %s)", valkey_url)
     return bus
