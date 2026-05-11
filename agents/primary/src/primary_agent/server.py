@@ -65,7 +65,10 @@ def _build_runtime_inputs() -> tuple[str, BaseChatModel, dict[str, Any]]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """기동: settings → runtime inputs → infra (event_bus / channels / checkpointer) → tools → graph."""
+    """기동: settings → runtime inputs → infra → tools → graph.
+
+    infra = event_bus / channels / checkpointer / chat session registry.
+    """
     settings = Settings.from_env()
     persona, llm, config = _build_runtime_inputs()
     agent_card = build_agent_card(config)
@@ -87,9 +90,12 @@ async def lifespan(app: FastAPI):
         )
         app.state.agent_card = agent_card
         app.state.event_bus = event_bus
-        # #75 PR 4: chat protocol session registry (in-memory)
-        app.state.chat_session_registry = SessionRegistry()
-        stack.push_async_callback(app.state.chat_session_registry.aclose)
+        # #75 PR 4: chat protocol session registry (in-memory).
+        # message-aware buffer + TTL eviction sweeper — shared 인프라.
+        registry = SessionRegistry()
+        registry.start_sweeper()
+        app.state.chat_session_registry = registry
+        stack.push_async_callback(registry.aclose)
         log_runtime_ready(channels, tools)
         yield
 

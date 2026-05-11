@@ -22,12 +22,10 @@ from uuid import UUID
 
 import anyio
 from dev_team_shared.a2a.server.graph_handlers.parse import stringify_ai_content
-from dev_team_shared.chat_protocol import ChatEvent, ChatEventType
+from dev_team_shared.chat_protocol import ChatEvent, ChatEventType, SessionRuntime
 from dev_team_shared.event_bus import ChatAppendEvent, EventBus
 from fastapi import Request
 from langchain_core.messages import AIMessage, HumanMessage
-
-from primary_agent.chat_handler.session import SessionRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +128,7 @@ async def _stream_chunks_to_session(
         if not text_chunk:
             continue
         accumulated.append(text_chunk)
-        await runtime.outgoing_send.send(ChatEvent(
+        runtime.send(ChatEvent(
             type=ChatEventType.CHUNK,
             payload={"text": text_chunk, "message_id": message_id},
         ))
@@ -153,7 +151,7 @@ async def _finalize_agent_response(
     await _publish_agent_chat(
         event_bus, runtime.session_id, agent_text, agent_message_id,
     )
-    await runtime.outgoing_send.send(ChatEvent(
+    runtime.send(ChatEvent(
         type=ChatEventType.MESSAGE,
         payload={
             "message_id": agent_message_id,
@@ -161,7 +159,7 @@ async def _finalize_agent_response(
             "text": agent_text,
         },
     ))
-    await runtime.outgoing_send.send(ChatEvent(
+    runtime.send(ChatEvent(
         type=ChatEventType.DONE,
         payload={"message_id": user_message_id},
     ))
@@ -198,7 +196,7 @@ async def _emit_error(
 ) -> None:
     """SSE `error` 이벤트 emit. 실패해도 흐름 차단 X (로그만)."""
     try:
-        await runtime.outgoing_send.send(ChatEvent(
+        runtime.send(ChatEvent(
             type=ChatEventType.ERROR,
             payload={"message_id": message_id, "message": detail},
         ))
