@@ -26,7 +26,6 @@ async def chat_history(session_id: uuid.UUID, request: Request) -> JSONResponse:
             "role": c.role,
             "sender": c.sender,
             "content": c.content,
-            "message_id": c.message_id,
             "created_at": c.created_at.isoformat(),
         }
         for c in chats
