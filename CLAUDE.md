@@ -107,10 +107,9 @@
 
 | 결 | 프로토콜 | 비고 |
 |---|---|---|
-| 사용자 ↔ Primary / Architect (논의) | **Chat protocol** (REST POST + 영속 SSE per session) | Session / Chat / Assignment 어휘. UG 가 routing. 사용자 ↔ 에이전트는 에이전트 간 통신과 다른 영역이라 자체 정의 (A2A 가 아님 — #75 / [docs/proposal/architecture-chat-protocol.md](docs/proposal/architecture-chat-protocol.md)) |
+| 사용자 ↔ Primary / Architect (논의) | **Chat protocol** (REST POST + 영속 SSE per session) | Session / Chat / Assignment 어휘. UG 가 routing. 브라우저 ↔ UG ↔ agent 의 사용자 facing 통로 전체가 본 protocol. wire 는 HTTP REST + SSE (자체 정의 — A2A 가 아님, #75 / [docs/proposal/architecture-chat-protocol.md](docs/proposal/architecture-chat-protocol.md)) |
 | 에이전트 ↔ 에이전트 (위임 / 협상) | **A2A** (`shared/a2a`) | Message / Task / Context / messageId / contextId / traceId. JSON-RPC 2.0 위. |
 | 에이전트·스크립트 ↔ 도구 / 데이터 서비스 | **MCP 우선** (REST 보다) | 도구 catalog / Pydantic 입출력 / 표준 에러 / traceId. streamable HTTP. |
-| 외부 사용자 / 브라우저 ↔ Gateway | HTTP REST + SSE | 사용자 facing 표면 (UG `/api/chat` POST + `/api/stream` SSE) |
 
 ### 결정 가이드
 
