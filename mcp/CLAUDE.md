@@ -205,7 +205,7 @@ CRUD-able entity 마다 동일한 6 op. **create / update 는 분리** (Pydantic
 
 추가 query 가 필요하면 collection 별 특수 도구 (예: `wiki_page.get_by_slug`) — 항상 6 op 위에 누적.
 
-**Immutable entity** (audit log 류 — 예: `agent_items`) 는 `update` 미노출 → 5 op (create / get / list / delete / count).
+**Immutable entity** (audit log 류 — 예: `chats`, `a2a_messages`, `a2a_task_status_updates`, `a2a_task_artifacts`) 는 `update` 미노출 → 5 op (create / get / list / delete / count).
 
 `expected_version` 은 `version` 컬럼이 있는 entity 한정 (optimistic locking 필요한 경우).
 

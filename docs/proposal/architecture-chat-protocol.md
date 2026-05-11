@@ -142,6 +142,41 @@ localStorage:
 > 구현 영역. 본 protocol spec 은 server-FE 데이터 흐름과 localStorage 의
 > 캐시 구조만 정의.
 
+### SSE 재연결 정책 (page reload / network drop / sleep 후 깨어남)
+
+**옵션 B 채택**: `GET /api/history` hydrate + 새 SSE 연결 (gap 허용).
+
+```
+SSE 끊김 감지
+   ↓
+재시도 backoff
+   ↓
+GET /api/history?session_id=X  — 끊긴 사이 영속된 chats hydrate
+   ↓
+GET /api/stream?session_id=X   — 새 SSE 연결 (현재 시점부터)
+```
+
+이유:
+- 끊긴 사이 *완료된* `chat.append` 는 chronicler 가 `chats` row 로 영속화 — `GET /api/history` 가 확실히 받음
+- 끊긴 사이 *streaming 중* 이던 chunks 만 잃음 (완료되면 다음 history 조회 시 받음). 사용자 시점에서 "다시 봤을 때 빠진 게 채워져 있으면 OK"
+- 인프라 추가 없음 (ring buffer / pub/sub 같은 추가 store 불필요)
+- 추후 부족 시 SSE 표준 `Last-Event-ID` 헤더 + server ring buffer 로 진화 가능
+
+### `sessions.metadata` 표준 키
+
+`sessions.metadata` (JSONB) 의 표준 키 셋 (FE / agent 일관 사용):
+
+| 키 | 타입 | 채우는 주체 | 용도 |
+|---|---|---|---|
+| `title` | string | 메인 응답 LLM 의 structured output (첫 turn 후) 또는 사용자 명시 rename | 사이드바 chat list 표시 |
+| `last_chat_at` | timestamp | Chronicler (매 `chat.append` 처리 시 갱신) | 사이드바 정렬 |
+| `pinned` | bool | 사용자 액션 (`PATCH /api/sessions/{id}`) | 사이드바 고정 |
+| `unread_count` | int | FE (SSE 끊긴 동안 누적, 다시 볼 때 0 reset) | 사이드바 unread 표시 |
+
+JSONB 라 비표준 키 자유 추가 가능 (extensibility). 표준은 위 4개에만.
+
+> `participants` / `agent_endpoint` 는 metadata 에 넣지 않음 — 컬럼 (`agent_endpoint`) 이 이미 표현. 향후 multi-party chat 가능해지면 재검토.
+
 ## 5. 메시지 큐 — Primary / Architect 측 책임 (#72)
 
 사용자와 chat 하는 에이전트 (P / A — M4+ 부터 A 도 포함) 의 chat handler 가
