@@ -31,8 +31,8 @@ class ChatRepository(
     async def create(self, doc: ChatCreate) -> ChatRead:
         sql = """
             INSERT INTO chats
-                (id, session_id, prev_chat_id, role, sender, content, message_id, metadata)
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8::jsonb)
+                (id, session_id, prev_chat_id, role, sender, content, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
             RETURNING *
         """
         row = await self._pool.fetchrow(
@@ -43,7 +43,6 @@ class ChatRepository(
             doc.role,
             doc.sender,
             self._to_jsonb(doc.content),
-            doc.message_id,
             self._to_jsonb(doc.metadata),
         )
         assert row is not None
