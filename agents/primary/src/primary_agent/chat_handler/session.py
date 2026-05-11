@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 import math
-from dataclasses import dataclass, field
 from uuid import UUID
 
 import anyio
@@ -21,19 +20,26 @@ from dev_team_shared.chat_protocol import ChatEvent
 logger = logging.getLogger(__name__)
 
 
-@dataclass
 class SessionRuntime:
     """한 session 의 runtime 상태.
 
-    `outgoing_send` / `outgoing_receive` 는 짝. POST 처리 background task 가
-    chunks / events 를 send, GET /chat/stream 이 receive.
+    내부에 anyio MemoryObjectStream 한 쌍을 소유 — POST 처리 background task 가
+    `outgoing_send` 로 chunks / events 를 보내고, GET /chat/stream 이
+    `outgoing_receive` 로 읽는다 (서로 다른 코루틴 간 FIFO 큐).
     `lock` 은 graph 호출 sequential 보장 — 두 번째 POST 는 첫 처리 끝날 때까지 대기.
+
+    stream 생성을 SessionRuntime 안에 캡슐화 — caller (Registry) 는
+    `SessionRuntime(session_id=...)` 만 하면 메모리 큐가 함께 만들어진다.
     """
 
-    session_id: UUID
-    outgoing_send: MemoryObjectSendStream[ChatEvent]
-    outgoing_receive: MemoryObjectReceiveStream[ChatEvent]
-    lock: anyio.Lock = field(default_factory=anyio.Lock)
+    def __init__(self, session_id: UUID) -> None:
+        self.session_id = session_id
+        send, receive = anyio.create_memory_object_stream[ChatEvent](
+            max_buffer_size=math.inf,
+        )
+        self.outgoing_send: MemoryObjectSendStream[ChatEvent] = send
+        self.outgoing_receive: MemoryObjectReceiveStream[ChatEvent] = receive
+        self.lock: anyio.Lock = anyio.Lock()
 
 
 class SessionRegistry:
@@ -52,14 +58,7 @@ class SessionRegistry:
             rt = self._sessions.get(session_id)
             if rt is not None:
                 return rt
-            send, receive = anyio.create_memory_object_stream[ChatEvent](
-                max_buffer_size=math.inf,
-            )
-            rt = SessionRuntime(
-                session_id=session_id,
-                outgoing_send=send,
-                outgoing_receive=receive,
-            )
+            rt = SessionRuntime(session_id=session_id)
             self._sessions[session_id] = rt
             logger.info("chat session runtime created session_id=%s", session_id)
             return rt
