@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import uuid
 from typing import Any, Literal
+from uuid import UUID
 
 import httpx
 
@@ -96,13 +97,16 @@ class A2AClient:
 
     def get_task(
         self,
-        task_id: str,
+        task_id: UUID | str,
         *,
         history_length: int | None = None,
         trace_id: str | None = None,
     ) -> dict[str, Any]:
-        """이전에 시작된 Task 의 상태/결과 조회."""
-        params: dict[str, Any] = {"taskId": task_id}
+        """이전에 시작된 Task 의 상태/결과 조회.
+
+        `task_id` 는 UUID 또는 string (wire 형식). 내부 str() 변환.
+        """
+        params: dict[str, Any] = {"taskId": str(task_id)}
         if history_length is not None:
             params["historyLength"] = history_length
         return self._call("get_task", params, trace_id=trace_id)
@@ -158,8 +162,14 @@ class A2AClient:
 
     @staticmethod
     def _message_params(message: Message, extra: dict[str, Any]) -> dict[str, Any]:
-        # by_alias=True 로 camelCase 직렬화 + enum 은 StrEnum 이 그대로 문자열 직렬화
-        return {"message": message.model_dump(by_alias=True, exclude_none=True), **extra}
+        # by_alias=True → camelCase, mode="json" → UUID/datetime 등 비-JSON 타입을
+        # 문자열로 변환 (#75 PR 4: id 필드들이 UUID 타입화 후 필수).
+        return {
+            "message": message.model_dump(
+                by_alias=True, exclude_none=True, mode="json",
+            ),
+            **extra,
+        }
 
 
 __all__ = ["A2AClient", "A2AClientError", "MethodStyle"]

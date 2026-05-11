@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any
 
 import httpx
@@ -38,7 +39,7 @@ class TestSendMessage:
 
         with _build_client(responder) as client:
             msg = Message(
-                message_id="ITM-1",
+                message_id=uuid.uuid4(),
                 role=Role.USER,
                 parts=[Part(text="hello", media_type="text/plain")],
             )
@@ -56,7 +57,7 @@ class TestSendMessage:
 
         with _build_client(responder, method_style="slash") as client:
             msg = Message(
-                message_id="ITM-1",
+                message_id=uuid.uuid4(),
                 role=Role.USER,
                 parts=[Part(text="hi")],
             )
@@ -73,11 +74,11 @@ class TestSendMessage:
 
         with _build_client(responder) as client:
             msg = Message(
-                message_id="ITM-42",
+                message_id=uuid.uuid4(),
                 role=Role.USER,
                 parts=[Part(text="hi", media_type="text/plain")],
-                context_id="SES-xxx",
-                task_id="TASK-001",
+                context_id=uuid.uuid4(),
+                task_id=uuid.uuid4(),
             )
             client.send_message(msg)
 
@@ -103,7 +104,7 @@ class TestSendMessage:
             )
 
         with _build_client(responder) as client:
-            msg = Message(message_id="ITM-1", role=Role.USER, parts=[Part(text="x")])
+            msg = Message(message_id=uuid.uuid4(), role=Role.USER, parts=[Part(text="x")])
             with pytest.raises(A2AClientError) as exc_info:
                 client.send_message(msg)
 
@@ -115,7 +116,7 @@ class TestSendMessage:
             return httpx.Response(500, text="boom")
 
         with _build_client(responder) as client:
-            msg = Message(message_id="ITM-1", role=Role.USER, parts=[Part(text="x")])
+            msg = Message(message_id=uuid.uuid4(), role=Role.USER, parts=[Part(text="x")])
             with pytest.raises(A2AClientError):
                 client.send_message(msg)
 

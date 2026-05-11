@@ -66,7 +66,7 @@ class GraphSendMessageHandler(MethodHandler):
             request,
             rpc_id=rpc_id,
             method=self.method_name,
-            context_id=a2a_msg.context_id or str(uuid.uuid4()),
+            context_id=a2a_msg.context_id or uuid.uuid4(),
         )
 
         async with log_rpc(ctx):
@@ -85,7 +85,7 @@ class GraphSendMessageHandler(MethodHandler):
                 with anyio.fail_after(AGENT_TOTAL_TIMEOUT_S):
                     result = await request.app.state.graph.ainvoke(
                         {"messages": [HumanMessage(content=human_text)]},
-                        config={"configurable": {"thread_id": ctx.context_id}},
+                        config={"configurable": {"thread_id": str(ctx.context_id)}},
                     )
             except TimeoutError:
                 ctx.reason = "total_timeout"

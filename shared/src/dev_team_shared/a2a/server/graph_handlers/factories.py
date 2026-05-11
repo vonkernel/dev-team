@@ -47,18 +47,18 @@ def agent_timeout_text() -> str:
 
 def _error_message(ctx: RPCContext, text: str) -> Message:
     return Message(
-        message_id=f"err-{uuid.uuid4()}",
+        message_id=uuid.uuid4(),
         role=Role.AGENT,
         parts=[Part(text=text)],
-        context_id=str(ctx.context_id),
-        task_id=str(ctx.task_id),
+        context_id=ctx.context_id,
+        task_id=ctx.task_id,
     )
 
 
 def make_initial_task(ctx: RPCContext, user_msg: Message) -> Task:
     return Task(
-        id=str(ctx.task_id),
-        context_id=str(ctx.context_id),
+        id=ctx.task_id,
+        context_id=ctx.context_id,
         status=TaskStatus(state=TaskState.SUBMITTED),
         history=[user_msg],
     )
@@ -68,15 +68,15 @@ def make_completed_task(
     ctx: RPCContext, user_msg: Message, ai_text: str,
 ) -> Task:
     agent_reply = Message(
-        message_id=f"reply-{uuid.uuid4()}",
+        message_id=uuid.uuid4(),
         role=Role.AGENT,
         parts=[Part(text=ai_text)],
-        context_id=str(ctx.context_id),
-        task_id=str(ctx.task_id),
+        context_id=ctx.context_id,
+        task_id=ctx.task_id,
     )
     return Task(
-        id=str(ctx.task_id),
-        context_id=str(ctx.context_id),
+        id=ctx.task_id,
+        context_id=ctx.context_id,
         status=TaskStatus(state=TaskState.COMPLETED),
         history=[user_msg, agent_reply],
     )
@@ -86,8 +86,8 @@ def make_failed_task(
     ctx: RPCContext, user_msg: Message, error_text: str,
 ) -> Task:
     return Task(
-        id=str(ctx.task_id),
-        context_id=str(ctx.context_id),
+        id=ctx.task_id,
+        context_id=ctx.context_id,
         status=TaskStatus(
             state=TaskState.FAILED,
             message=_error_message(ctx, error_text),
@@ -98,8 +98,8 @@ def make_failed_task(
 
 def make_completed_status_event(ctx: RPCContext) -> TaskStatusUpdateEvent:
     return TaskStatusUpdateEvent(
-        task_id=str(ctx.task_id),
-        context_id=str(ctx.context_id),
+        task_id=ctx.task_id,
+        context_id=ctx.context_id,
         status=TaskStatus(state=TaskState.COMPLETED),
         final=True,
     )
@@ -109,8 +109,8 @@ def make_failed_status_event(
     ctx: RPCContext, error_text: str,
 ) -> TaskStatusUpdateEvent:
     return TaskStatusUpdateEvent(
-        task_id=str(ctx.task_id),
-        context_id=str(ctx.context_id),
+        task_id=ctx.task_id,
+        context_id=ctx.context_id,
         status=TaskStatus(
             state=TaskState.FAILED,
             message=_error_message(ctx, error_text),
@@ -123,10 +123,10 @@ def make_artifact_event(
     ctx: RPCContext, text: str,
 ) -> TaskArtifactUpdateEvent:
     return TaskArtifactUpdateEvent(
-        task_id=str(ctx.task_id),
-        context_id=str(ctx.context_id),
+        task_id=ctx.task_id,
+        context_id=ctx.context_id,
         artifact=Artifact(
-            artifact_id=str(ctx.artifact_id),
+            artifact_id=ctx.artifact_id,
             parts=[Part(text=text)],
         ),
         append=True,
@@ -142,10 +142,10 @@ def make_artifact_event(
 def make_agent_reply_message(ctx: RPCContext, text: str) -> Message:
     """Task wrap 없이 trivial 응답을 보낼 때 사용 — task_id 비움."""
     return Message(
-        message_id=f"{ctx.assistant}-msg-{uuid.uuid4()}",
+        message_id=uuid.uuid4(),
         role=Role.AGENT,
         parts=[Part(text=text)],
-        context_id=str(ctx.context_id),
+        context_id=ctx.context_id,
     )
 
 
@@ -156,10 +156,10 @@ def make_agent_error_message(ctx: RPCContext, error_text: str) -> Message:
 
 def _error_message_no_task(ctx: RPCContext, text: str) -> Message:
     return Message(
-        message_id=f"err-{uuid.uuid4()}",
+        message_id=uuid.uuid4(),
         role=Role.AGENT,
         parts=[Part(text=text)],
-        context_id=str(ctx.context_id),
+        context_id=ctx.context_id,
     )
 
 

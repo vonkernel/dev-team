@@ -16,9 +16,14 @@ from dev_team_shared.a2a.server.sse import sse_pack
 
 
 def rpc_result(ctx: RPCContext, model: Any) -> dict[str, Any]:
-    """Pydantic 모델을 JSON-RPC 2.0 result 응답 dict 로."""
+    """Pydantic 모델을 JSON-RPC 2.0 result 응답 dict 로.
+
+    `mode="json"` — UUID / datetime 등 비-JSON 타입을 문자열로 변환
+    (#75 PR 4: A2A wire id 필드들이 UUID 타입화 후 필수).
+    """
     return rpc_result_response(
-        ctx.rpc_id, model.model_dump(by_alias=True, exclude_none=True),
+        ctx.rpc_id,
+        model.model_dump(by_alias=True, exclude_none=True, mode="json"),
     )
 
 

@@ -67,7 +67,7 @@ class RPCContext:
         *,
         rpc_id: Any,
         method: str,
-        context_id: str,
+        context_id: uuid.UUID,
     ) -> RPCContext:
         # trace_id 는 router 가 헤더 또는 신규 발급으로 미리 채워둠 (필수).
         trace_id = getattr(request.state, "trace_id", None)
@@ -79,7 +79,7 @@ class RPCContext:
             rpc_id=rpc_id,
             method=method,
             assistant=_assistant_name(request),
-            context_id=uuid.UUID(context_id),
+            context_id=context_id,
             task_id=uuid.uuid4(),
             artifact_id=uuid.uuid4(),
             trace_id=trace_id,

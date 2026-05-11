@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from dev_team_shared.a2a.client import A2AClient
 from dev_team_shared.a2a.types import Message, Part, Role
@@ -44,9 +44,9 @@ def build_librarian_tools(
         자기 도메인의 단순 read (식별자 알 때) 는 wiki_pages_* / issues_* 를
         직접 호출하는 게 더 효율적. Librarian 은 자연어 / 교차 / 외부 조사 전용.
         """
-        ctx_id = str(uuid4())
+        ctx_id = uuid4()
         message = Message(
-            message_id=str(uuid4()),
+            message_id=uuid4(),
             role=Role.USER,
             parts=[Part(text=query)],
             context_id=ctx_id,
@@ -66,7 +66,7 @@ def build_librarian_tools(
 
 
 async def _publish_context_end(
-    bus: EventBus, context_id: str, *, reason: str,
+    bus: EventBus, context_id: UUID, *, reason: str,
 ) -> None:
     """a2a.context.end fire-and-forget. runtime 실패만 graceful."""
     try:

@@ -40,7 +40,7 @@ async def stream_artifact_events(
     async for item in aiter_with_keepalive(
         graph.astream(
             {"messages": [HumanMessage(content=human_text)]},
-            config={"configurable": {"thread_id": ctx.context_id}},
+            config={"configurable": {"thread_id": str(ctx.context_id)}},
             stream_mode="messages",
         ),
         keepalive_s=SSE_KEEPALIVE_S,
