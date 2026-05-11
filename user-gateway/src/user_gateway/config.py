@@ -31,10 +31,17 @@ def _env_list(name: str) -> list[str]:
 
 @dataclass(frozen=True)
 class UpstreamConfig:
-    """UG → Primary A2A upstream 통신 튜닝."""
+    """UG → Primary upstream 통신 튜닝.
+
+    A2A endpoint 은 `/api/agent-card` proxy 용도로 유지. chat 트래픽은
+    chat_send_url / chat_stream_url (chat protocol — #75 PR 4).
+    """
 
     a2a_url: str
     card_url: str
+    chat_send_url: str
+    chat_stream_url: str
+    doc_store_mcp_url: str
     read_timeout_s: float
     connect_timeout_s: float
     total_timeout_s: float
@@ -69,6 +76,15 @@ def load_config_from_env() -> AppConfig:
             card_url=os.environ.get(
                 "PRIMARY_CARD_URL",
                 "http://primary:8000/.well-known/agent-card.json",
+            ),
+            chat_send_url=os.environ.get(
+                "PRIMARY_CHAT_SEND_URL", "http://primary:8000/chat/send",
+            ),
+            chat_stream_url=os.environ.get(
+                "PRIMARY_CHAT_STREAM_URL", "http://primary:8000/chat/stream",
+            ),
+            doc_store_mcp_url=os.environ.get(
+                "DOC_STORE_MCP_URL", "http://doc-store-mcp:8000/mcp",
             ),
             read_timeout_s=_env_float("UG_UPSTREAM_READ_TIMEOUT_S", 60.0),
             connect_timeout_s=_env_float("UG_UPSTREAM_CONNECT_TIMEOUT_S", 5.0),

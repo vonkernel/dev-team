@@ -156,4 +156,106 @@ def _backoff_s(attempt: int) -> float:
     return 0.5 * (2 ** attempt)
 
 
-__all__ = ["A2AUpstream", "UpstreamHTTPError"]
+class ChatProtocolUpstream:
+    """Primary 의 chat protocol endpoint forward (#75 PR 4).
+
+    - `POST /chat/send` — UG `/api/chat` 호출 시 forward (202 ack 그대로).
+    - `GET /chat/stream?session_id=X` — UG `/api/stream` 영속 SSE 중계.
+
+    A2A 와 분리된 chat tier 통로. Primary 가 chat session 별 큐 + 영속 SSE
+    를 자체 관리하므로 UG 는 thin proxy.
+    """
+
+    def __init__(
+        self,
+        http: httpx.AsyncClient,
+        *,
+        send_url: str,
+        stream_url: str,
+        connect_retries: int,
+        sse_keepalive_s: float,
+    ) -> None:
+        self._http = http
+        self.send_url = send_url
+        self.stream_url = stream_url
+        self._connect_retries = connect_retries
+        self._sse_keepalive_s = sse_keepalive_s
+
+    async def chat_send(
+        self, session_id: str, text: str, message_id: str | None = None,
+    ) -> dict[str, Any]:
+        """`POST /chat/send` forward. 응답 (202 ack) JSON 반환."""
+        body: dict[str, Any] = {"session_id": session_id, "text": text}
+        if message_id:
+            body["message_id"] = message_id
+        for attempt in range(self._connect_retries + 1):
+            try:
+                r = await self._http.post(self.send_url, json=body)
+                if r.status_code >= 500 and attempt < self._connect_retries:
+                    logger.warning(
+                        "chat_send upstream %d (attempt %d/%d)",
+                        r.status_code, attempt + 1, self._connect_retries + 1,
+                    )
+                    await anyio.sleep(_backoff_s(attempt))
+                    continue
+                if r.status_code >= 400:
+                    raise UpstreamHTTPError(r.status_code, r.text[:500])
+                return r.json()
+            except (httpx.ConnectError, httpx.ConnectTimeout):
+                if attempt < self._connect_retries:
+                    logger.warning(
+                        "chat_send connect failed (attempt %d/%d) — retrying",
+                        attempt + 1, self._connect_retries + 1,
+                    )
+                    await anyio.sleep(_backoff_s(attempt))
+                    continue
+                raise
+        raise RuntimeError("chat_send unreachable")
+
+    async def chat_stream(self, session_id: str) -> AsyncIterator[str | object]:
+        """`GET /chat/stream?session_id=X` forward. SSE line + keepalive sentinel yield."""
+        for attempt in range(self._connect_retries + 1):
+            try:
+                async with self._http.stream(
+                    "GET",
+                    self.stream_url,
+                    params={"session_id": session_id},
+                    headers={"Accept": "text/event-stream"},
+                ) as response:
+                    if response.status_code != 200:
+                        if (
+                            response.status_code >= 500
+                            and attempt < self._connect_retries
+                        ):
+                            detail = (await response.aread())[:200]
+                            logger.warning(
+                                "chat_stream upstream %d (attempt %d/%d): %s",
+                                response.status_code,
+                                attempt + 1,
+                                self._connect_retries + 1,
+                                detail,
+                            )
+                            await anyio.sleep(_backoff_s(attempt))
+                            continue
+                        detail_bytes = await response.aread()
+                        raise UpstreamHTTPError(
+                            response.status_code,
+                            detail_bytes.decode("utf-8", errors="replace")[:500],
+                        )
+                    async for line in aiter_lines_with_keepalive(
+                        response, keepalive_s=self._sse_keepalive_s,
+                    ):
+                        yield line
+                    return
+            except (httpx.ConnectError, httpx.ConnectTimeout):
+                if attempt < self._connect_retries:
+                    logger.warning(
+                        "chat_stream connect failed (attempt %d/%d) — retrying",
+                        attempt + 1, self._connect_retries + 1,
+                    )
+                    await anyio.sleep(_backoff_s(attempt))
+                    continue
+                raise
+
+
+__all__ = ["A2AUpstream", "ChatProtocolUpstream", "UpstreamHTTPError"]

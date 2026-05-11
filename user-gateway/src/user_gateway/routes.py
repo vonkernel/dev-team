@@ -14,7 +14,12 @@ from typing import Any
 
 import anyio
 import httpx
-from dev_team_shared.chat_protocol import SessionCreateRequest, SessionRead
+from dev_team_shared.chat_protocol import (
+    SessionCreateRequest,
+    SessionRead,
+    SessionUpdateRequest,
+)
+from dev_team_shared.doc_store import DocStoreClient, SessionUpdate
 from dev_team_shared.event_bus import EventBus
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -24,9 +29,12 @@ from user_gateway.event_publisher import (
     publish_chat_user,
     publish_session_start,
 )
-from user_gateway.sse import KEEPALIVE_SENTINEL, sse_pack
-from user_gateway.translator import parse_a2a_line, translate
-from user_gateway.upstream import A2AUpstream, UpstreamHTTPError
+from user_gateway.sse import KEEPALIVE_SENTINEL
+from user_gateway.upstream import (
+    A2AUpstream,
+    ChatProtocolUpstream,
+    UpstreamHTTPError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,116 +97,155 @@ async def get_agent_card(request: Request) -> JSONResponse:
 
 
 class ChatRequest(BaseModel):
+    session_id: uuid.UUID
     text: str
-    context_id: str | None = None
+    message_id: str | None = None
 
 
-@router.post("/api/chat")
-async def chat(body: ChatRequest, request: Request) -> StreamingResponse:
-    """브라우저 → UG → Primary SSE 중계.
+@router.post("/api/chat", status_code=202)
+async def chat(body: ChatRequest, request: Request) -> dict[str, Any]:
+    """사용자 발화 제출 (#75 PR 4 — chat protocol cutover).
 
-    UG → FE 이벤트 스키마 / A2A 번역 규칙: `user-gateway/docs/sse.md` §5 / §6.
+    chat protocol 위로 전환됨. UG 가 즉시 202 ack 만 반환하고, 실제 응답은
+    `GET /api/stream?session_id=X` 의 영속 SSE 로 흐름.
 
-    하드닝:
-    - upstream 전체 total timeout (`anyio.fail_after`)
-    - upstream connect retry/backoff (A2AUpstream 내부)
-    - client disconnect 조기 감지 (chunk / keepalive 시점 폴링)
-    - SSE keepalive comment 주기 발송 (프록시 idle timeout 방어)
-    - 세션 lifecycle 구조화 로깅
+    UG 책임:
+    1. `chat.append` (role=user) publish (D3)
+    2. Primary 의 `POST /chat/send` 로 forward
     """
-    upstream: A2AUpstream = request.app.state.upstream
-    total_timeout_s: float = request.app.state.total_timeout_s
+    chat_upstream: ChatProtocolUpstream = request.app.state.chat_upstream
     event_bus: EventBus | None = getattr(request.app.state, "event_bus", None)
-    context_id = body.context_id or str(uuid.uuid4())
-    # 사용자 메시지 ID — UG 가 publish 하고 같은 ID 로 upstream 호출 → Primary 도 동일 ID
-    # publish → CHR 의 message_id dedup 으로 중복 제거.
-    user_message_id = f"ug-msg-{uuid.uuid4()}"
+    user_message_id = body.message_id or f"ug-msg-{uuid.uuid4()}"
 
-    async def event_stream():
-        started = time.monotonic()
-        chunk_count = 0
-        reason = "completed"
-        logger.info(
-            "chat_proxy.start context_id=%s upstream=%s",
-            context_id, upstream.a2a_url,
+    # D3: 사용자 발화는 UG 가 publish.
+    await publish_chat_user(
+        event_bus, str(body.session_id), body.text, user_message_id,
+    )
+    logger.info(
+        "chat session_id=%s message_id=%s text_len=%d",
+        body.session_id, user_message_id, len(body.text),
+    )
+
+    # Primary 로 forward.
+    try:
+        ack = await chat_upstream.chat_send(
+            str(body.session_id), body.text, message_id=user_message_id,
         )
-        # transitional: /api/chat 은 PR 4 commit 9 (cutover) 까지 A2A 흐름
-        # 유지. session 미발급 시 (FE 가 /api/sessions 거치지 않은 옛 클라이언트)
-        # session.start 를 여기서 발급 — 정상 흐름은 POST /api/sessions 가 publish.
+    except UpstreamHTTPError as exc:
+        logger.warning("chat_send upstream %d: %s", exc.status_code, exc.detail)
+        raise HTTPException(
+            status_code=502, detail=f"upstream {exc.status_code}: {exc.detail[:200]}",
+        ) from exc
+    except httpx.HTTPError as exc:
+        logger.exception("chat_send forward failed")
+        raise HTTPException(status_code=502, detail=f"upstream error: {exc}") from exc
+
+    return {
+        "status": ack.get("status", "processing"),
+        "message_id": user_message_id,
+    }
+
+
+@router.get("/api/stream")
+async def stream(session_id: uuid.UUID, request: Request) -> StreamingResponse:
+    """영속 SSE per session — Primary 의 `/chat/stream` 그대로 forward (#75 PR 4)."""
+    chat_upstream: ChatProtocolUpstream = request.app.state.chat_upstream
+
+    async def event_iter():
         try:
-            sid_uuid = uuid.UUID(context_id)
-        except ValueError:
-            sid_uuid = None
-        if sid_uuid is not None:
-            await publish_session_start(event_bus, sid_uuid)
-        await publish_chat_user(event_bus, context_id, body.text, user_message_id)
-        try:
-            with anyio.fail_after(total_timeout_s):
-                # 초기 meta — FE 가 contextId 를 이어받아 thread 유지
-                yield sse_pack({"type": "meta", "contextId": context_id})
-
-                async for item in upstream.stream_message(
-                    body.text, context_id, message_id=user_message_id,
-                ):
-                    # 각 이벤트 직전 client disconnect 감시
-                    if await _is_disconnected(request):
-                        reason = "client_disconnect"
-                        return
-
-                    if item is KEEPALIVE_SENTINEL:
-                        yield ":keepalive\n\n"
-                        continue
-
-                    # 이 시점 item 은 항상 str (upstream 계약). mypy 힌트:
-                    assert isinstance(item, str)
-                    payload = parse_a2a_line(item)
-                    if payload is None:
-                        continue
-                    ug_event = translate(payload)
-                    if ug_event is None:
-                        continue
-
-                    if ug_event["type"] == "chunk":
-                        chunk_count += 1
-                    yield sse_pack(ug_event)
-
-                    if ug_event["type"] == "done":
-                        return
-                    if ug_event["type"] == "error":
-                        reason = "upstream_error"
-                        return
-
-        except TimeoutError:
-            yield sse_pack({
-                "type": "error",
-                "message": f"upstream timeout after {int(total_timeout_s)}s",
-            })
-            reason = "total_timeout"
+            async for line in chat_upstream.chat_stream(str(session_id)):
+                if await _is_disconnected(request):
+                    return
+                if line is KEEPALIVE_SENTINEL:
+                    yield ":keepalive\n\n"
+                    continue
+                assert isinstance(line, str)
+                # Primary 의 SSE line 은 이미 `data: {...}\n\n` 형태 — 그대로 통과.
+                yield line if line.endswith("\n\n") else f"{line}\n\n"
         except UpstreamHTTPError as exc:
-            logger.warning("upstream non-200: %s", exc)
-            yield sse_pack({"type": "error", "message": str(exc)})
-            reason = "upstream_http_error"
-        except httpx.HTTPError as exc:
-            logger.exception("upstream stream failed")
-            yield sse_pack({"type": "error", "message": f"upstream error: {exc}"})
-            reason = "upstream_http_error"
-        finally:
-            duration_ms = int((time.monotonic() - started) * 1000)
-            logger.info(
-                "chat_proxy.end context_id=%s reason=%s duration_ms=%d chunks=%d",
-                context_id, reason, duration_ms, chunk_count,
-            )
-            # session.end 는 publish 안 함 — `/api/chat` 한 호출은 RPC 라이프
-            # 사이클이지 session 라이프사이클이 아님. PR 4 chat protocol 의
-            # 명시 close 시점에 발화하도록 정정 예정 (#75 후속).
+            logger.warning("chat_stream upstream %d: %s", exc.status_code, exc.detail)
+            yield f'data: {{"type":"error","payload":{{"message":"upstream {exc.status_code}"}}}}\n\n'
+        except httpx.HTTPError:
+            logger.exception("chat_stream forward failed")
+            yield 'data: {"type":"error","payload":{"message":"upstream error"}}\n\n'
 
     return StreamingResponse(
-        event_stream(),
+        event_iter(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
         },
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Doc Store proxy endpoints — sessions list / history / patch
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/api/sessions", response_model=list[SessionRead])
+async def list_sessions(request: Request) -> list[SessionRead]:
+    """chat session 목록 (사이드바 hydrate). last_chat_at desc 정렬."""
+    doc_store: DocStoreClient = request.app.state.doc_store
+    # Doc Store session_list — 모든 session 반환. 시작 시각 desc 정렬.
+    rows = await doc_store.session_list(order_by="started_at DESC", limit=100)
+    return [
+        SessionRead(
+            id=r.id,
+            agent_endpoint=r.agent_endpoint,
+            initiator=r.initiator,
+            counterpart=r.counterpart,
+            metadata=r.metadata,
+            started_at=r.started_at,
+        )
+        for r in rows
+    ]
+
+
+@router.get("/api/history")
+async def chat_history(session_id: uuid.UUID, request: Request) -> JSONResponse:
+    """session 의 chats 시간순 (재연결 hydrate 용 — D14)."""
+    doc_store: DocStoreClient = request.app.state.doc_store
+    chats = await doc_store.chat_list_by_session(session_id)
+    return JSONResponse([
+        {
+            "id": str(c.id),
+            "session_id": str(c.session_id),
+            "role": c.role,
+            "sender": c.sender,
+            "content": c.content,
+            "message_id": c.message_id,
+            "created_at": c.created_at.isoformat(),
+        }
+        for c in chats
+    ])
+
+
+@router.patch("/api/sessions/{session_id}", response_model=SessionRead)
+async def update_session(
+    session_id: uuid.UUID,
+    body: SessionUpdateRequest,
+    request: Request,
+) -> SessionRead:
+    """session.metadata 일부 갱신 (title rename / pinned 등). merge 처리."""
+    doc_store: DocStoreClient = request.app.state.doc_store
+    existing = await doc_store.session_get(session_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"session {session_id} not found")
+    merged = {**existing.metadata, **body.metadata}
+    updated = await doc_store.session_update(
+        session_id, SessionUpdate(metadata=merged),
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"session {session_id} not found")
+    return SessionRead(
+        id=updated.id,
+        agent_endpoint=updated.agent_endpoint,
+        initiator=updated.initiator,
+        counterpart=updated.counterpart,
+        metadata=updated.metadata,
+        started_at=updated.started_at,
     )
 
 
