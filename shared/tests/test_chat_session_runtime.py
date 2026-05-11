@@ -20,7 +20,7 @@ from dev_team_shared.chat_protocol import (
     SessionRegistry,
     SessionRuntime,
 )
-from dev_team_shared.chat_protocol.session_runtime import _ChatEventBuffer
+from dev_team_shared.chat_protocol._chat_event_buffer import _ChatEventBuffer
 
 
 def _chunk(message_id: str, text: str = "x") -> ChatEvent:
