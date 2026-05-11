@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -58,19 +59,24 @@ class Part(BaseModel):
 
 
 class Message(BaseModel):
-    """A2A Message (spec §4.1.4)."""
+    """A2A Message (spec §4.1.4).
+
+    id 필드들은 모두 `UUID` 타입 (#75 PR 4) — 우리 system 은 publisher-supplied
+    UUID 통일. wire 직렬화 시 Pydantic 이 자동 string 으로 변환 (camelCase alias).
+    외부 에이전트도 UUID 발급 가정.
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
-    message_id: str = Field(alias="messageId")
+    message_id: UUID = Field(alias="messageId")
     role: Role
     parts: list[Part]
 
-    context_id: str | None = Field(default=None, alias="contextId")
-    task_id: str | None = Field(default=None, alias="taskId")
+    context_id: UUID | None = Field(default=None, alias="contextId")
+    task_id: UUID | None = Field(default=None, alias="taskId")
     metadata: dict[str, Any] | None = None
     extensions: list[str] | None = None
-    reference_task_ids: list[str] | None = Field(default=None, alias="referenceTaskIds")
+    reference_task_ids: list[UUID] | None = Field(default=None, alias="referenceTaskIds")
 
 
 __all__ = ["Message", "Part", "Role", "TaskState"]

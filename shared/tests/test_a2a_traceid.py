@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any
 
 import httpx
@@ -41,7 +42,7 @@ class TestClientSendsTraceHeader:
             return httpx.Response(200, json={"jsonrpc": "2.0", "id": "x", "result": {}})
 
         with _client(responder) as c:
-            c.send_message(Message(message_id="m", role=Role.USER, parts=[Part(text="hi")]))
+            c.send_message(Message(message_id=uuid.uuid4(), role=Role.USER, parts=[Part(text="hi")]))
 
         assert TRACE_ID_HEADER not in seen["headers"]
         assert TRACE_ID_HEADER.lower() not in seen["headers"]
@@ -54,7 +55,7 @@ class TestClientSendsTraceHeader:
             return httpx.Response(200, json={"jsonrpc": "2.0", "id": "x", "result": {}})
 
         with _client(responder, trace_id="trace-default-1") as c:
-            c.send_message(Message(message_id="m", role=Role.USER, parts=[Part(text="hi")]))
+            c.send_message(Message(message_id=uuid.uuid4(), role=Role.USER, parts=[Part(text="hi")]))
 
         # httpx normalizes headers to lowercase keys.
         assert seen["headers"][TRACE_ID_HEADER.lower()] == "trace-default-1"
@@ -68,7 +69,7 @@ class TestClientSendsTraceHeader:
 
         with _client(responder, trace_id="trace-default") as c:
             c.send_message(
-                Message(message_id="m", role=Role.USER, parts=[Part(text="hi")]),
+                Message(message_id=uuid.uuid4(), role=Role.USER, parts=[Part(text="hi")]),
                 trace_id="trace-per-call",
             )
 

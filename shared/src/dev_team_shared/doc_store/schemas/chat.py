@@ -18,12 +18,12 @@ ChatRole = Literal["user", "agent", "system"]
 class ChatCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    id: UUID                                         # publisher-supplied (#75 PR 4)
     session_id: UUID
     prev_chat_id: UUID | None = None
     role: ChatRole
     sender: str                                      # 'user' / 'primary' / ...
     content: list[dict[str, Any]] | dict[str, Any]   # A2A parts 형태
-    message_id: str | None = None                    # FE 또는 server 발급
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -36,6 +36,5 @@ class ChatRead(BaseModel):
     role: ChatRole
     sender: str
     content: list[dict[str, Any]] | dict[str, Any]
-    message_id: str | None
     metadata: dict[str, Any]
     created_at: datetime

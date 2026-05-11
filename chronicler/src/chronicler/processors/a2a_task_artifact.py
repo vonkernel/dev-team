@@ -19,16 +19,16 @@ class A2ATaskArtifactProcessor(EventProcessor):
     async def process(self, event: A2AEvent, db: DocStoreClient) -> None:
         assert isinstance(event, A2ATaskArtifactEvent)
 
-        task = await db.a2a_task_find_by_task_id(event.task_id)
+        task = await db.a2a_task_get(event.task_id)
         if task is None:
             logger.warning(
-                "a2a.task.artifact skip — wire task_id=%s 미존재", event.task_id,
+                "a2a.task.artifact skip — task_id=%s 미존재", event.task_id,
             )
             return
 
         await db.a2a_task_artifact_create(A2ATaskArtifactCreate(
+            id=event.artifact_id,
             a2a_task_id=task.id,
-            artifact_id=event.artifact_id,
             name=event.name,
             parts=event.parts,
             metadata=event.metadata,

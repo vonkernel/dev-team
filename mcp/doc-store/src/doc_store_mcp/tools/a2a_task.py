@@ -59,10 +59,5 @@ async def delete(ctx: Context, id: str) -> bool:
 async def count(ctx: Context, where: dict[str, Any] | None = None) -> int:
     return await _ctx(ctx).a2a_task.count(where)
 
-
-@mcp.tool(
-    name=A2ATaskTools.FIND_BY_TASK_ID,
-    description="Find the most recent a2a_task by A2A wire task_id.",
-)
-async def find_by_task_id(ctx: Context, task_id: str) -> A2ATaskRead | None:
-    return await _ctx(ctx).a2a_task.find_by_task_id(task_id)
+# find_by_task_id 폐기 (#75 PR 4) — wire task_id 컬럼 자체 폐기.
+# caller 는 publisher-supplied UUID 알면 a2a_task.get(id) 호출.

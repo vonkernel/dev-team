@@ -6,13 +6,13 @@ import json
 from uuid import UUID
 
 import asyncpg
-
-from doc_store_mcp.repositories.base import PostgresRepositoryBase
 from dev_team_shared.doc_store.schemas.wiki_page import (
     WikiPageCreate,
     WikiPageRead,
     WikiPageUpdate,
 )
+
+from doc_store_mcp.repositories.base import PostgresRepositoryBase
 
 
 class WikiPageOptimisticLockError(RuntimeError):

@@ -23,7 +23,7 @@ A2AMessageRole = Literal["user", "agent", "system"]
 class A2AMessageCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    message_id: str                                  # A2A wire messageId
+    id: UUID                                         # publisher-supplied (#75 PR 4)
     a2a_context_id: UUID
     a2a_task_id: UUID | None = None                  # Task.history 면 채움
     role: A2AMessageRole
@@ -37,7 +37,6 @@ class A2AMessageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    message_id: str
     a2a_context_id: UUID
     a2a_task_id: UUID | None
     role: A2AMessageRole

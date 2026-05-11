@@ -185,6 +185,8 @@ services:
     environment:
       # AsyncPostgresSaver 체크포인트 DSN.
       DATABASE_URI: "postgres://${POSTGRES_USER:-devteam}:${POSTGRES_PASSWORD:-devteam_postgres}@postgres:5432/${POSTGRES_DB:-langgraph}"
+      # Valkey — A2A handler 가 a2a.* lifecycle 이벤트 publish 위해 필요 (#75 PR 4).
+      VALKEY_URL: "redis://valkey:6379"
       # Doc Store MCP — librarian 이 자연어 요청을 받아 호출하는 단일 backend.
       DOC_STORE_MCP_URL: "http://doc-store-mcp:8000/mcp"
     volumes:

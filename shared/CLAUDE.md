@@ -97,6 +97,7 @@ shared/src/dev_team_shared/<name>/
 | `doc_store/` | A | server: `mcp/doc-store/` |
 | `event_bus/` | B | Valkey Streams ABC + concrete |
 | `issue_tracker/` | A | server: `mcp/issue-tracker/` |
+| `lifespan/` | B | FastAPI lifespan 의 공용 wiring helper — `build_event_bus`, `build_checkpointer`, `mask_dsn`. 모든 agent 가 import |
 | `llm/` | B | LangChain ChatModel factory |
 | `mcp_client/` | B | Streamable HTTP MCP 클라이언트 |
 | `wiki/` | A | server: `mcp/wiki/` |

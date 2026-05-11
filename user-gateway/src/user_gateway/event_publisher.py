@@ -1,20 +1,18 @@
 """UG → Chronicler 의 chat tier 이벤트 publish 어댑터.
 
-routes.py 는 HTTP 라우트 처리만 (SRP). 이벤트 publish 의 wire-level 디테일
+routes 는 HTTP 라우트 처리만 (SRP). 이벤트 publish 의 wire-level 디테일
 (Pydantic 모델 조립 / EventBus 호출 / 실패 처리) 은 본 모듈에 격리.
 
-publish 는 fire-and-forget — 실패해도 chat 흐름 차단 X (로그만 남김).
-event_bus 가 None (Valkey 미설정) 이면 모든 helper 가 no-op.
+`bus` 는 lifespan init 에서 보장 (fail-fast — VALKEY_URL 필수). runtime publish
+실패는 fire-and-forget — chat 흐름 차단 X (로그만).
 
-#75 PR 2 (transition):
-- UG 가 발급한 context_id (UUID 문자열) 를 그대로 session_id 로 사용. PR 4 의
-  chat protocol 도입 시 server 가 session row 를 먼저 생성하고 그 id 를
-  UG 가 받아 사용하도록 정정 예정.
-- `session.start` 는 매 `/api/chat` 호출마다 publish — CHR 가 session_id
-  중복 시 idempotent skip. 같은 session 으로 N 회 호출해도 row 1 개.
-- `session.end` 는 publish 안 함 — `/api/chat` 한 호출은 RPC 라이프사이클
-  이지 session 라이프사이클이 아님 (같은 session 으로 N turn 가능). PR 4
-  chat protocol 의 명시 close 시점에 발화하도록 정정.
+#75 PR 4 (chat protocol):
+- session 생성은 명시적 `POST /api/sessions` 트리거 — UG 가 session_id
+  (UUID) 발급 + `session.start` publish + 응답. session 은 사용자 주도
+  개념이라 UG 가 발급 (D4).
+- `session.start` 는 session 생성 시점 **1회만** publish (옛 "매 /api/chat
+  호출마다 publish + CHR dedup" 폐기 — D4 정정).
+- `session.end` 는 publish 안 함 — session 은 종료 개념 없음 (D1).
 """
 
 from __future__ import annotations
@@ -44,21 +42,24 @@ def _to_uuid(s: str) -> _uuid.UUID | None:
 
 
 async def publish_session_start(
-    bus: EventBus | None, session_id: str,
+    bus: EventBus,
+    session_id: _uuid.UUID,
+    *,
+    agent_endpoint: str = COUNTERPART,
+    metadata: dict | None = None,
 ) -> None:
-    """session.start — `/api/chat` 호출마다 publish (CHR idempotent dedup)."""
-    if bus is None:
-        return
-    sid = _to_uuid(session_id)
-    if sid is None:
-        return
+    """session.start — `POST /api/sessions` 처리 시 1회만 publish.
+
+    agent_endpoint 는 FE 가 선택한 대상 ('primary' / 'architect'). M3 엔
+    'primary' 만 지원, M4+ 에 'architect' 추가.
+    """
     try:
         await bus.publish(SessionStartEvent(
-            session_id=sid,
-            agent_endpoint=COUNTERPART,
+            session_id=session_id,
+            agent_endpoint=agent_endpoint,
             initiator=INITIATOR,
-            counterpart=COUNTERPART,
-            metadata={"topic": "user_gateway.chat"},
+            counterpart=agent_endpoint,
+            metadata=metadata or {"topic": "user_gateway.chat"},
         ))
     except Exception:
         logger.exception(
@@ -67,24 +68,28 @@ async def publish_session_start(
 
 
 async def publish_chat_user(
-    bus: EventBus | None,
+    bus: EventBus,
     session_id: str,
     text: str,
-    message_id: str,
+    chat_id: _uuid.UUID,
+    prev_chat_id: _uuid.UUID | None,
 ) -> None:
-    """chat.append role=user — 사용자 발화 직후 publish."""
-    if bus is None:
-        return
+    """chat.append role=user — 사용자 발화 직후 publish.
+
+    `chat_id` 는 UG 가 발급한 publisher-supplied id (chats.id 와 1:1, #75 PR 4).
+    `prev_chat_id` 는 FE 가 전달한 이전 chat (마지막 agent 응답) 의 id.
+    """
     sid = _to_uuid(session_id)
     if sid is None:
         return
     try:
         await bus.publish(ChatAppendEvent(
+            chat_id=chat_id,
             session_id=sid,
             role="user",
             sender="user",
             content=[{"text": text}],
-            message_id=message_id,
+            prev_chat_id=prev_chat_id,
         ))
     except Exception:
         logger.exception(

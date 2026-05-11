@@ -25,7 +25,7 @@ a2a_task_status_updates / a2a_task_artifacts).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
 
@@ -49,7 +49,7 @@ EventType = Literal[
 
 
 def _utc_now() -> datetime:
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=UTC)
 
 
 class _EventBase(BaseModel):
@@ -88,15 +88,16 @@ class SessionStartEvent(_EventBase):
 class ChatAppendEvent(_EventBase):
     """session 안의 한 발화 (user / agent / system).
 
-    `session_id` 로 어느 chat session 인지, optional `prev_chat_id` 로 chain.
+    `chat_id` 는 publisher-supplied UUID (chats row 의 id 와 1:1).
+    `prev_chat_id` 가 직전 chat 의 chat_id 를 가리켜 chain 의 결정성 보장.
     """
 
     event_type: Literal["chat.append"] = "chat.append"
+    chat_id: UUID = Field(default_factory=uuid.uuid4)
     session_id: UUID
     role: Literal["user", "agent", "system"]
     sender: str                                      # 'user' / 'primary' / ...
     content: list[dict[str, Any]] | dict[str, Any]   # A2A parts 형태
-    message_id: str | None = None                    # FE / server 발급
     prev_chat_id: UUID | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -148,10 +149,10 @@ class AssignmentUpdateEvent(_EventBase):
 
 
 class A2AContextStartEvent(_EventBase):
-    """A2A 첫 호출 시 — counterpart 가 받음. context_id (wire) 는 호출자가 발급."""
+    """A2A 첫 호출 시 — counterpart 가 받음. context_id 는 호출자가 UUID 발급."""
 
     event_type: Literal["a2a.context.start"] = "a2a.context.start"
-    context_id: str                                  # A2A wire contextId
+    context_id: UUID                                 # publisher-supplied (= a2a_contexts.id)
     initiator_agent: str
     counterpart_agent: str
     parent_session_id: UUID | None = None            # session 발일 때
@@ -165,13 +166,13 @@ class A2AMessageAppendEvent(_EventBase):
     """A2A Message 송수신. trivial 응답 / Task.history 둘 다."""
 
     event_type: Literal["a2a.message.append"] = "a2a.message.append"
-    context_id: str                                  # A2A wire contextId — chronicler 가 a2a_context UUID 로 lookup
-    message_id: str                                  # A2A wire messageId
-    task_id: str | None = None                       # Task.history 면 채움
+    context_id: UUID                                 # (= a2a_contexts.id)
+    message_id: UUID                                 # publisher-supplied (= a2a_messages.id)
+    task_id: UUID | None = None                      # Task.history 면 채움
     role: Literal["user", "agent", "system"]
     sender: str
     parts: list[dict[str, Any]] | dict[str, Any]
-    prev_message_id: UUID | None = None              # 같은 chronicler 처리 안에서 chain
+    prev_message_id: UUID | None = None              # chain
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -179,8 +180,8 @@ class A2ATaskCreateEvent(_EventBase):
     """A2A Task 생성 — stateful 작업 응답으로 Task wrap 시점."""
 
     event_type: Literal["a2a.task.create"] = "a2a.task.create"
-    context_id: str                                  # A2A wire contextId (lookup)
-    task_id: str                                     # A2A wire taskId
+    context_id: UUID                                 # (= a2a_contexts.id)
+    task_id: UUID                                    # publisher-supplied (= a2a_tasks.id)
     state: Literal[
         "SUBMITTED", "WORKING", "COMPLETED", "INPUT_REQUIRED", "FAILED",
     ] = "SUBMITTED"
@@ -192,7 +193,7 @@ class A2ATaskStatusUpdateEvent(_EventBase):
     """Task state transition."""
 
     event_type: Literal["a2a.task.status_update"] = "a2a.task.status_update"
-    task_id: str                                     # A2A wire taskId (lookup)
+    task_id: UUID                                    # (= a2a_tasks.id)
     state: Literal[
         "SUBMITTED", "WORKING", "COMPLETED", "INPUT_REQUIRED", "FAILED",
     ]
@@ -204,8 +205,8 @@ class A2ATaskArtifactEvent(_EventBase):
     """Task 산출물."""
 
     event_type: Literal["a2a.task.artifact"] = "a2a.task.artifact"
-    task_id: str                                     # A2A wire taskId (lookup)
-    artifact_id: str                                 # A2A wire artifactId
+    task_id: UUID                                    # (= a2a_tasks.id)
+    artifact_id: UUID                                # publisher-supplied (= a2a_task_artifacts.id)
     name: str | None = None
     parts: list[dict[str, Any]] | dict[str, Any]
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -215,7 +216,7 @@ class A2AContextEndEvent(_EventBase):
     """A2A 호출 / 트리 종료 — 정상 / cancel / 에러."""
 
     event_type: Literal["a2a.context.end"] = "a2a.context.end"
-    context_id: str                                  # A2A wire contextId (lookup)
+    context_id: UUID                                 # (= a2a_contexts.id)
     reason: str = "completed"                        # 'completed' | 'client_disconnect' | 'graph_error' | ...
     duration_ms: int | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)

@@ -64,7 +64,7 @@ class GraphSendStreamingMessageHandler(MethodHandler):
             request,
             rpc_id=rpc_id,
             method=self.method_name,
-            context_id=a2a_msg.context_id or str(uuid.uuid4()),
+            context_id=a2a_msg.context_id or uuid.uuid4(),
         )
         graph = request.app.state.graph
 

@@ -6,12 +6,12 @@ import json
 from uuid import UUID
 
 import asyncpg
-from pydantic import BaseModel
-
 from dev_team_shared.doc_store.schemas.a2a_task_status_update import (
     A2ATaskStatusUpdateCreate,
     A2ATaskStatusUpdateRead,
 )
+from pydantic import BaseModel
+
 from doc_store_mcp.repositories.base import PostgresRepositoryBase
 
 

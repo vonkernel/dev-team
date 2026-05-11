@@ -16,11 +16,9 @@ from dev_team_shared.a2a.events import (
     TaskStatus,
     TaskStatusUpdateEvent,
 )
-from dev_team_shared.a2a.types import Message, Part, Role, TaskState
-
 from dev_team_shared.a2a.server.graph_handlers.config import AGENT_TOTAL_TIMEOUT_S
 from dev_team_shared.a2a.server.graph_handlers.rpc import RPCContext
-
+from dev_team_shared.a2a.types import Message, Part, Role, TaskState
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  에러 텍스트 (운영자 친화)
@@ -49,7 +47,7 @@ def agent_timeout_text() -> str:
 
 def _error_message(ctx: RPCContext, text: str) -> Message:
     return Message(
-        message_id=f"err-{uuid.uuid4()}",
+        message_id=uuid.uuid4(),
         role=Role.AGENT,
         parts=[Part(text=text)],
         context_id=ctx.context_id,
@@ -70,7 +68,7 @@ def make_completed_task(
     ctx: RPCContext, user_msg: Message, ai_text: str,
 ) -> Task:
     agent_reply = Message(
-        message_id=f"reply-{uuid.uuid4()}",
+        message_id=uuid.uuid4(),
         role=Role.AGENT,
         parts=[Part(text=ai_text)],
         context_id=ctx.context_id,
@@ -144,7 +142,7 @@ def make_artifact_event(
 def make_agent_reply_message(ctx: RPCContext, text: str) -> Message:
     """Task wrap 없이 trivial 응답을 보낼 때 사용 — task_id 비움."""
     return Message(
-        message_id=f"{ctx.assistant}-msg-{uuid.uuid4()}",
+        message_id=uuid.uuid4(),
         role=Role.AGENT,
         parts=[Part(text=text)],
         context_id=ctx.context_id,
@@ -158,7 +156,7 @@ def make_agent_error_message(ctx: RPCContext, error_text: str) -> Message:
 
 def _error_message_no_task(ctx: RPCContext, text: str) -> Message:
     return Message(
-        message_id=f"err-{uuid.uuid4()}",
+        message_id=uuid.uuid4(),
         role=Role.AGENT,
         parts=[Part(text=text)],
         context_id=ctx.context_id,

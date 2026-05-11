@@ -1,25 +1,27 @@
 """Librarian (L) 에이전트 FastAPI HTTP 서버.
 
-Primary 의 server.py 미러 + DocStoreClient (MCP) wiring.
+lifespan = 비즈니스 흐름 조립만:
 
-lifespan 책임:
-  1) Role Config 로드 → persona / LLM 준비
-  2) DocStoreClient (Streamable HTTP MCP) 연결 → tools build → graph compile
-  3) (선택) AsyncPostgresSaver wiring
-  4) AgentCard build → app.state 세팅
-  5) 공용 A2A 라우터 include
+  1) `Settings.from_env()` — env 변수 → frozen settings
+  2) `_build_runtime_inputs()` — config → persona / LLM / agent_card
+  3) `build_event_bus` — Valkey 활성 시 publish 활성화
+  4) `build_doc_store_client` — MCP 연결 + cleanup 등록
+  5) `build_tools` — tool 묶음
+  6) `build_checkpointer` — DSN 활성 시 Postgres 영속, 미활성 시 in-memory
+  7) `build_graph` → `app.state` 세팅
 
-환경변수:
-  ANTHROPIC_API_KEY       (필수, overrides/librarian.yaml 통해 주입)
-  DOC_STORE_MCP_URL       (필수, 예: http://doc-store-mcp:8000/mcp)
-  DATABASE_URI            (선택, 미설정 시 in-memory checkpointer)
+각 단계의 디테일 (env read / try-except / cleanup 등록 / DSN 마스킹) 은
+모듈별 helper 가 담당 (SRP). 본 파일은 호출 순서만. Primary 의 server.py
+와 동일 패턴.
+
+환경변수: 자세한 설명은 `Settings.from_env()` + 각 helper docstring.
 """
 
 from __future__ import annotations
 
 import logging
-import os
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
+from typing import Any
 
 from dev_team_shared.a2a import build_agent_card
 from dev_team_shared.a2a.server import make_a2a_router
@@ -27,73 +29,57 @@ from dev_team_shared.a2a.server.graph_handlers import (
     GraphSendMessageHandler,
     GraphSendStreamingMessageHandler,
 )
-from dev_team_shared.doc_store import DocStoreClient
-from dev_team_shared.mcp_client import StreamableMCPClient
 from fastapi import FastAPI
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langchain_core.language_models import BaseChatModel
 
 from librarian_agent.graph import build_graph, build_llm, load_runtime_config
+from librarian_agent.lifespan_helpers import (
+    build_checkpointer,
+    build_doc_store_client,
+    build_event_bus,
+    log_runtime_ready,
+)
+from librarian_agent.settings import Settings
 from librarian_agent.tools import build_tools
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
-logger = logging.getLogger(__name__)
 
 _ASSISTANT_ID = "librarian"
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """기동: config → LLM → MCP client → tools → graph compile → state 세팅."""
+def _build_runtime_inputs() -> tuple[str, BaseChatModel, dict[str, Any]]:
+    """config 로드 → (persona, LLM, raw_config) 추출. agent_card 빌드는 호출자 책임."""
     config = load_runtime_config()
     persona = config.get("persona")
     if not persona:
         raise RuntimeError("config.persona is required")
     llm = build_llm(config.get("llm") or {})
+    return persona, llm, config
 
-    doc_store_url = os.environ.get("DOC_STORE_MCP_URL")
-    if not doc_store_url:
-        raise RuntimeError("DOC_STORE_MCP_URL env required")
-    database_uri = os.environ.get("DATABASE_URI")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """기동: settings → runtime inputs → infra (event_bus / doc_store / checkpointer) → tools → graph."""
+    settings = Settings.from_env()
+    persona, llm, config = _build_runtime_inputs()
     agent_card = build_agent_card(config)
 
-    # Doc Store MCP 연결 — lifespan 동안 유지. shutdown 에서 aclose.
-    mcp = await StreamableMCPClient.connect(doc_store_url)
-    try:
-        client = DocStoreClient(mcp)
-        tools = build_tools(client)
-        logger.info(
-            "librarian agent ready (doc_store=%s, tools=%d)",
-            doc_store_url,
-            len(tools),
-        )
+    async with AsyncExitStack() as stack:
+        event_bus = await build_event_bus(settings.valkey_url, stack)
+        doc_store = await build_doc_store_client(settings.doc_store_url, stack)
+        tools = build_tools(doc_store)
+        checkpointer = await build_checkpointer(settings.database_uri, stack)
 
-        if database_uri:
-            async with AsyncPostgresSaver.from_conn_string(database_uri) as checkpointer:
-                await checkpointer.setup()
-                app.state.graph = build_graph(
-                    persona=persona, llm=llm, tools=tools, checkpointer=checkpointer,
-                )
-                app.state.agent_card = agent_card
-                logger.info(
-                    "librarian agent ready (Postgres checkpointer at %s)",
-                    _mask_dsn(database_uri),
-                )
-                yield
-        else:
-            app.state.graph = build_graph(
-                persona=persona, llm=llm, tools=tools, checkpointer=None,
-            )
-            app.state.agent_card = agent_card
-            logger.warning(
-                "DATABASE_URI not set — running with in-memory state "
-                "(non-durable across restarts)",
-            )
-            yield
-    finally:
-        await mcp.aclose()
+        app.state.graph = build_graph(
+            persona=persona, llm=llm, tools=tools, checkpointer=checkpointer,
+        )
+        app.state.agent_card = agent_card
+        app.state.event_bus = event_bus
+        log_runtime_ready(tools)
+        yield
 
 
 app = FastAPI(
@@ -105,6 +91,7 @@ app = FastAPI(
     ),
 )
 
+# 공용 A2A 라우터 — 메서드 추가는 shared 의 MethodHandler 구현체 등록으로 (OCP).
 app.include_router(
     make_a2a_router(
         assistant_id=_ASSISTANT_ID,
@@ -114,16 +101,6 @@ app.include_router(
         ],
     ),
 )
-
-
-def _mask_dsn(dsn: str) -> str:
-    if "@" in dsn and "://" in dsn:
-        scheme, rest = dsn.split("://", 1)
-        creds, host = rest.split("@", 1)
-        if ":" in creds:
-            user = creds.split(":", 1)[0]
-            return f"{scheme}://{user}:***@{host}"
-    return dsn
 
 
 __all__ = ["app"]

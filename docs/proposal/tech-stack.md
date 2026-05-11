@@ -347,7 +347,7 @@ MCP 서버는 두 종류로 나뉜다:
 | DB | 소유자 | 용도 |
 |---|---|---|
 | `langgraph` | `langgraph-checkpoint-postgres` (AsyncPostgresSaver) | 체크포인트, 스레드, 런, 태스크 상태. **라이브러리가 직접 스키마/마이그레이션 관리** |
-| `dev_team` | 애플리케이션 (Doc Store MCP) | wiki_pages / issues / agent_tasks / agent_sessions / agent_items. 우리가 스키마 설계·관리 |
+| `dev_team` | 애플리케이션 (Doc Store MCP) | chat tier (sessions / chats / assignments) + A2A tier (a2a_contexts / a2a_messages / a2a_tasks / a2a_task_status_updates / a2a_task_artifacts) + 도메인 산출물 (issues / wiki_pages). 우리가 스키마 설계·관리 |
 
 같은 DB 에 섞지 않는 이유: `langgraph-checkpoint-postgres` 버전업 시 자체 마이그레이션이 애플리케이션 테이블을 건드릴 위험 제거 + 권한/백업 경계 분리. 인스턴스는 하나라 운영 복잡도는 거의 증가하지 않는다.
 

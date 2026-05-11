@@ -54,12 +54,10 @@ def test_build_tools_returns_expected_tool_names(mock_client) -> None:
         # a2a tier
         "a2a_contexts_get",
         "a2a_contexts_list",
-        "a2a_contexts_find_by_context_id",
         "a2a_messages_list_by_context",
         "a2a_messages_list_by_task",
         "a2a_tasks_get",
         "a2a_tasks_list",
-        "a2a_tasks_find_by_task_id",
         "a2a_task_status_updates_list_by_task",
         "a2a_task_artifacts_list_by_task",
     ])
@@ -156,7 +154,6 @@ def _assignment_read() -> AssignmentRead:
 def _a2a_context_read() -> A2AContextRead:
     return A2AContextRead(
         id=UUID("00000000-0000-0000-0000-000000000004"),
-        context_id="ctx-1",
         initiator_agent="primary",
         counterpart_agent="engineer",
         parent_session_id=None,
@@ -245,30 +242,9 @@ async def test_chats_list_by_session_forwards(mock_client) -> None:
 
 
 @pytest.mark.asyncio
-async def test_a2a_contexts_find_by_context_id_forwards(mock_client) -> None:
-    tools = {t.name: t for t in build_tools(mock_client)}
-    expected = _a2a_context_read()
-    mock_client.a2a_context_find_by_context_id = AsyncMock(return_value=expected)
-
-    result = await tools["a2a_contexts_find_by_context_id"].ainvoke(
-        {"context_id": "ctx-1"},
-    )
-    assert result == expected
-    mock_client.a2a_context_find_by_context_id.assert_awaited_once_with("ctx-1")
-
-
-@pytest.mark.asyncio
 async def test_a2a_messages_list_by_task_forwards(mock_client) -> None:
     tools = {t.name: t for t in build_tools(mock_client)}
     mock_client.a2a_message_list_by_task = AsyncMock(return_value=[])
     tid = "00000000-0000-0000-0000-000000000005"
     await tools["a2a_messages_list_by_task"].ainvoke({"a2a_task_id": tid})
     mock_client.a2a_message_list_by_task.assert_awaited_once_with(UUID(tid))
-
-
-@pytest.mark.asyncio
-async def test_a2a_tasks_find_by_task_id_forwards(mock_client) -> None:
-    tools = {t.name: t for t in build_tools(mock_client)}
-    mock_client.a2a_task_find_by_task_id = AsyncMock(return_value=None)
-    await tools["a2a_tasks_find_by_task_id"].ainvoke({"task_id": "task-xyz"})
-    mock_client.a2a_task_find_by_task_id.assert_awaited_once_with("task-xyz")

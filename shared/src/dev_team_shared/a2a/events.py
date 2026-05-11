@@ -12,6 +12,7 @@ Pydantic 모델로 정의.
 from __future__ import annotations
 
 from typing import Any, Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -40,7 +41,7 @@ class Artifact(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
-    artifact_id: str = Field(alias="artifactId")
+    artifact_id: UUID = Field(alias="artifactId")
     name: str | None = None
     description: str | None = None
     parts: list[Part]
@@ -56,8 +57,8 @@ class Task(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     kind: Literal["task"] = "task"
-    id: str
-    context_id: str = Field(alias="contextId")
+    id: UUID
+    context_id: UUID = Field(alias="contextId")
     status: TaskStatus
     history: list[Message] = Field(default_factory=list)
     artifacts: list[Artifact] | None = None
@@ -73,8 +74,8 @@ class TaskStatusUpdateEvent(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     kind: Literal["status-update"] = "status-update"
-    task_id: str = Field(alias="taskId")
-    context_id: str = Field(alias="contextId")
+    task_id: UUID = Field(alias="taskId")
+    context_id: UUID = Field(alias="contextId")
     status: TaskStatus
     final: bool = False
 
@@ -89,8 +90,8 @@ class TaskArtifactUpdateEvent(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     kind: Literal["artifact-update"] = "artifact-update"
-    task_id: str = Field(alias="taskId")
-    context_id: str = Field(alias="contextId")
+    task_id: UUID = Field(alias="taskId")
+    context_id: UUID = Field(alias="contextId")
     artifact: Artifact
     append: bool = False
     last_chunk: bool = Field(default=False, alias="lastChunk")

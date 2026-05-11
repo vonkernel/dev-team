@@ -24,7 +24,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
+from dev_team_shared.doc_store import DocStoreClient
 from dev_team_shared.event_bus import ValkeyEventBus
+from dev_team_shared.mcp_client import StreamableMCPClient
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -32,7 +34,7 @@ from fastapi.staticfiles import StaticFiles
 from user_gateway.config import AppConfig, load_config_from_env
 from user_gateway.middleware import CacheControlMiddleware
 from user_gateway.routes import router as api_router
-from user_gateway.upstream import A2AUpstream
+from user_gateway.upstream import A2AUpstream, ChatProtocolUpstream
 
 # uvicorn 은 자체 logger 만 INFO 로 올리므로 app logger 도 명시적으로 INFO.
 logging.basicConfig(
@@ -68,25 +70,38 @@ async def lifespan(app: FastAPI):
         connect_retries=_CONFIG.upstream.connect_retries,
         sse_keepalive_s=_CONFIG.sse.keepalive_s,
     )
+    chat_upstream = ChatProtocolUpstream(
+        http,
+        send_url=_CONFIG.upstream.chat_send_url,
+        stream_url=_CONFIG.upstream.chat_stream_url,
+        connect_retries=_CONFIG.upstream.connect_retries,
+        sse_keepalive_s=_CONFIG.sse.keepalive_s,
+    )
 
-    # event_bus — VALKEY_URL 가 있으면 publish 활성. 없거나 초기화 실패 시 None
-    # (routes 의 publish helper 가 no-op).
-    event_bus: ValkeyEventBus | None = None
+    # Doc Store MCP — `GET /api/sessions` / `GET /api/history` / `PATCH /api/sessions`
+    # (#75 PR 4). FE 측 chat list / hydrate / pinned 갱신용.
+    doc_mcp_client = await StreamableMCPClient.connect(
+        _CONFIG.upstream.doc_store_mcp_url,
+    )
+    doc_store = DocStoreClient(doc_mcp_client)
+
+    # event_bus — 필수 인프라 (chat tier publish 의존). VALKEY_URL 미설정 /
+    # 초기화 실패 시 **기동 종료** (fail-fast). Runtime publish 실패는 별 layer.
     valkey_url = os.environ.get("VALKEY_URL")
-    if valkey_url:
-        try:
-            event_bus = await ValkeyEventBus.create(valkey_url)
-            logger.info("event_bus ready (Valkey at %s)", valkey_url)
-        except Exception:
-            logger.exception(
-                "ValkeyEventBus 초기화 실패 (url=%s) — publish 비활성화",
-                valkey_url,
-            )
+    if not valkey_url:
+        raise RuntimeError(
+            "VALKEY_URL is required — event_bus is a hard dependency for "
+            "chat publish.",
+        )
+    event_bus = await ValkeyEventBus.create(valkey_url)
+    logger.info("event_bus ready (Valkey at %s)", valkey_url)
 
     # 라우트는 app.state 의 추상만 소비 (DIP).
     app.state.config = _CONFIG
     app.state.http = http
     app.state.upstream = upstream
+    app.state.chat_upstream = chat_upstream
+    app.state.doc_store = doc_store
     app.state.total_timeout_s = _CONFIG.upstream.total_timeout_s
     app.state.event_bus = event_bus
 
@@ -101,9 +116,9 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await doc_mcp_client.aclose()
         await http.aclose()
-        if event_bus is not None:
-            await event_bus.aclose()
+        await event_bus.aclose()
 
 
 app = FastAPI(

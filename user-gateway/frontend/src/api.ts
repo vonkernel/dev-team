@@ -1,4 +1,8 @@
-import type { AgentCardSummary, ChatEvent } from "./types";
+import type {
+  AgentCardSummary,
+  HistoryChat,
+  Session,
+} from "./types";
 
 export async function fetchAgentCard(): Promise<AgentCardSummary> {
   const res = await fetch("/api/agent-card");
@@ -11,47 +15,71 @@ export async function fetchAgentCard(): Promise<AgentCardSummary> {
   };
 }
 
-/**
- * /api/chat POST → SSE 스트림을 파싱하여 비동기 이벤트 iterator 로 내놓는다.
- * 브라우저 EventSource 는 GET 만 되어 사용 불가 — fetch + ReadableStream 으로 직접 파싱.
- */
-export async function* streamChat(
+// ─────────────────────────────────────────────────────────────────────────────
+// Sessions — chat 대화창 CRUD (#75 PR 4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function createSession(
+  agentEndpoint: string = "primary",
+): Promise<Session> {
+  const res = await fetch("/api/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agent_endpoint: agentEndpoint }),
+  });
+  if (!res.ok) throw new Error(`createSession HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function listSessions(): Promise<Session[]> {
+  const res = await fetch("/api/sessions");
+  if (!res.ok) throw new Error(`listSessions HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function getHistory(sessionId: string): Promise<HistoryChat[]> {
+  const res = await fetch(`/api/history?session_id=${sessionId}`);
+  if (!res.ok) throw new Error(`getHistory HTTP ${res.status}`);
+  return res.json();
+}
+
+export async function patchSession(
+  sessionId: string,
+  metadata: Record<string, unknown>,
+): Promise<Session> {
+  const res = await fetch(`/api/sessions/${sessionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ metadata }),
+  });
+  if (!res.ok) throw new Error(`patchSession HTTP ${res.status}`);
+  return res.json();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chat — 발화 제출 + 영속 SSE
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function sendChat(
+  sessionId: string,
   text: string,
-  contextId: string | null,
-  signal: AbortSignal,
-): AsyncGenerator<ChatEvent> {
+  prevChatId?: string,
+): Promise<{ status: string; chat_id: string }> {
+  const body: Record<string, unknown> = { session_id: sessionId, text };
+  if (prevChatId) body.prev_chat_id = prevChatId;
   const res = await fetch("/api/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify({ text, context_id: contextId }),
-    signal,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
-  if (!res.ok || !res.body) {
-    throw new Error(`chat HTTP ${res.status}`);
-  }
-  const decoder = new TextDecoder();
-  const reader = res.body.getReader();
-  let buf = "";
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    // SSE 이벤트는 빈 줄("\n\n") 로 구분.
-    let splitAt;
-    while ((splitAt = buf.indexOf("\n\n")) !== -1) {
-      const raw = buf.slice(0, splitAt);
-      buf = buf.slice(splitAt + 2);
-      const dataLines = raw
-        .split("\n")
-        .filter((l) => l.startsWith("data:"))
-        .map((l) => l.slice(5).trim());
-      if (dataLines.length === 0) continue;
-      const payload = dataLines.join("\n");
-      try {
-        yield JSON.parse(payload) as ChatEvent;
-      } catch {
-        // skip malformed
-      }
-    }
-  }
+  if (!res.ok) throw new Error(`sendChat HTTP ${res.status}`);
+  return res.json();
+}
+
+/**
+ * 영속 SSE 채널. EventSource native — auto-reconnect 미사용 (재연결은 caller 가
+ * `getHistory` hydrate 후 새 EventSource — D14 정책).
+ */
+export function openStream(sessionId: string): EventSource {
+  return new EventSource(`/api/stream?session_id=${sessionId}`);
 }

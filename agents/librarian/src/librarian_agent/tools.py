@@ -167,10 +167,8 @@ def build_tools(client: DocStoreClient) -> list[BaseTool]:
             where=where, limit=limit, offset=offset, order_by=order_by,
         )
 
-    @tool
-    async def a2a_contexts_find_by_context_id(context_id: str) -> A2AContextRead | None:
-        """A2A wire contextId 로 가장 최근 1건 lookup. 미존재 시 null."""
-        return await client.a2a_context_find_by_context_id(context_id)
+    # a2a_contexts_find_by_context_id 폐기 (#75 PR 4) — wire context_id
+    # 컬럼 자체 폐기. a2a_contexts_get(id) 직접 사용.
 
     # ──────────────────────────────────────────────────────────────────
     # a2a_messages (A2A tier) — read
@@ -207,10 +205,8 @@ def build_tools(client: DocStoreClient) -> list[BaseTool]:
             where=where, limit=limit, offset=offset, order_by=order_by,
         )
 
-    @tool
-    async def a2a_tasks_find_by_task_id(task_id: str) -> A2ATaskRead | None:
-        """A2A wire taskId 로 가장 최근 1건 lookup. 미존재 시 null."""
-        return await client.a2a_task_find_by_task_id(task_id)
+    # a2a_tasks_find_by_task_id 폐기 (#75 PR 4) — wire task_id 컬럼 자체 폐기.
+    # a2a_tasks_get(id) 직접 사용.
 
     # ──────────────────────────────────────────────────────────────────
     # a2a_task_status_updates / a2a_task_artifacts (A2A tier) — read
@@ -247,12 +243,10 @@ def build_tools(client: DocStoreClient) -> list[BaseTool]:
         # a2a tier
         a2a_contexts_get,
         a2a_contexts_list,
-        a2a_contexts_find_by_context_id,
         a2a_messages_list_by_context,
         a2a_messages_list_by_task,
         a2a_tasks_get,
         a2a_tasks_list,
-        a2a_tasks_find_by_task_id,
         a2a_task_status_updates_list_by_task,
         a2a_task_artifacts_list_by_task,
     ]

@@ -35,6 +35,7 @@ from fastapi import FastAPI
 from langchain_core.language_models import BaseChatModel
 
 from primary_agent.channels import build_channels
+from primary_agent.chat_handler import SessionRegistry, make_chat_router
 from primary_agent.graph import build_graph, build_llm, load_runtime_config
 from primary_agent.lifespan_helpers import (
     build_checkpointer,
@@ -64,7 +65,10 @@ def _build_runtime_inputs() -> tuple[str, BaseChatModel, dict[str, Any]]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """기동: settings → runtime inputs → infra (event_bus / channels / checkpointer) → tools → graph."""
+    """기동: settings → runtime inputs → infra → tools → graph.
+
+    infra = event_bus / channels / checkpointer / chat session registry.
+    """
     settings = Settings.from_env()
     persona, llm, config = _build_runtime_inputs()
     agent_card = build_agent_card(config)
@@ -77,6 +81,7 @@ async def lifespan(app: FastAPI):
             issue_tracker=channels.issue_tracker,
             wiki=channels.wiki,
             librarian=channels.librarian,
+            event_bus=event_bus,
         )
         checkpointer = await build_checkpointer(settings.database_uri, stack)
 
@@ -85,6 +90,12 @@ async def lifespan(app: FastAPI):
         )
         app.state.agent_card = agent_card
         app.state.event_bus = event_bus
+        # #75 PR 4: chat protocol session registry (in-memory).
+        # message-aware buffer + TTL eviction sweeper — shared 인프라.
+        registry = SessionRegistry()
+        registry.start_sweeper()
+        app.state.chat_session_registry = registry
+        stack.push_async_callback(registry.aclose)
         log_runtime_ready(channels, tools)
         yield
 
@@ -105,6 +116,10 @@ app.include_router(
         ],
     ),
 )
+
+# #75 PR 4: chat protocol — UG↔P chat tier server-side.
+# POST /chat/send + GET /chat/stream
+app.include_router(make_chat_router())
 
 
 __all__ = ["app"]

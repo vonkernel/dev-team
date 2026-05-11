@@ -6,12 +6,12 @@ import json
 from uuid import UUID
 
 import asyncpg
-
 from dev_team_shared.doc_store.schemas.session import (
     SessionCreate,
     SessionRead,
     SessionUpdate,
 )
+
 from doc_store_mcp.repositories.base import PostgresRepositoryBase
 
 

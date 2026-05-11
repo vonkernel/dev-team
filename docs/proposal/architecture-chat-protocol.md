@@ -52,16 +52,23 @@ sequenceDiagram
     participant UG
     participant Agent as P / A
 
-    Note over FE,Agent: 세션 진입 (1회)
+    Note over FE,Agent: 새 chat 생성 (1회, 사용자가 "새 대화 시작" 누름)
+    FE->>UG: POST /api/sessions ({agent_endpoint: "primary"})
+    Note over UG: session_id 발급 (UUID) + session.start publish (Valkey)
+    UG-->>FE: 201 {session_id, agent_endpoint, started_at}
+
+    Note over FE,Agent: 세션 SSE 진입
     FE->>UG: GET /api/stream?session_id=X
     UG->>Agent: GET /chat/stream?session_id=X
     Note over FE,Agent: SSE 채널 영속 (이후 모든 응답은 여기로)
 
     Note over FE,Agent: 사용자 첫 발화
     FE->>UG: POST /api/chat (text, session_id)
+    Note over UG: chat.append (role=user) publish
     UG->>Agent: POST /chat/send (text, session_id)
     UG-->>FE: 202 ack (queued | processing)
     Agent-->>UG: SSE chunk (response)
+    Note over Agent: 응답 완료 시 agent 가 chat.append (role=agent) publish
     UG-->>FE: SSE chunk (response)
 
     Note over FE,Agent: 이후 사용자 발화 (SSE 채널 그대로 유지)
@@ -71,6 +78,11 @@ sequenceDiagram
     Agent-->>UG: SSE chunk
     UG-->>FE: SSE chunk
 ```
+
+**Session lifecycle**:
+- `session.start` publish 는 **`POST /api/sessions` 처리 시점 1회만**. 후속 `POST /api/chat` 호출은 `chat.append` 만 publish (`session.start` 재발화 X)
+- session 은 종료 개념 없음 — `session.end` event / `sessions.ended_at` 컬럼 두지 않음. 사용자가 언제든 재개 가능 (Slack DM / ChatGPT 류)
+- archive 가 필요해지면 별도 컬럼 (`archived_at`) — 본 protocol 범위 밖
 
 **이유**:
 - POST 와 응답 channel 분리 → semantic 깔끔 (request != response stream)
@@ -84,12 +96,23 @@ sequenceDiagram
 
 | Endpoint | 위치 | 호출자 | 책임 |
 |---|---|---|---|
-| `POST /api/chat` | UG | FE | 사용자 발화 제출. body: `{session_id, text}`. 응답: 202 + `{queued | processing}` |
-| `GET /api/stream?session_id=X` | UG | FE | 영속 SSE 채널. 모든 응답 / queued ack / lifecycle 이벤트 receive |
-| `GET /api/sessions` | UG | FE | chat list 조회 |
+| `POST /api/sessions` | UG | FE | **새 chat session 생성**. body: `{agent_endpoint: "primary" \| "architect"}`. UG 가 session_id (UUID) 발급 → `session.start` publish → 응답: 201 `{session_id, agent_endpoint, started_at}` |
+| `GET /api/sessions` | UG | FE | chat list 조회 (사이드바 hydrate) |
 | `GET /api/history?session_id=X` | UG | FE | 새로고침 / 새 탭 시 chats hydrate |
-| `POST /chat/send` (내부) | 각 agent (P / A) | UG | UG 가 forward |
+| `POST /api/chat` | UG | FE | 사용자 발화 제출. body: `{session_id, text}`. UG 가 `chat.append` (role=user) publish → agent forward. 응답: 202 + `{queued \| processing}` |
+| `GET /api/stream?session_id=X` | UG | FE | 영속 SSE 채널. 모든 응답 / queued ack / lifecycle 이벤트 receive |
+| `POST /chat/send` (내부) | 각 agent (P / A) | UG | UG 가 forward. agent 가 응답 생성 시 `chat.append` (role=agent) publish |
 | `GET /chat/stream?session_id=X` (내부) | 각 agent (P / A) | UG | UG 가 SSE 중계 |
+
+### Publish 분담 (Valkey Streams `a2a-events`)
+
+| Event | publisher | 트리거 |
+|---|---|---|
+| `session.start` | UG | `POST /api/sessions` 처리 시점 1회 |
+| `chat.append` (role=user) | UG | `POST /api/chat` 받은 시점 |
+| `chat.append` (role=agent) | agent (P / A) | agent 가 응답 생성 직후 (자기 발화는 자기가 — UG 가 대신 publish 안 함) |
+| `assignment.create / update` | agent (P / A) | chat 중 합의된 work item 발급 시점 |
+| `a2a.*` | agent A2A handler | 에이전트 간 통신 (별 layer, 본 protocol 범위 밖) |
 
 ### Routing
 
@@ -118,6 +141,41 @@ localStorage:
 > UI 구체 (chat list 를 사이드바로 표시할지 / 드롭다운 / 별도 화면 등) 는 FE
 > 구현 영역. 본 protocol spec 은 server-FE 데이터 흐름과 localStorage 의
 > 캐시 구조만 정의.
+
+### SSE 재연결 정책 (page reload / network drop / sleep 후 깨어남)
+
+**옵션 B 채택**: `GET /api/history` hydrate + 새 SSE 연결 (gap 허용).
+
+```
+SSE 끊김 감지
+   ↓
+재시도 backoff
+   ↓
+GET /api/history?session_id=X  — 끊긴 사이 영속된 chats hydrate
+   ↓
+GET /api/stream?session_id=X   — 새 SSE 연결 (현재 시점부터)
+```
+
+이유:
+- 끊긴 사이 *완료된* `chat.append` 는 chronicler 가 `chats` row 로 영속화 — `GET /api/history` 가 확실히 받음
+- 끊긴 사이 *streaming 중* 이던 chunks 만 잃음 (완료되면 다음 history 조회 시 받음). 사용자 시점에서 "다시 봤을 때 빠진 게 채워져 있으면 OK"
+- 인프라 추가 없음 (ring buffer / pub/sub 같은 추가 store 불필요)
+- 추후 부족 시 SSE 표준 `Last-Event-ID` 헤더 + server ring buffer 로 진화 가능
+
+### `sessions.metadata` 표준 키
+
+`sessions.metadata` (JSONB) 의 표준 키 셋 (FE / agent 일관 사용):
+
+| 키 | 타입 | 채우는 주체 | 용도 |
+|---|---|---|---|
+| `title` | string | 메인 응답 LLM 의 structured output (첫 turn 후) 또는 사용자 명시 rename | 사이드바 chat list 표시 |
+| `last_chat_at` | timestamp | Chronicler (매 `chat.append` 처리 시 갱신) | 사이드바 정렬 |
+| `pinned` | bool | 사용자 액션 (`PATCH /api/sessions/{id}`) | 사이드바 고정 |
+| `unread_count` | int | FE (SSE 끊긴 동안 누적, 다시 볼 때 0 reset) | 사이드바 unread 표시 |
+
+JSONB 라 비표준 키 자유 추가 가능 (extensibility). 표준은 위 4개에만.
+
+> `participants` / `agent_endpoint` 는 metadata 에 넣지 않음 — 컬럼 (`agent_endpoint`) 이 이미 표현. 향후 multi-party chat 가능해지면 재검토.
 
 ## 5. 메시지 큐 — Primary / Architect 측 책임 (#72)
 
@@ -151,6 +209,25 @@ persona 가이드 (P / A 공통 패턴):
 
 자세한 정책 / 구현은 #72.
 
+### In-memory ChatEvent 버퍼 정책 (#75 PR 4)
+
+agent 의 chat handler 가 한 session 당 보유하는 in-memory 버퍼는
+`shared/chat_protocol/session_runtime.py` 의 `SessionRuntime` 으로 통일 (P / A
+공통). 정책:
+
+| 항목 | 정책 |
+|---|---|
+| Send | **non-blocking** — graph 의 forward progress 가 SSE consumer 상태와 결합되지 않음. consumer 끊긴 채여도 graph 가 멈추지 X (LLM call 노드 종료 → AIMessage state append → checkpoint snapshot 보장) |
+| Buffer overflow drop 단위 | **message** — backlog 가 `MAX_BACKLOG_MESSAGES` (기본 5) 초과 시 oldest message 의 chunks 통째 atomic drop. partial message 가 buffer 에 남지 X |
+| TTL evict | **마지막 send 시각 기준 idle** — `IDLE_TTL_S` (기본 30분) 초과 시 background sweeper 가 SessionRuntime evict + 진행 중 task `cancel()`. message 흐르는 동안엔 evict X (매 send 가 timer 갱신) |
+
+알려진 한계:
+- 단일 process in-memory — 다중 instance scale-out 시 sticky routing 필요 (M3
+  scope 가정)
+- TTL evict 가 진행 task 를 cancel — 그 시점까지의 graph state 는 LangGraph
+  checkpoint 에 보존되므로 다음 POST 가 이어 받을 수 있음 (손실 X)
+- Subscriber 1명 (FE 한 탭) 가정 — multi-tab broadcast 필요해지면 v2
+
 ## 6. Cancel / Stop
 
 ### 자연어 cancel ("그만", "멈춰" 등)
@@ -171,7 +248,7 @@ UG / agent 가 chat lifecycle 이벤트를 Valkey Streams 로 publish:
 
 | 이벤트 | 트리거 | publisher |
 |---|---|---|
-| `session.start` | 사용자가 새 chat session 시작 (또는 첫 message 도착) | UG |
+| `session.start` | `POST /api/sessions` 처리 시점 (사용자가 새 chat 명시 생성) | UG |
 | `chat.append` | 사용자 / agent 의 발화 | UG (user 발화) / agent (agent 발화) |
 
 **session 은 종료 개념이 없다.** chat 대화창은 사용자가 언제든 재개할 수

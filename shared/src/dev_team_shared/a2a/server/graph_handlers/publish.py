@@ -1,18 +1,13 @@
 """A2A handler 측의 a2a.* 이벤트 publish — Chronicler 가 consume (#75).
 
 graph_handlers (session.py / send_message.py / send_streaming.py) 에서 호출.
-event_bus 가 `request.app.state.event_bus` 에 없으면 no-op.
+`request.app.state.event_bus` 는 lifespan 에서 보장됨 (init fail-fast).
 
 본 모듈은 **A2A tier 의 이벤트만** publish — 에이전트 간 통신 영역.
 사용자 ↔ P/A 의 chat tier 이벤트는 UG 가 자체 publish (#75 chat protocol —
 PR 4 에서 도입).
 
-#75 PR 2 까지의 transition 기간엔 UG ↔ Primary 가 여전히 A2A 위에 동작.
-이 경우 UG 의 chat.* publish (UG 측) 와 Primary 의 a2a.* publish (서버 측)
-가 동시에 발생 — 다른 layer 의 이벤트라 의미적 중복 아님 (PR 4 에서 UG 가
-chat protocol 로 전환되면 Primary 측 a2a.* 는 inter-agent 호출 한정으로 좁아짐).
-
-모든 publish 는 fire-and-forget — 실패해도 본 흐름 차단 X.
+모든 publish 는 fire-and-forget — runtime 실패해도 본 흐름 차단 X.
 """
 
 from __future__ import annotations
@@ -36,9 +31,9 @@ from dev_team_shared.event_bus import (
 logger = logging.getLogger(__name__)
 
 
-def _bus(request: Request) -> EventBus | None:
-    """app.state.event_bus 가 있으면 반환, 없으면 None."""
-    return getattr(request.app.state, "event_bus", None)
+def _bus(request: Request) -> EventBus:
+    """app.state.event_bus — lifespan init 에서 보장 (fail-fast)."""
+    return request.app.state.event_bus
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -49,7 +44,7 @@ def _bus(request: Request) -> EventBus | None:
 async def publish_a2a_context_start(
     request: Request,
     *,
-    context_id: str,
+    context_id: UUID,
     trace_id: str | None,
     initiator_agent: str,
     counterpart_agent: str,
@@ -59,8 +54,6 @@ async def publish_a2a_context_start(
     metadata: dict[str, Any] | None = None,
 ) -> None:
     bus = _bus(request)
-    if bus is None:
-        return
     try:
         await bus.publish(A2AContextStartEvent(
             context_id=context_id,
@@ -81,14 +74,12 @@ async def publish_a2a_context_start(
 async def publish_a2a_context_end(
     request: Request,
     *,
-    context_id: str,
+    context_id: UUID,
     reason: str,
     duration_ms: int | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
     bus = _bus(request)
-    if bus is None:
-        return
     try:
         await bus.publish(A2AContextEndEvent(
             context_id=context_id,
@@ -110,17 +101,15 @@ async def publish_a2a_context_end(
 async def publish_a2a_message_append(
     request: Request,
     *,
-    context_id: str,
-    message_id: str,
+    context_id: UUID,
+    message_id: UUID,
     role: str,
     sender: str,
     content: dict[str, Any] | list[Any],
-    task_id: str | None = None,
+    task_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
     bus = _bus(request)
-    if bus is None:
-        return
     try:
         await bus.publish(A2AMessageAppendEvent(
             context_id=context_id,
@@ -146,15 +135,13 @@ async def publish_a2a_message_append(
 async def publish_a2a_task_create(
     request: Request,
     *,
-    context_id: str,
-    task_id: str,
+    context_id: UUID,
+    task_id: UUID,
     state: str = "SUBMITTED",
     assignment_id: UUID | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
     bus = _bus(request)
-    if bus is None:
-        return
     try:
         await bus.publish(A2ATaskCreateEvent(
             context_id=context_id,
@@ -172,14 +159,12 @@ async def publish_a2a_task_create(
 async def publish_a2a_task_status_update(
     request: Request,
     *,
-    task_id: str,
+    task_id: UUID,
     state: str,
     reason: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
     bus = _bus(request)
-    if bus is None:
-        return
     try:
         await bus.publish(A2ATaskStatusUpdateEvent(
             task_id=task_id,
@@ -196,15 +181,13 @@ async def publish_a2a_task_status_update(
 async def publish_a2a_task_artifact(
     request: Request,
     *,
-    task_id: str,
-    artifact_id: str,
+    task_id: UUID,
+    artifact_id: UUID,
     parts: dict[str, Any] | list[Any],
     name: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
     bus = _bus(request)
-    if bus is None:
-        return
     try:
         await bus.publish(A2ATaskArtifactEvent(
             task_id=task_id,

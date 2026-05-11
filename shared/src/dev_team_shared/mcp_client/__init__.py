@@ -6,7 +6,7 @@ CHR / 에이전트 (P / L 등) 가 다른 MCP 서버 호출 시 공용 사용. `
 사용 예:
 
     async with StreamableMCPClient.connect("http://doc-store-mcp:8000/mcp") as client:
-        result = await client.call_tool("agent_task.create", {"doc": {...}})
+        result = await client.call_tool("sessions.create", {"doc": {...}})
 """
 
 from dev_team_shared.mcp_client.client import StreamableMCPClient

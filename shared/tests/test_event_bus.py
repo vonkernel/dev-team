@@ -74,8 +74,9 @@ class TestValkeyEventBus:
             session_id=sid, agent_endpoint="primary", counterpart="primary",
         ))
         await bus.publish(ChatAppendEvent(
+            chat_id=uuid.uuid4(),
             session_id=sid, role="user", sender="user",
-            content=[{"text": "hi"}], message_id="m-1",
+            content=[{"text": "hi"}],
         ))
         # session 은 종료 개념 없음 — SessionEndEvent 폐기 (#75 PR 3)
         assert await raw.xlen(stream) == 2
@@ -86,23 +87,26 @@ class TestValkeyEventBus:
     @pytest.mark.asyncio
     async def test_publish_a2a_layer(self, bus_and_client) -> None:
         bus, raw, stream = bus_and_client
+        ctx_id = uuid.uuid4()
+        task_id = uuid.uuid4()
+        msg_id = uuid.uuid4()
         await bus.publish(A2AContextStartEvent(
-            context_id="ctx-1",
+            context_id=ctx_id,
             initiator_agent="primary",
             counterpart_agent="engineer",
         ))
         await bus.publish(A2ATaskCreateEvent(
-            context_id="ctx-1", task_id="task-1", state="SUBMITTED",
+            context_id=ctx_id, task_id=task_id, state="SUBMITTED",
         ))
         await bus.publish(A2AMessageAppendEvent(
-            context_id="ctx-1", message_id="m-1", task_id="task-1",
+            context_id=ctx_id, message_id=msg_id, task_id=task_id,
             role="user", sender="primary", parts=[{"text": "do it"}],
         ))
         await bus.publish(A2ATaskStatusUpdateEvent(
-            task_id="task-1", state="WORKING",
+            task_id=task_id, state="WORKING",
         ))
         await bus.publish(A2AContextEndEvent(
-            context_id="ctx-1", reason="completed", duration_ms=42,
+            context_id=ctx_id, reason="completed", duration_ms=42,
         ))
         assert await raw.xlen(stream) == 5
         entries = await raw.xrange(stream)

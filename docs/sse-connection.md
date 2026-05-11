@@ -104,7 +104,7 @@ flowchart LR
 | 대상 | 파일 |
 |---|---|
 | S1 disconnect polling · S2 keepalive | `graph_handlers/stream.py` (`stream_artifact_events`) |
-| S3 lifecycle 로깅 | `graph_handlers/session.py` (`log_session`) — 두 핸들러 모두에서 사용 |
+| S3 lifecycle 로깅 | `graph_handlers/rpc.py` (`log_rpc`) — 두 핸들러 모두에서 사용. RPC 호출 스코프 로그 (chat session 아님 — #75 PR 2 rename) |
 | S4 total timeout | `graph_handlers/send_message.py` · `send_streaming.py` (`anyio.fail_after`) |
 | SSE 직렬화 (sse_pack / keepalive sentinel) | `sse.py` |
 | MethodHandler 계약 | `handler.py` |
@@ -119,9 +119,9 @@ flowchart LR
 | 검증 | 방법 |
 |---|---|
 | 회귀 없음 | Primary `/.well-known/agent-card.json`, `SendMessage`, `SendStreamingMessage` 가 #22 머지 상태와 동일한지 |
-| S1 실측 | SSE 연결 후 curl `Ctrl-C` → 1초 이내 `sse_session.cancel(reason=client_disconnect)` 로그 |
+| S1 실측 | SSE 연결 후 curl `Ctrl-C` → 1초 이내 `a2a_rpc.cancel(reason=client_disconnect)` 로그 |
 | S2 실측 | idle 5s 초과 구간에 `:keepalive` 라인 주기 관찰 (`curl --no-buffer`) |
-| S3 실측 | 세션 완료 시 `event=sse_session.end`, `duration_ms`, `chunk_count`, `reason=completed` JSON 로그 |
+| S3 실측 | RPC 완료 시 `event=a2a_rpc.end`, `duration_ms`, `chunk_count`, `reason=completed` JSON 로그 |
 | S4 실측 | 의도적 LLM 지연으로 agent total timeout 초과 → `TASK_STATE_FAILED` + timeout 메시지 |
 | S5 / S6 | 실측 결과를 PR 본문에 발췌 |
 

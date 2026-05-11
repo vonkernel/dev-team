@@ -9,23 +9,6 @@ A2AMessage / A2ATask / A2ATaskStatusUpdate / A2ATaskArtifact) 두 영역 + 도�
 """
 
 # Chat tier
-from dev_team_shared.doc_store.schemas.assignment import (
-    AssignmentCreate,
-    AssignmentRead,
-    AssignmentStatus,
-    AssignmentUpdate,
-)
-from dev_team_shared.doc_store.schemas.chat import (
-    ChatCreate,
-    ChatRead,
-    ChatRole,
-)
-from dev_team_shared.doc_store.schemas.session import (
-    SessionCreate,
-    SessionRead,
-    SessionUpdate,
-)
-
 # A2A tier
 from dev_team_shared.doc_store.schemas.a2a_context import (
     A2AContextCreate,
@@ -51,12 +34,28 @@ from dev_team_shared.doc_store.schemas.a2a_task_status_update import (
     A2ATaskStatusUpdateCreate,
     A2ATaskStatusUpdateRead,
 )
+from dev_team_shared.doc_store.schemas.assignment import (
+    AssignmentCreate,
+    AssignmentRead,
+    AssignmentStatus,
+    AssignmentUpdate,
+)
+from dev_team_shared.doc_store.schemas.chat import (
+    ChatCreate,
+    ChatRead,
+    ChatRole,
+)
 
 # 도메인 산출물
 from dev_team_shared.doc_store.schemas.issue import (
     IssueCreate,
     IssueRead,
     IssueUpdate,
+)
+from dev_team_shared.doc_store.schemas.session import (
+    SessionCreate,
+    SessionRead,
+    SessionUpdate,
 )
 from dev_team_shared.doc_store.schemas.wiki_page import (
     WikiPageCreate,

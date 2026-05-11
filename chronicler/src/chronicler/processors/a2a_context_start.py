@@ -1,6 +1,6 @@
 """A2AContextStartProcessor — a2a.context.start → a2a_contexts row.
 
-idempotent: 같은 wire context_id 가 이미 있으면 skip.
+idempotent: publisher-supplied `context_id` 가 이미 row 로 있으면 skip.
 """
 
 from __future__ import annotations
@@ -22,16 +22,16 @@ class A2AContextStartProcessor(EventProcessor):
     async def process(self, event: A2AEvent, db: DocStoreClient) -> None:
         assert isinstance(event, A2AContextStartEvent)
 
-        existing = await db.a2a_context_find_by_context_id(event.context_id)
+        existing = await db.a2a_context_get(event.context_id)
         if existing is not None:
             logger.debug(
-                "a2a.context.start skip — wire context_id=%s 이미 존재",
+                "a2a.context.start skip — context_id=%s 이미 존재",
                 event.context_id,
             )
             return
 
         await db.a2a_context_create(A2AContextCreate(
-            context_id=event.context_id,
+            id=event.context_id,
             initiator_agent=event.initiator_agent,
             counterpart_agent=event.counterpart_agent,
             parent_session_id=event.parent_session_id,
@@ -41,7 +41,7 @@ class A2AContextStartProcessor(EventProcessor):
             metadata=event.metadata,
         ))
         logger.info(
-            "a2a.context.start wire_context_id=%s initiator=%s counterpart=%s",
+            "a2a.context.start context_id=%s initiator=%s counterpart=%s",
             event.context_id, event.initiator_agent, event.counterpart_agent,
         )
 
