@@ -35,6 +35,7 @@ from fastapi import FastAPI
 from langchain_core.language_models import BaseChatModel
 
 from primary_agent.channels import build_channels
+from primary_agent.chat_handler import SessionRegistry, make_chat_router
 from primary_agent.graph import build_graph, build_llm, load_runtime_config
 from primary_agent.lifespan_helpers import (
     build_checkpointer,
@@ -85,6 +86,9 @@ async def lifespan(app: FastAPI):
         )
         app.state.agent_card = agent_card
         app.state.event_bus = event_bus
+        # #75 PR 4: chat protocol session registry (in-memory)
+        app.state.chat_session_registry = SessionRegistry()
+        stack.push_async_callback(app.state.chat_session_registry.aclose)
         log_runtime_ready(channels, tools)
         yield
 
@@ -105,6 +109,10 @@ app.include_router(
         ],
     ),
 )
+
+# #75 PR 4: chat protocol — UG↔P chat tier server-side.
+# POST /chat/send + GET /chat/stream
+app.include_router(make_chat_router())
 
 
 __all__ = ["app"]
