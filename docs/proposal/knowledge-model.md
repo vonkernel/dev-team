@@ -129,6 +129,18 @@ Chat 중 사용자와 합의해 정의된 작업. Primary / Architect 가 명시
 
 에이전트 간 A2A 통신을 자동 수집한 로그. Valkey Streams 로 publish 된 이벤트를 Chronicler 가 구독해 영속화 ([architecture-event-pipeline](architecture-event-pipeline.md)).
 
+> **관계 분류 — containment vs ref (재발 방지)**: chat tier 의 `chats` /
+> `assignments` (`session_id` / `root_session_id` 채워짐) 와 A2A tier 의 자기
+> 자식 (`a2a_messages.a2a_context_id`, `a2a_tasks.a2a_context_id` 등) 은
+> **containment** 관계 (NOT NULL FK + CASCADE — 부모 없으면 존재 X). 반면
+> session ↔ a2a_contexts (`parent_session_id`) / assignment ↔ a2a_contexts
+> (`parent_assignment_id`) / a2a_task ↔ a2a_messages (`a2a_task_id`) 등은
+> **ref backlink** (NULL 허용 + SET NULL — source 추적용 link, 종속 X).
+> a2a_context 는 standalone (agent autonomous / 외부 system trigger 발 —
+> 두 parent 모두 NULL) 로 존재 가능. session 종료 cascade 같은 containment
+> 추론 적용 안 됨. 자세한 의도는 DB schema 의 `COMMENT ON` (migration 006)
+> 으로도 박혀 있음 (psql `\d+ <table>` 로 확인).
+
 - **a2a_contexts (대화 namespace)** — A2A `contextId` 와 1:1. 두 에이전트 사이의 대화. `parent_session_id` / `parent_assignment_id` 로 source 추적 (NULL 이면 system trigger 발 standalone). **종료는 agent 가 결정** — agent 가 "이 inter-agent 대화 마무리" 라 판단한 시점에 `a2a.context.end` publish, `ended_at` 갱신. RPC 단위 아님
 - **a2a_messages (Message 응답)** — Context 안의 trivial / negotiation Message. 또는 commit 된 Task 의 history Message (이 경우 `a2a_task_id` 로 backlink)
 - **a2a_tasks (Task 응답)** — stateful long-running work. Context 안의 wire-level 진행 추적
