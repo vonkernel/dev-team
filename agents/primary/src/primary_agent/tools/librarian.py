@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 def build_librarian_tools(
     client: A2AClient,
     *,
-    event_bus: EventBus | None = None,
+    event_bus: EventBus,
 ) -> list[BaseTool]:
     """Librarian 채널의 1 op — 자연어 위임 + a2a.context.end 발화."""
 
@@ -66,11 +66,9 @@ def build_librarian_tools(
 
 
 async def _publish_context_end(
-    bus: EventBus | None, context_id: str, *, reason: str,
+    bus: EventBus, context_id: str, *, reason: str,
 ) -> None:
-    """a2a.context.end fire-and-forget. bus None 이면 no-op."""
-    if bus is None:
-        return
+    """a2a.context.end fire-and-forget. runtime 실패만 graceful."""
     try:
         await bus.publish(A2AContextEndEvent(
             context_id=context_id, reason=reason,

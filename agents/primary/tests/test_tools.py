@@ -94,14 +94,22 @@ def librarian():
     return client
 
 
+@pytest.fixture
+def event_bus():
+    """EventBus mock — publish 는 fire-and-forget 이라 AsyncMock 로 충분."""
+    bus = MagicMock()
+    bus.publish = AsyncMock()
+    return bus
+
+
 # ──────────────────────────────────────────────────────────────────
 # 채널 활성 / 비활성에 따른 tool 목록
 # ──────────────────────────────────────────────────────────────────
 
 
-def test_only_doc_store_when_others_off(doc_store) -> None:
+def test_only_doc_store_when_others_off(doc_store, event_bus) -> None:
     tools = build_tools(
-        doc_store=doc_store, issue_tracker=None, wiki=None, librarian=None,
+        doc_store=doc_store, event_bus=event_bus, issue_tracker=None, wiki=None, librarian=None,
     )
     names = {t.name for t in tools}
     # Doc Store 채널 9 op (#75 재설계 후 — agent_tasks_* 제거)
@@ -119,9 +127,9 @@ def test_only_doc_store_when_others_off(doc_store) -> None:
     assert "librarian_query" not in names
 
 
-def test_all_channels_on(doc_store, issue_tracker, wiki, librarian) -> None:
+def test_all_channels_on(doc_store, issue_tracker, wiki, librarian, event_bus) -> None:
     tools = build_tools(
-        doc_store=doc_store, issue_tracker=issue_tracker, wiki=wiki, librarian=librarian,
+        doc_store=doc_store, event_bus=event_bus, issue_tracker=issue_tracker, wiki=wiki, librarian=librarian,
     )
     names = {t.name for t in tools}
     # Doc Store
@@ -147,9 +155,9 @@ def test_all_channels_on(doc_store, issue_tracker, wiki, librarian) -> None:
 
 
 @pytest.mark.asyncio
-async def test_wiki_pages_create_forwards(doc_store) -> None:
+async def test_wiki_pages_create_forwards(doc_store, event_bus) -> None:
     tools = {t.name: t for t in build_tools(
-        doc_store=doc_store, issue_tracker=None, wiki=None, librarian=None,
+        doc_store=doc_store, event_bus=event_bus, issue_tracker=None, wiki=None, librarian=None,
     )}
     expected = _wiki_page_read()
     doc_store.wiki_page_create = AsyncMock(return_value=expected)
@@ -168,9 +176,9 @@ async def test_wiki_pages_create_forwards(doc_store) -> None:
 
 
 @pytest.mark.asyncio
-async def test_issues_create_forwards(doc_store) -> None:
+async def test_issues_create_forwards(doc_store, event_bus) -> None:
     tools = {t.name: t for t in build_tools(
-        doc_store=doc_store, issue_tracker=None, wiki=None, librarian=None,
+        doc_store=doc_store, event_bus=event_bus, issue_tracker=None, wiki=None, librarian=None,
     )}
     expected = _issue_read()
     doc_store.issue_create = AsyncMock(return_value=expected)
@@ -187,9 +195,9 @@ async def test_issues_create_forwards(doc_store) -> None:
 
 
 @pytest.mark.asyncio
-async def test_wiki_pages_list_forwards_args(doc_store) -> None:
+async def test_wiki_pages_list_forwards_args(doc_store, event_bus) -> None:
     tools = {t.name: t for t in build_tools(
-        doc_store=doc_store, issue_tracker=None, wiki=None, librarian=None,
+        doc_store=doc_store, event_bus=event_bus, issue_tracker=None, wiki=None, librarian=None,
     )}
     doc_store.wiki_page_list = AsyncMock(return_value=[])
 
@@ -210,9 +218,9 @@ async def test_wiki_pages_list_forwards_args(doc_store) -> None:
 
 
 @pytest.mark.asyncio
-async def test_external_status_list_forwards(doc_store, issue_tracker) -> None:
+async def test_external_status_list_forwards(doc_store, issue_tracker, event_bus) -> None:
     tools = {t.name: t for t in build_tools(
-        doc_store=doc_store, issue_tracker=issue_tracker, wiki=None, librarian=None,
+        doc_store=doc_store, event_bus=event_bus, issue_tracker=issue_tracker, wiki=None, librarian=None,
     )}
     issue_tracker.statuses.list = AsyncMock(return_value=[])
     await tools["external_status_list"].ainvoke({})
@@ -220,9 +228,9 @@ async def test_external_status_list_forwards(doc_store, issue_tracker) -> None:
 
 
 @pytest.mark.asyncio
-async def test_external_status_create_forwards(doc_store, issue_tracker) -> None:
+async def test_external_status_create_forwards(doc_store, issue_tracker, event_bus) -> None:
     tools = {t.name: t for t in build_tools(
-        doc_store=doc_store, issue_tracker=issue_tracker, wiki=None, librarian=None,
+        doc_store=doc_store, event_bus=event_bus, issue_tracker=issue_tracker, wiki=None, librarian=None,
     )}
     from dev_team_shared.issue_tracker import StatusRef
     issue_tracker.statuses.create = AsyncMock(
@@ -238,9 +246,9 @@ async def test_external_status_create_forwards(doc_store, issue_tracker) -> None
 
 
 @pytest.mark.asyncio
-async def test_librarian_query_extracts_text(doc_store, librarian) -> None:
+async def test_librarian_query_extracts_text(doc_store, librarian, event_bus) -> None:
     tools = {t.name: t for t in build_tools(
-        doc_store=doc_store, issue_tracker=None, wiki=None, librarian=librarian,
+        doc_store=doc_store, event_bus=event_bus, issue_tracker=None, wiki=None, librarian=librarian,
     )}
     librarian.send_message = MagicMock(return_value={
         "parts": [{"text": "found 3 wiki pages: ..."}],
@@ -251,9 +259,9 @@ async def test_librarian_query_extracts_text(doc_store, librarian) -> None:
 
 
 @pytest.mark.asyncio
-async def test_librarian_query_handles_task_artifact_response(doc_store, librarian) -> None:
+async def test_librarian_query_handles_task_artifact_response(doc_store, librarian, event_bus) -> None:
     tools = {t.name: t for t in build_tools(
-        doc_store=doc_store, issue_tracker=None, wiki=None, librarian=librarian,
+        doc_store=doc_store, event_bus=event_bus, issue_tracker=None, wiki=None, librarian=librarian,
     )}
     # Task 형태 응답 — artifacts[].parts[].text 추출
     librarian.send_message = MagicMock(return_value={
@@ -266,9 +274,9 @@ async def test_librarian_query_handles_task_artifact_response(doc_store, librari
 
 
 @pytest.mark.asyncio
-async def test_librarian_query_returns_no_response_marker_on_empty(doc_store, librarian) -> None:
+async def test_librarian_query_returns_no_response_marker_on_empty(doc_store, librarian, event_bus) -> None:
     tools = {t.name: t for t in build_tools(
-        doc_store=doc_store, issue_tracker=None, wiki=None, librarian=librarian,
+        doc_store=doc_store, event_bus=event_bus, issue_tracker=None, wiki=None, librarian=librarian,
     )}
     librarian.send_message = MagicMock(return_value={})
     result = await tools["librarian_query"].ainvoke({"query": "..."})

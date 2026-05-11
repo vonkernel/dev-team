@@ -45,7 +45,7 @@ async def run_session_turn(
     runtime.lock 으로 같은 session 의 두 번째 turn 은 sequential 처리.
     """
     graph = request.app.state.graph
-    event_bus: EventBus | None = getattr(request.app.state, "event_bus", None)
+    event_bus: EventBus = request.app.state.event_bus
     async with runtime.lock:
         try:
             with anyio.fail_after(GRAPH_TIMEOUT_S):
@@ -140,7 +140,7 @@ async def _finalize_agent_response(
     runtime: SessionRuntime,
     user_message_id: str,
     agent_text: str,
-    event_bus: EventBus | None,
+    event_bus: EventBus,
 ) -> None:
     """graph 완료 후 agent 응답 publish + SSE message/done 이벤트 emit.
 
@@ -166,16 +166,16 @@ async def _finalize_agent_response(
 
 
 async def _publish_agent_chat(
-    bus: EventBus | None,
+    bus: EventBus,
     session_id: UUID,
     text: str,
     message_id: str,
 ) -> None:
     """`chat.append role=agent` publish (D3 — agent 자기 발화는 자기가).
 
-    bus 가 없거나 publish 실패 시 chat 흐름 차단 X — 로그만 (fire-and-forget).
+    runtime publish 실패는 chat 흐름 차단 X — 로그만 (fire-and-forget).
     """
-    if bus is None or not text:
+    if not text:
         return
     try:
         await bus.publish(ChatAppendEvent(

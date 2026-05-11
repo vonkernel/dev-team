@@ -31,16 +31,16 @@ from primary_agent.tools.wiki import build_wiki_tools
 def build_tools(
     *,
     doc_store: DocStoreClient,
+    event_bus: EventBus,
     issue_tracker: IssueTrackerClient | None = None,
     wiki: WikiClient | None = None,
     librarian: A2AClient | None = None,
-    event_bus: EventBus | None = None,
 ) -> list[BaseTool]:
     """4 채널 클라이언트를 받아 LangChain tool 목록 반환.
 
-    `doc_store` 는 필수, 나머지 3 채널은 선택. 미주입 시 해당 채널 도구 미노출.
-    `event_bus` 는 도구가 직접 wire event publish 필요 시 (예: librarian_query
-    의 a2a.context.end). None 이면 publish no-op.
+    `doc_store` 와 `event_bus` 는 필수 (도구가 직접 wire event publish 필요 —
+    예: librarian_query 의 a2a.context.end). 나머지 3 채널은 선택, 미주입 시
+    해당 채널 도구 미노출.
     """
     tools: list[BaseTool] = []
     tools += build_doc_store_tools(doc_store)
