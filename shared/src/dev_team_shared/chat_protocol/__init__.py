@@ -25,18 +25,30 @@ from dev_team_shared.chat_protocol.schemas import (
     SessionRead,
     SessionUpdateRequest,
 )
+from dev_team_shared.chat_protocol.session_runtime import (
+    DEFAULT_IDLE_TTL_S,
+    DEFAULT_MAX_BACKLOG_MESSAGES,
+    DEFAULT_SWEEP_INTERVAL_S,
+    SessionRegistry,
+    SessionRuntime,
+)
 from dev_team_shared.chat_protocol.sse import (
     chat_event_sse_line,
     keepalive_sse_line,
 )
 
 __all__ = [
+    "DEFAULT_IDLE_TTL_S",
+    "DEFAULT_MAX_BACKLOG_MESSAGES",
+    "DEFAULT_SWEEP_INTERVAL_S",
     "ChatEvent",
     "ChatEventType",
     "ChatSendRequest",
     "ChatSendResponse",
     "SessionCreateRequest",
     "SessionRead",
+    "SessionRegistry",
+    "SessionRuntime",
     "SessionUpdateRequest",
     "chat_event_sse_line",
     "keepalive_sse_line",
