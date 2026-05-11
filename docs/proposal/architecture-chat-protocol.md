@@ -52,16 +52,23 @@ sequenceDiagram
     participant UG
     participant Agent as P / A
 
-    Note over FE,Agent: 세션 진입 (1회)
+    Note over FE,Agent: 새 chat 생성 (1회, 사용자가 "새 대화 시작" 누름)
+    FE->>UG: POST /api/sessions ({agent_endpoint: "primary"})
+    Note over UG: session_id 발급 (UUID) + session.start publish (Valkey)
+    UG-->>FE: 201 {session_id, agent_endpoint, started_at}
+
+    Note over FE,Agent: 세션 SSE 진입
     FE->>UG: GET /api/stream?session_id=X
     UG->>Agent: GET /chat/stream?session_id=X
     Note over FE,Agent: SSE 채널 영속 (이후 모든 응답은 여기로)
 
     Note over FE,Agent: 사용자 첫 발화
     FE->>UG: POST /api/chat (text, session_id)
+    Note over UG: chat.append (role=user) publish
     UG->>Agent: POST /chat/send (text, session_id)
     UG-->>FE: 202 ack (queued | processing)
     Agent-->>UG: SSE chunk (response)
+    Note over Agent: 응답 완료 시 agent 가 chat.append (role=agent) publish
     UG-->>FE: SSE chunk (response)
 
     Note over FE,Agent: 이후 사용자 발화 (SSE 채널 그대로 유지)
@@ -71,6 +78,11 @@ sequenceDiagram
     Agent-->>UG: SSE chunk
     UG-->>FE: SSE chunk
 ```
+
+**Session lifecycle**:
+- `session.start` publish 는 **`POST /api/sessions` 처리 시점 1회만**. 후속 `POST /api/chat` 호출은 `chat.append` 만 publish (`session.start` 재발화 X)
+- session 은 종료 개념 없음 — `session.end` event / `sessions.ended_at` 컬럼 두지 않음. 사용자가 언제든 재개 가능 (Slack DM / ChatGPT 류)
+- archive 가 필요해지면 별도 컬럼 (`archived_at`) — 본 protocol 범위 밖
 
 **이유**:
 - POST 와 응답 channel 분리 → semantic 깔끔 (request != response stream)
@@ -84,12 +96,23 @@ sequenceDiagram
 
 | Endpoint | 위치 | 호출자 | 책임 |
 |---|---|---|---|
-| `POST /api/chat` | UG | FE | 사용자 발화 제출. body: `{session_id, text}`. 응답: 202 + `{queued | processing}` |
-| `GET /api/stream?session_id=X` | UG | FE | 영속 SSE 채널. 모든 응답 / queued ack / lifecycle 이벤트 receive |
-| `GET /api/sessions` | UG | FE | chat list 조회 |
+| `POST /api/sessions` | UG | FE | **새 chat session 생성**. body: `{agent_endpoint: "primary" \| "architect"}`. UG 가 session_id (UUID) 발급 → `session.start` publish → 응답: 201 `{session_id, agent_endpoint, started_at}` |
+| `GET /api/sessions` | UG | FE | chat list 조회 (사이드바 hydrate) |
 | `GET /api/history?session_id=X` | UG | FE | 새로고침 / 새 탭 시 chats hydrate |
-| `POST /chat/send` (내부) | 각 agent (P / A) | UG | UG 가 forward |
+| `POST /api/chat` | UG | FE | 사용자 발화 제출. body: `{session_id, text}`. UG 가 `chat.append` (role=user) publish → agent forward. 응답: 202 + `{queued \| processing}` |
+| `GET /api/stream?session_id=X` | UG | FE | 영속 SSE 채널. 모든 응답 / queued ack / lifecycle 이벤트 receive |
+| `POST /chat/send` (내부) | 각 agent (P / A) | UG | UG 가 forward. agent 가 응답 생성 시 `chat.append` (role=agent) publish |
 | `GET /chat/stream?session_id=X` (내부) | 각 agent (P / A) | UG | UG 가 SSE 중계 |
+
+### Publish 분담 (Valkey Streams `a2a-events`)
+
+| Event | publisher | 트리거 |
+|---|---|---|
+| `session.start` | UG | `POST /api/sessions` 처리 시점 1회 |
+| `chat.append` (role=user) | UG | `POST /api/chat` 받은 시점 |
+| `chat.append` (role=agent) | agent (P / A) | agent 가 응답 생성 직후 (자기 발화는 자기가 — UG 가 대신 publish 안 함) |
+| `assignment.create / update` | agent (P / A) | chat 중 합의된 work item 발급 시점 |
+| `a2a.*` | agent A2A handler | 에이전트 간 통신 (별 layer, 본 protocol 범위 밖) |
 
 ### Routing
 
@@ -171,7 +194,7 @@ UG / agent 가 chat lifecycle 이벤트를 Valkey Streams 로 publish:
 
 | 이벤트 | 트리거 | publisher |
 |---|---|---|
-| `session.start` | 사용자가 새 chat session 시작 (또는 첫 message 도착) | UG |
+| `session.start` | `POST /api/sessions` 처리 시점 (사용자가 새 chat 명시 생성) | UG |
 | `chat.append` | 사용자 / agent 의 발화 | UG (user 발화) / agent (agent 발화) |
 
 **session 은 종료 개념이 없다.** chat 대화창은 사용자가 언제든 재개할 수
