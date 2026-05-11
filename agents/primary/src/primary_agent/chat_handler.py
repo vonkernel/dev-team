@@ -26,6 +26,8 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+import uuid as _uuid
+
 import anyio
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from dev_team_shared.a2a.server.graph_handlers.parse import stringify_ai_content
@@ -37,6 +39,7 @@ from dev_team_shared.chat_protocol import (
     chat_event_sse_line,
     keepalive_sse_line,
 )
+from dev_team_shared.event_bus import ChatAppendEvent, EventBus
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
@@ -198,6 +201,8 @@ async def _run_graph_and_stream(
     실패는 SSE 에 `error` 이벤트로 통보.
     """
     graph = request.app.state.graph
+    event_bus: EventBus | None = getattr(request.app.state, "event_bus", None)
+    accumulated: list[str] = []
     async with runtime.lock:
         try:
             with anyio.fail_after(_GRAPH_TIMEOUT_S):
@@ -217,10 +222,25 @@ async def _run_graph_and_stream(
                     text_chunk = stringify_ai_content(msg_chunk.content)
                     if not text_chunk:
                         continue
+                    accumulated.append(text_chunk)
                     await runtime.outgoing_send.send(ChatEvent(
                         type=ChatEventType.CHUNK,
                         payload={"text": text_chunk, "message_id": message_id},
                     ))
+            # agent-side chat.append (role=agent) publish — 자기 응답은 자기가 (D3).
+            agent_text = "".join(accumulated)
+            agent_message_id = f"primary-msg-{_uuid.uuid4()}"
+            await _publish_agent_chat(
+                event_bus, runtime.session_id, agent_text, agent_message_id,
+            )
+            await runtime.outgoing_send.send(ChatEvent(
+                type=ChatEventType.MESSAGE,
+                payload={
+                    "message_id": agent_message_id,
+                    "role": "agent",
+                    "text": agent_text,
+                },
+            ))
             await runtime.outgoing_send.send(ChatEvent(
                 type=ChatEventType.DONE,
                 payload={"message_id": message_id},
@@ -248,6 +268,32 @@ async def _send_error(
         ))
     except Exception:
         logger.exception("error event send failed (session_id=%s)", runtime.session_id)
+
+
+async def _publish_agent_chat(
+    bus: EventBus | None,
+    session_id: UUID,
+    text: str,
+    message_id: str,
+) -> None:
+    """`chat.append role=agent` publish (D3 — agent 자기 발화는 자기가).
+
+    bus 가 없거나 publish 실패 시 chat 흐름 차단 X — 로그만 (fire-and-forget).
+    """
+    if bus is None or not text:
+        return
+    try:
+        await bus.publish(ChatAppendEvent(
+            session_id=session_id,
+            role="agent",
+            sender="primary",
+            content=[{"text": text}],
+            message_id=message_id,
+        ))
+    except Exception:
+        logger.exception(
+            "publish chat.append (agent) failed session_id=%s", session_id,
+        )
 
 
 async def _aiter_with_keepalive(

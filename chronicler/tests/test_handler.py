@@ -165,12 +165,18 @@ class TestChatAppendProcessor:
         db.session_get = AsyncMock(return_value=_session_read(sid))
         db.chat_list = AsyncMock(return_value=[])
         db.chat_create = AsyncMock()
+        db.session_update = AsyncMock()
         ev = ChatAppendEvent(
             session_id=sid, role="user", sender="user",
             content=[{"text": "hi"}], message_id="m1",
         )
         await proc.process(ev, db)
         db.chat_create.assert_awaited_once()
+        # 첫 user chat → sessions.metadata 에 title + last_chat_at 채워짐
+        db.session_update.assert_awaited_once()
+        passed = db.session_update.await_args.args[1]
+        assert passed.metadata["title"] == "hi"
+        assert "last_chat_at" in passed.metadata
 
     @pytest.mark.asyncio
     async def test_skip_when_session_missing(self) -> None:
