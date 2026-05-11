@@ -46,6 +46,11 @@ async def run_session_turn(
     """
     graph = request.app.state.graph
     event_bus: EventBus = request.app.state.event_bus
+    # agent_message_id 는 turn 시작 시점에 1회 생성 — chunks / final message /
+    # chat.append publish 모두 같은 id 사용 (FE 의 'same message_id 면 갱신'
+    # 로직과 정합). 옛 버그: chunks 가 user message_id 를, final message 가
+    # agent_message_id 를 써서 FE 가 두 메시지로 렌더링.
+    agent_message_id = f"primary-msg-{_uuid.uuid4()}"
     async with runtime.lock:
         try:
             with anyio.fail_after(GRAPH_TIMEOUT_S):
@@ -53,11 +58,12 @@ async def run_session_turn(
                     graph=graph,
                     runtime=runtime,
                     text=text,
-                    message_id=message_id,
+                    agent_message_id=agent_message_id,
                 )
             await _finalize_agent_response(
                 runtime=runtime,
                 user_message_id=message_id,
+                agent_message_id=agent_message_id,
                 agent_text=accumulated_text,
                 event_bus=event_bus,
             )
@@ -103,9 +109,12 @@ async def _stream_chunks_to_session(
     graph: Any,
     runtime: SessionRuntime,
     text: str,
-    message_id: str,
+    agent_message_id: str,
 ) -> str:
     """graph.astream 소비 → chunk 이벤트 push → 누적 텍스트 반환.
+
+    chunks payload 의 `message_id` 는 **agent_message_id** — 최종 message
+    이벤트와 같은 id 라 FE 가 같은 메시지의 streaming → 완성 으로 누적 갱신.
 
     필터:
     - `classify_response` 노드의 token 은 사용자에게 노출 X (PR 3 의 분기
@@ -130,7 +139,7 @@ async def _stream_chunks_to_session(
         accumulated.append(text_chunk)
         runtime.send(ChatEvent(
             type=ChatEventType.CHUNK,
-            payload={"text": text_chunk, "message_id": message_id},
+            payload={"text": text_chunk, "message_id": agent_message_id},
         ))
     return "".join(accumulated)
 
@@ -139,15 +148,16 @@ async def _finalize_agent_response(
     *,
     runtime: SessionRuntime,
     user_message_id: str,
+    agent_message_id: str,
     agent_text: str,
     event_bus: EventBus,
 ) -> None:
     """graph 완료 후 agent 응답 publish + SSE message/done 이벤트 emit.
 
     publish (chat.append role=agent) 는 D3 — agent 자기 발화는 자기가
-    publish (UG 가 publish 하지 않음).
+    publish (UG 가 publish 하지 않음). agent_message_id 는 chunks 와 동일 —
+    `run_session_turn` 이 turn 시작 시점에 1회 생성.
     """
-    agent_message_id = f"primary-msg-{_uuid.uuid4()}"
     await _publish_agent_chat(
         event_bus, runtime.session_id, agent_text, agent_message_id,
     )
