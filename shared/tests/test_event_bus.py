@@ -74,6 +74,7 @@ class TestValkeyEventBus:
             session_id=sid, agent_endpoint="primary", counterpart="primary",
         ))
         await bus.publish(ChatAppendEvent(
+            chat_id=uuid.uuid4(),
             session_id=sid, role="user", sender="user",
             content=[{"text": "hi"}], message_id="m-1",
         ))

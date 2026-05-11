@@ -1,7 +1,10 @@
 """ChatAppendProcessor — chat.append → chats row + sessions.metadata 갱신.
 
 session 이 없으면 자동 생성하지 않고 warn-skip (publisher 가 session.start
-먼저 보내야 함). idempotent: 같은 message_id 의 chat 이 이미 있으면 skip.
+먼저 보내야 함). idempotent: publisher-supplied `chat_id` 가 이미 있으면 skip.
+
+#75 PR 4: chat_id 는 publisher-supplied (UG / Primary 가 발급) — chats.id 와 1:1.
+wire 로 전파되어 `prev_chat_id` chain 의 결정성 보장.
 
 #75 PR 4: sessions.metadata 자동 갱신 — D15 표준 키 중 두 개를 chronicler
 가 담당.
@@ -45,21 +48,14 @@ class ChatAppendProcessor(EventProcessor):
             )
             return
 
-        # message_id dedup
-        if event.message_id:
-            existing = await db.chat_list(
-                where={
-                    "session_id": str(event.session_id),
-                    "message_id": event.message_id,
-                },
-                limit=1,
+        # chat_id dedup (publisher-supplied id 패턴)
+        existing = await db.chat_get(event.chat_id)
+        if existing is not None:
+            logger.debug(
+                "chat.append skip — chat_id=%s already in session=%s",
+                event.chat_id, event.session_id,
             )
-            if existing:
-                logger.debug(
-                    "chat.append skip — message_id=%s already in session=%s",
-                    event.message_id, event.session_id,
-                )
-                return
+            return
 
         # 첫 user chat 인지 — title 자동 채움 대상 판정 (chat row 생성 직전 시점).
         is_first_user_chat = False
@@ -71,6 +67,7 @@ class ChatAppendProcessor(EventProcessor):
             is_first_user_chat = not prior_user
 
         await db.chat_create(ChatCreate(
+            id=event.chat_id,
             session_id=event.session_id,
             prev_chat_id=event.prev_chat_id,
             role=event.role,

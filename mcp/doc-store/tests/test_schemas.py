@@ -40,6 +40,7 @@ class TestChatCreate:
     def test_role_validation(self) -> None:
         for r in ("user", "agent", "system"):
             ChatCreate(
+                id=uuid4(),
                 session_id=uuid4(),
                 role=r,  # type: ignore[arg-type]
                 sender="primary",
@@ -49,6 +50,7 @@ class TestChatCreate:
     def test_invalid_role(self) -> None:
         with pytest.raises(ValidationError):
             ChatCreate(
+                id=uuid4(),
                 session_id=uuid4(),
                 role="bot",  # type: ignore[arg-type]
                 sender="x",

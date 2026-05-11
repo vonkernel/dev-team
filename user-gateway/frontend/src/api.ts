@@ -64,9 +64,11 @@ export async function sendChat(
   sessionId: string,
   text: string,
   messageId?: string,
-): Promise<{ status: string; message_id: string }> {
+  prevChatId?: string,
+): Promise<{ status: string; message_id: string; chat_id?: string }> {
   const body: Record<string, unknown> = { session_id: sessionId, text };
   if (messageId) body.message_id = messageId;
+  if (prevChatId) body.prev_chat_id = prevChatId;
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

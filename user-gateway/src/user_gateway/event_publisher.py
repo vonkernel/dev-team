@@ -72,18 +72,26 @@ async def publish_chat_user(
     session_id: str,
     text: str,
     message_id: str,
+    chat_id: _uuid.UUID,
+    prev_chat_id: _uuid.UUID | None,
 ) -> None:
-    """chat.append role=user — 사용자 발화 직후 publish."""
+    """chat.append role=user — 사용자 발화 직후 publish.
+
+    `chat_id` 는 UG 가 발급한 publisher-supplied id (chats.id 와 1:1, #75 PR 4).
+    `prev_chat_id` 는 FE 가 전달한 이전 chat (마지막 agent 응답) 의 id.
+    """
     sid = _to_uuid(session_id)
     if sid is None:
         return
     try:
         await bus.publish(ChatAppendEvent(
+            chat_id=chat_id,
             session_id=sid,
             role="user",
             sender="user",
             content=[{"text": text}],
             message_id=message_id,
+            prev_chat_id=prev_chat_id,
         ))
     except Exception:
         logger.exception(

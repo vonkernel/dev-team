@@ -95,11 +95,14 @@ class TestChatRepository:
         sess = await session_repo.create(SessionCreate(
             agent_endpoint="primary", counterpart="primary",
         ))
+        from uuid import uuid4 as _uuid4
         c1 = await chat_repo.create(ChatCreate(
+            id=_uuid4(),
             session_id=sess.id, role="user", sender="user",
             content=[{"text": "hi"}],
         ))
         c2 = await chat_repo.create(ChatCreate(
+            id=_uuid4(),
             session_id=sess.id, prev_chat_id=c1.id,
             role="agent", sender="primary",
             content=[{"text": "hello"}],

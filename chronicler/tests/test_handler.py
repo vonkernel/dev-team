@@ -163,10 +163,12 @@ class TestChatAppendProcessor:
         db = MagicMock()
         sid = uuid.uuid4()
         db.session_get = AsyncMock(return_value=_session_read(sid))
+        db.chat_get = AsyncMock(return_value=None)
         db.chat_list = AsyncMock(return_value=[])
         db.chat_create = AsyncMock()
         db.session_update = AsyncMock()
         ev = ChatAppendEvent(
+            chat_id=uuid.uuid4(),
             session_id=sid, role="user", sender="user",
             content=[{"text": "hi"}], message_id="m1",
         )
@@ -185,6 +187,7 @@ class TestChatAppendProcessor:
         db.session_get = AsyncMock(return_value=None)
         db.chat_create = AsyncMock()
         ev = ChatAppendEvent(
+            chat_id=uuid.uuid4(),
             session_id=uuid.uuid4(), role="user", sender="user", content=[],
         )
         await proc.process(ev, db)

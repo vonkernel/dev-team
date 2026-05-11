@@ -23,6 +23,8 @@ export function Chat({ sessionId, onSessionUpdated }: Props) {
   const [error, setError] = useState<string | null>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
   const sseRef = useRef<EventSource | null>(null);
+  /** chats chain — 다음 user turn 의 prev_chat_id 로 보냄 (#75 PR 4). */
+  const lastChatIdRef = useRef<string | null>(null);
 
   // 마운트 / sessionId 변경 시 hydrate + SSE 재연결
   useEffect(() => {
@@ -38,8 +40,13 @@ export function Chat({ sessionId, onSessionUpdated }: Props) {
             role: c.role,
             text: extractText(c.content),
             message_id: c.message_id || undefined,
+            chat_id: c.id,
           })),
         );
+        // last_chat_id 는 history 의 마지막 chat — 다음 user turn 의 prev_chat_id
+        lastChatIdRef.current = history.length
+          ? history[history.length - 1].id
+          : null;
         setError(null);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -79,13 +86,14 @@ export function Chat({ sessionId, onSessionUpdated }: Props) {
       }
       if (ev.type === "chunk") {
         const mid = ev.payload.message_id;
+        const cid = ev.payload.chat_id;
         const text = ev.payload.text;
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.message_id === mid && last.role === "agent" && last.streaming) {
             return [
               ...prev.slice(0, -1),
-              { ...last, text: last.text + text },
+              { ...last, text: last.text + text, chat_id: cid ?? last.chat_id },
             ];
           }
           // 새 agent message — streaming 시작
@@ -97,17 +105,25 @@ export function Chat({ sessionId, onSessionUpdated }: Props) {
               text,
               streaming: true,
               message_id: mid,
+              chat_id: cid,
             },
           ];
         });
       } else if (ev.type === "message") {
         // 완성된 agent message — streaming 종료. (chunks 이미 보였으면 streaming 해제)
+        const cid = ev.payload.chat_id;
+        if (cid) lastChatIdRef.current = cid;  // 다음 user turn 의 prev_chat_id
         setMessages((prev) => {
           const last = prev[prev.length - 1];
           if (last?.message_id === ev.payload.message_id) {
             return [
               ...prev.slice(0, -1),
-              { ...last, text: ev.payload.text, streaming: false },
+              {
+                ...last,
+                text: ev.payload.text,
+                streaming: false,
+                chat_id: cid ?? last.chat_id,
+              },
             ];
           }
           return [
@@ -117,6 +133,7 @@ export function Chat({ sessionId, onSessionUpdated }: Props) {
               role: "agent",
               text: ev.payload.text,
               message_id: ev.payload.message_id,
+              chat_id: cid,
             },
           ];
         });
@@ -149,7 +166,21 @@ export function Chat({ sessionId, onSessionUpdated }: Props) {
       { id: `user-${tempId}`, role: "user", text },
     ]);
     try {
-      await sendChat(sessionId, text);
+      const ack = await sendChat(
+        sessionId, text, undefined, lastChatIdRef.current ?? undefined,
+      );
+      // 서버가 user_chat_id 발급 — UI 버블의 chat_id 갱신 + last_chat_id 후보
+      // (agent 응답이 도착하면 그게 last_chat_id 가 되지만, 사용자 발화도
+      // chain 상 최신이므로 일단 갱신해 둠)
+      if (ack.chat_id) {
+        const userChatId = ack.chat_id;
+        lastChatIdRef.current = userChatId;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === `user-${tempId}` ? { ...m, chat_id: userChatId } : m,
+          ),
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setMessages((prev) =>

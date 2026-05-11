@@ -25,6 +25,7 @@ class ChatRequest(BaseModel):
     session_id: uuid.UUID
     text: str
     message_id: str | None = None
+    prev_chat_id: uuid.UUID | None = None
 
 
 @router.post("/api/chat", status_code=202)
@@ -35,26 +36,38 @@ async def chat(body: ChatRequest, request: Request) -> dict[str, Any]:
     `GET /api/stream?session_id=X` 의 영속 SSE 로 흐름.
 
     UG 책임:
-    1. `chat.append` (role=user) publish (D3)
-    2. Primary 의 `POST /chat/send` 로 forward
+    1. user_chat_id 발급 (publisher-supplied id, chats.id 와 1:1)
+    2. `chat.append` (role=user) publish — chat_id + prev_chat_id 포함 (D3)
+    3. Primary 의 `POST /chat/send` 로 forward — Primary 가 자기 응답의
+       prev_chat_id 로 user_chat_id 사용
     """
     chat_upstream: ChatProtocolUpstream = request.app.state.chat_upstream
     event_bus: EventBus = request.app.state.event_bus
     user_message_id = body.message_id or f"ug-msg-{uuid.uuid4()}"
+    user_chat_id = uuid.uuid4()
 
     # D3: 사용자 발화는 UG 가 publish.
     await publish_chat_user(
-        event_bus, str(body.session_id), body.text, user_message_id,
+        event_bus,
+        str(body.session_id),
+        body.text,
+        user_message_id,
+        chat_id=user_chat_id,
+        prev_chat_id=body.prev_chat_id,
     )
     logger.info(
-        "chat session_id=%s message_id=%s text_len=%d",
-        body.session_id, user_message_id, len(body.text),
+        "chat session_id=%s chat_id=%s prev_chat_id=%s message_id=%s text_len=%d",
+        body.session_id, user_chat_id, body.prev_chat_id,
+        user_message_id, len(body.text),
     )
 
-    # Primary 로 forward.
+    # Primary 로 forward — user_chat_id 를 prev_chat_id 로 전달 (agent 응답의 직전).
     try:
         ack = await chat_upstream.chat_send(
-            str(body.session_id), body.text, message_id=user_message_id,
+            str(body.session_id),
+            body.text,
+            message_id=user_message_id,
+            prev_chat_id=str(user_chat_id),
         )
     except UpstreamHTTPError as exc:
         logger.warning("chat_send upstream %d: %s", exc.status_code, exc.detail)
@@ -71,6 +84,7 @@ async def chat(body: ChatRequest, request: Request) -> dict[str, Any]:
     return {
         "status": ack.get("status", "processing"),
         "message_id": user_message_id,
+        "chat_id": str(user_chat_id),
     }
 
 

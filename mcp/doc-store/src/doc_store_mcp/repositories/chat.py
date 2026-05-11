@@ -31,12 +31,13 @@ class ChatRepository(
     async def create(self, doc: ChatCreate) -> ChatRead:
         sql = """
             INSERT INTO chats
-                (session_id, prev_chat_id, role, sender, content, message_id, metadata)
-            VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb)
+                (id, session_id, prev_chat_id, role, sender, content, message_id, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8::jsonb)
             RETURNING *
         """
         row = await self._pool.fetchrow(
             sql,
+            doc.id,
             doc.session_id,
             doc.prev_chat_id,
             doc.role,

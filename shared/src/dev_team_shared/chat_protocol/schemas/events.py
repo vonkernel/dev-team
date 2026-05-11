@@ -36,14 +36,17 @@ class ChatEvent(BaseModel):
     `payload` 는 type 마다 자유 (Pydantic discriminated union 안 함 — JSONB
     free-form 처럼 type 별 키 변동). 표준 키 가이드:
 
-    | type    | payload 키                                 |
-    |---------|---------------------------------------------|
-    | meta    | `session_id`, `agent_endpoint`              |
-    | queued  | `message_id`, `queue_depth`                 |
-    | chunk   | `text`, `message_id`                        |
-    | message | `message_id`, `role`, `text`, `created_at`  |
-    | done    | (없음)                                       |
-    | error   | `message`, `detail` (선택)                   |
+    | type    | payload 키                                                                  |
+    |---------|------------------------------------------------------------------------------|
+    | meta    | `session_id`, `agent_endpoint`                                              |
+    | queued  | `message_id`, `queue_depth`                                                 |
+    | chunk   | `text`, `message_id`, `chat_id`                                             |
+    | message | `message_id`, `chat_id`, `prev_chat_id`, `role`, `text`, `created_at`       |
+    | done    | (없음)                                                                       |
+    | error   | `message`, `detail` (선택)                                                   |
+
+    `chat_id` 는 agent 가 발급한 chats.id (publisher-supplied, #75 PR 4) —
+    FE 가 이걸로 last_chat_id 추적해 다음 turn 의 prev_chat_id 로 사용.
     """
 
     model_config = ConfigDict(extra="forbid")

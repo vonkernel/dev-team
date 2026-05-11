@@ -88,15 +88,23 @@ class SessionStartEvent(_EventBase):
 class ChatAppendEvent(_EventBase):
     """session 안의 한 발화 (user / agent / system).
 
+    `chat_id` 는 publisher-supplied UUID (chats row 의 id 와 1:1). publisher
+    가 발급해 wire 로 전파 — `prev_chat_id` 가 직전 chat 의 chat_id 를 가리킬
+    수 있게 (chain 의 결정성 보장).
+
     `session_id` 로 어느 chat session 인지, optional `prev_chat_id` 로 chain.
     """
 
     event_type: Literal["chat.append"] = "chat.append"
+    # publisher-supplied (= chats.id). 신 publisher 는 항상 명시 발급.
+    # default_factory 는 backward-compat — 옛 backlog 이벤트 (chat_id 없음) 도
+    # parse 가능 (CHR 가 받아 처리할 때 random UUID 부여).
+    chat_id: UUID = Field(default_factory=uuid.uuid4)
     session_id: UUID
     role: Literal["user", "agent", "system"]
     sender: str                                      # 'user' / 'primary' / ...
     content: list[dict[str, Any]] | dict[str, Any]   # A2A parts 형태
-    message_id: str | None = None                    # FE / server 발급
+    message_id: str | None = None                    # FE / server 발급 (wire-level)
     prev_chat_id: UUID | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
