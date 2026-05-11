@@ -78,6 +78,7 @@ async def lifespan(app: FastAPI):
             issue_tracker=channels.issue_tracker,
             wiki=channels.wiki,
             librarian=channels.librarian,
+            event_bus=event_bus,
         )
         checkpointer = await build_checkpointer(settings.database_uri, stack)
 

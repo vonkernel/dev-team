@@ -28,6 +28,7 @@ from dev_team_shared.a2a.server.graph_handlers import (
     GraphSendStreamingMessageHandler,
 )
 from dev_team_shared.doc_store import DocStoreClient
+from dev_team_shared.event_bus import ValkeyEventBus
 from dev_team_shared.mcp_client import StreamableMCPClient
 from fastapi import FastAPI
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -57,7 +58,21 @@ async def lifespan(app: FastAPI):
     if not doc_store_url:
         raise RuntimeError("DOC_STORE_MCP_URL env required")
     database_uri = os.environ.get("DATABASE_URI")
+    valkey_url = os.environ.get("VALKEY_URL")
     agent_card = build_agent_card(config)
+
+    # event_bus — VALKEY_URL 있으면 publish 활성. 없거나 실패 시 None
+    # (publish helper 들이 no-op). A2A handler 가 a2a.* 이벤트 publish 위해 필요.
+    event_bus: ValkeyEventBus | None = None
+    if valkey_url:
+        try:
+            event_bus = await ValkeyEventBus.create(valkey_url)
+            logger.info("event_bus ready (Valkey at %s)", valkey_url)
+        except Exception:
+            logger.exception(
+                "ValkeyEventBus 초기화 실패 (url=%s) — publish 비활성화",
+                valkey_url,
+            )
 
     # Doc Store MCP 연결 — lifespan 동안 유지. shutdown 에서 aclose.
     mcp = await StreamableMCPClient.connect(doc_store_url)
@@ -77,6 +92,7 @@ async def lifespan(app: FastAPI):
                     persona=persona, llm=llm, tools=tools, checkpointer=checkpointer,
                 )
                 app.state.agent_card = agent_card
+                app.state.event_bus = event_bus
                 logger.info(
                     "librarian agent ready (Postgres checkpointer at %s)",
                     _mask_dsn(database_uri),
@@ -87,6 +103,7 @@ async def lifespan(app: FastAPI):
                 persona=persona, llm=llm, tools=tools, checkpointer=None,
             )
             app.state.agent_card = agent_card
+            app.state.event_bus = event_bus
             logger.warning(
                 "DATABASE_URI not set — running with in-memory state "
                 "(non-durable across restarts)",
@@ -94,6 +111,8 @@ async def lifespan(app: FastAPI):
             yield
     finally:
         await mcp.aclose()
+        if event_bus is not None:
+            await event_bus.aclose()
 
 
 app = FastAPI(
